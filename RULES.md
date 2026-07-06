@@ -144,7 +144,7 @@ Spend 1 Resolve to:
 | **Rekindle** | Regain Hope at the start of your turn. |
 | **Endure** | Stay while Hopeless. |
 | **Brace** | When a Draugr strikes you, lose 2 tiles from the stack instead of 3. |
-| **Charge** | Deliberately move onto a Draugr: suffer its attack, become Hopeless, then scramble onto an adjacent tile. |
+| **Charge** | Deliberately move onto a Draugr: its strike always lands on you (Brace still allowed). Once its attack concludes, the Draugr is **banished from the forest** — its tile is lost — and you scramble onto an adjacent space. The only way to destroy a Draugr. |
 | **Sustain** | During Niflheim's Embrace, skip removing an extra tile at the end of your turn. |
 
 ## Fractured Paths & Void Rifts
@@ -181,6 +181,10 @@ Lost souls who sought Valhalla and failed. They despise your hope.
   spite.
 - Falling breaks line of sight: a soul that falls triggers watching Draugr
   but drops away before the strike lands.
+- **Charging** (1 Resolve) is the only way to destroy a Draugr: its strike
+  lands on you, and then its spite is spent — the Draugr vanishes from the
+  forest, leaving bare ground. (A Draugr *fallen onto* from the void instead
+  collapses into a Rift; one merely stumbled onto in the dark remains.)
 
 ## Rune Circles
 
@@ -243,3 +247,6 @@ When the last tile leaves the stack, the primordial cold closes in:
 9. **Fractured T-paths:** kept TNC's literal "2 of the T tiles."
 10. **Scrambling off a Draugr never re-triggers it** (it's part of the attack's
     resolution), and you may never deliberately scramble onto another visible Draugr.
+11. **Charge banishes** (departure from TNC, where monsters persist): the
+    charged Draugr disappears after its attack resolves, making Charge a true
+    monster-removal tool — a Resolve plus a guaranteed hit buys a cleared corridor.

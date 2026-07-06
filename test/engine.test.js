@@ -316,6 +316,34 @@ section('hopeless blind movement');
   }
 }
 
+// ---------------------------------------------------------------- charge banishes
+section('charge: strike lands on the charger, then the draugr is banished');
+{
+  const s = createGame({ seed: 12, stack: deck(40) });
+  doSetup(s);
+  // replace the cross east of soul 0's start with a draugr, then charge it
+  _test.setTile(s, 1, 2, _test.makeTileDef(s, 'draugr'), 0);
+  s.awaiting = null; s.queue.unshift({ t: 'action' }); _test.run(s);
+  const mv = s.awaiting.moves.find(m => m.kind === 'charge');
+  check(!!mv, 'charge offered while holding resolve');
+  const stackBefore = s.stack.length;
+  applyAction(s, 0, { kind: 'move', d: mv.d });
+  // charging spent the only resolve, so the hit auto-applies (no brace prompt)
+  const p0 = s.players[0];
+  check(p0.resolve === 0, 'resolve spent on the charge');
+  check(p0.hopeful === false, 'the strike landed — charger hopeless');
+  check(stackBefore - s.stack.length === 3, 'full 3 tiles burned by the strike');
+  check(s.events.some(e => e.e === 'banish'), 'banish event emitted');
+  const cell12 = s.grid[key(1, 2)];
+  check(cell12 === null, 'the draugr is gone from the forest (bare ground, no rift)');
+  check(s.discard.some(t => t.kind === 'draugr'), 'the banished draugr lies in the discard');
+  check(s.awaiting.type === 'scramble' && s.awaiting.seat === 0, 'charger scrambles off the bare ground');
+  const opt = s.awaiting.options.find(o => !o.draw) || s.awaiting.options[0];
+  applyAction(s, 0, { r: opt.r, c: opt.c });
+  if (s.awaiting && (s.awaiting.type === 'place-scramble')) applyAction(s, 0, { rot: s.awaiting.rots[0] });
+  check(s.players[0].placed, 'charger scrambled to footing');
+}
+
 // ---------------------------------------------------------------- full random game smoke test
 section('smoke: random self-play (200 games)');
 {

@@ -741,6 +741,20 @@ STEPS['scramble'] = (s, { seat, from, free, then }) => {
   s.awaiting = { type: 'scramble', seat, from: { r: fr, c: fc }, free: !!free, then, options };
 };
 
+STEPS['charge-banish'] = (s, { seat, cell, then }) => {
+  // a charged draugr spends its spite on the attack and dissolves — its tile
+  // leaves the forest entirely, and the charger scrambles off the bare ground
+  const [r, c] = cell;
+  const t = tileAt(s, r, c);
+  if (t && t.kind === 'draugr') {
+    s.discard.push(t);
+    s.grid[key(r, c)] = null;
+    ev(s, 'banish', { r, c, tile: t });
+    log(s, 'Its spite spent, the Draugr dissolves — banished from the forest.', 'good');
+  }
+  s.queue.unshift({ t: 'scramble', seat, from: cell, free: true, then });
+};
+
 STEPS['landing-monster-after'] = (s, { seat, cell, then }) => {
   // the draugr that was landed on collapses into a rift, then the soul scrambles
   const [r, c] = cell;
@@ -913,7 +927,9 @@ function doMove(s, p, mv, then) {
     p.r = nr; p.c = nc;
     ev(s, 'move', { seat: p.seat, from: [or_, oc], to: [nr, nc] });
     if (originFractured) fractureCell(s, or_, oc);
-    s.queue.unshift({ t: 'scramble', seat: p.seat, from: [nr, nc], free: false, then });
+    // the charger always stands in the draugr's sight, so its strike always
+    // lands on them; once the attack concludes, the draugr is banished
+    s.queue.unshift({ t: 'charge-banish', seat: p.seat, cell: [nr, nc], then });
     startHitWave(s, trig, { mover: p.seat, lateral: false });
     return;
   }

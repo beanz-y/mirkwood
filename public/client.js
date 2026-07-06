@@ -32,7 +32,7 @@ function buildTimeline(events) {
   const T = {
     moves: {}, drops: {}, dims: {}, brights: {}, shakes: {},
     falls: [], collapses: [], fades: [], reveals: {}, attacks: [],
-    runes: [], blooms: [], stays: [], burn: false, total: 0,
+    banishes: [], runes: [], blooms: [], stays: [], burn: false, total: 0,
   };
   let t = 0;
   for (const e of events) {
@@ -64,6 +64,9 @@ function buildTimeline(events) {
       case 'sweep':
         for (const cl of e.cells) T.fades.push({ r: cl.r, c: cl.c, tile: cl.tile, rift: cl.rift, at: t });
         t += 0.35; break;
+      case 'banish':
+        T.banishes.push({ r: e.r, c: e.c, tile: e.tile, at: t });
+        t += 0.6; break;
       case 'rune':
         T.runes.push({ seat: e.seat, at: t });
         t += 0.5; break;
@@ -88,7 +91,7 @@ function buildTimeline(events) {
     Object.values(T.reveals).forEach(sc);
     for (const s of Object.keys(T.dims)) T.dims[s] *= k;
     for (const s of Object.keys(T.brights)) T.brights[s] *= k;
-    [T.falls, T.collapses, T.fades, T.attacks, T.runes, T.blooms, T.stays]
+    [T.falls, T.collapses, T.fades, T.attacks, T.banishes, T.runes, T.blooms, T.stays]
       .forEach(arr => arr.forEach(sc));
     t = 2.8;
   }
@@ -494,7 +497,7 @@ function renderSoul() {
     ['Rekindle', 'regain hope at the start of your turn', !p.hopeful],
     ['Endure', 'stay put while hopeless', !p.hopeful && !p.falling],
     ['Brace', 'lose 2 tiles instead of 3 when a Draugr strikes', true],
-    ['Charge', 'deliberately enter a Draugr’s tile — its strike will land', p.hopeful],
+    ['Charge', 'take a Draugr’s strike head-on to banish it from the forest', p.hopeful],
     ['Sustain', 'skip Niflheim’s toll at the end of your turn', !!state.niflheim],
   ];
   const actHtml = acts.map(([name, desc, relevant]) => `
@@ -610,6 +613,12 @@ function renderBoard() {
           parts.push(`<rect x="${x + 2}" y="${y + 2}" width="${CS - 4}" height="${CS - 4}" rx="8" class="raypulse" style="animation-delay:${atk.at + 0.12 + i * 0.06}s"/>`);
         });
       }
+    }
+    for (const b of transientFx.banishes) {
+      // a charged draugr disperses into the mist
+      const x = PAD + b.c * CS, y = PAD + b.r * CS;
+      parts.push(`<g class="banish" style="animation-delay:${b.at}s">${tileSVG(b.tile, x, y)}</g>`);
+      parts.push(`<circle cx="${x + CS / 2}" cy="${y + CS / 2}" r="26" fill="none" stroke="#8fd8ff" stroke-width="2.5" class="shriek" style="animation-delay:${b.at}s"/>`);
     }
     for (const f of transientFx.falls) {
       // a ghost of the token tumbles into the rift
@@ -771,7 +780,7 @@ function addInteractions(parts, aw) {
       aw.moves.forEach(m => {
         clickRect(parts, m.r, m.c, m.kind, () => {
           if (m.kind === 'charge') {
-            confirmModal('Charge the Draugr? It costs 1 Resolve — and its strike WILL land.', () => act({ kind: 'move', d: m.d }));
+            confirmModal('Charge the Draugr? Its strike WILL land on you — but with its spite spent, it is banished from the forest. (1 Resolve)', () => act({ kind: 'move', d: m.d }));
           } else if (m.kind === 'jump') {
             confirmModal('Leap into the Void Rift? You will fall, and land hopeless.', () => act({ kind: 'move', d: m.d }));
           } else {
@@ -786,7 +795,7 @@ function addInteractions(parts, aw) {
         aw.moves.forEach(m => {
           clickRect(parts, m.r, m.c, m.kind, () => {
             if (m.kind === 'charge') {
-              confirmModal('Charge the Draugr? This costs 2 Resolve in total.', () => act({ kind: 'move', d: m.d }));
+              confirmModal('Charge the Draugr? Its strike WILL land on you, then it is banished. (2 Resolve in total)', () => act({ kind: 'move', d: m.d }));
             } else if (m.kind === 'jump') {
               confirmModal('Leap into the Void Rift?', () => act({ kind: 'move', d: m.d }));
             } else {

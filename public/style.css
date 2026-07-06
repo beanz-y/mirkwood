@@ -307,6 +307,15 @@ body.niflheim #topbar { border-bottom-color: #3a5a8c; }
   0%   { transform: scale(0.3); opacity: 0.95; }
   100% { transform: scale(2.4); opacity: 0; }
 }
+.banish {
+  transform-box: fill-box; transform-origin: center;
+  animation: banish 0.8s ease-out both;
+  pointer-events: none;
+}
+@keyframes banish {
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.4); filter: blur(3px); }
+}
 .shake { animation: shake 0.4s linear both; }
 @keyframes shake {
   0%, 100% { transform: translate(0, 0); }
