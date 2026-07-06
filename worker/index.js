@@ -146,7 +146,24 @@ export class MirkwoodRoom {
 
   async webSocketClose(ws) {
     await this.load();
-    if (this.room) this.broadcast();
+    if (this.room) {
+      // before the saga starts, a vanished player's claimed souls are freed
+      // (a quick refresh usually reconnects before the old socket closes,
+      // so the claim survives; a genuine departure releases it)
+      if (!this.room.state) {
+        const live = new Set(this.ctx.getWebSockets()
+          .filter(w => w !== ws)
+          .map(w => this.tokenOf(w))
+          .filter(Boolean));
+        let changed = false;
+        for (let i = 0; i < 4; i++) {
+          const st = this.room.seats[i];
+          if (st && !live.has(st.token)) { this.room.seats[i] = null; changed = true; }
+        }
+        if (changed) await this.save();
+      }
+      this.broadcast();
+    }
     await this.ctx.storage.setAlarm(Date.now() + IDLE_PURGE_MS);
   }
 
@@ -238,6 +255,11 @@ export class MirkwoodRoom {
         if (r.host !== token) return;
         if (r.state && r.state.phase !== 'won' && r.state.phase !== 'lost') return;
         r.state = null;
+        // free the souls of anyone who wandered off during the last saga
+        const live = new Set(this.ctx.getWebSockets().map(w => this.tokenOf(w)).filter(Boolean));
+        for (let i = 0; i < 4; i++) {
+          if (r.seats[i] && !live.has(r.seats[i].token)) r.seats[i] = null;
+        }
         await this.save();
         this.broadcast();
         return;
@@ -245,6 +267,27 @@ export class MirkwoodRoom {
       case 'chat': {
         const text = clean(msg.text, 300);
         if (text) this.sendChat(this.nameOf(token), text);
+        return;
+      }
+      case 'leave': {
+        // before the saga starts, walking away frees the claimed souls;
+        // mid-game the seats stay bound to the token so they can rejoin
+        if (!r.state) {
+          for (let i = 0; i < 4; i++) {
+            if (r.seats[i] && r.seats[i].token === token) r.seats[i] = null;
+          }
+        }
+        // hand the host's horn to someone still present
+        if (r.host === token) {
+          const heir = this.ctx.getWebSockets()
+            .map(w => this.tokenOf(w))
+            .find(t => t && t !== token);
+          if (heir) r.host = heir;
+        }
+        ws.serializeAttachment(null);
+        await this.save();
+        try { ws.close(4001, 'left'); } catch { /* already gone */ }
+        this.broadcast();
         return;
       }
     }

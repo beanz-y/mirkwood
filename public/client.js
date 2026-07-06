@@ -121,12 +121,22 @@ function leaveRoom(message) {
   lastCode = '';
   localStorage.removeItem('mk-code');
   room = null; state = null;
+  soulSeat = null; transientFx = null; moveAgainArmed = false; modalLock = null;
+  clearTimeout(reconnectTimer);
   if (ws) { ws.onclose = null; try { ws.close(); } catch { /* gone */ } }
   $('lobby').classList.remove('hidden');
   $('game').classList.add('hidden');
   $('lobby-entry').classList.remove('hidden');
   $('lobby-room').classList.add('hidden');
-  if (message) showError(message);
+  $('modal').classList.add('hidden');
+  $('preview').classList.add('hidden');
+  $('lobby-error').textContent = message || '';
+}
+
+// tell the room we're going, then return to the entry screen
+function leaveSaga() {
+  send({ t: 'leave' });
+  leaveRoom();
 }
 
 // shared SVG gradient defs for the procedural art, injected once so both the
@@ -262,6 +272,14 @@ $('anims-btn').onclick = () => {
 applyAnims();
 $('concede-btn').onclick = () => {
   confirmModal('Abandon all hope and surrender the saga to Niflheim?', () => send({ t: 'concede' }));
+};
+$('leave-room-btn').onclick = () => leaveSaga();
+$('leave-btn').onclick = () => {
+  if (state && (state.phase === 'play' || state.phase === 'setup')) {
+    confirmModal(`Leave this saga? The game continues without you — rejoin any time with code ${room ? room.code : ''} from this browser.`, leaveSaga);
+  } else {
+    leaveSaga();
+  }
 };
 $('rotate-btn').onclick = () => rotatePreview();
 document.addEventListener('keydown', (e) => {
@@ -1096,6 +1114,10 @@ function renderModal() {
       p.textContent = 'The host may begin a new saga.';
       row.appendChild(p);
     }
+    const out = document.createElement('button');
+    out.className = 'btn'; out.textContent = 'Leave the forest';
+    out.onclick = () => leaveSaga();
+    row.appendChild(out);
     card.appendChild(row);
     modal.classList.remove('hidden');
     return;
