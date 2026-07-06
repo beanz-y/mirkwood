@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mirkwood — Myrkviðr</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>ᛗ</text></svg>">
+</head>
+<body>
+
+<!-- ======================= LOBBY ======================= -->
+<div id="lobby" class="overlay">
+  <div class="lobby-card">
+    <h1 class="title">MIRKWOOD</h1>
+    <p class="subtitle">Myrkviðr — the mist-forest between the worlds</p>
+
+    <div id="lobby-entry">
+      <label>Your name
+        <input id="name-input" maxlength="16" placeholder="Wanderer" autocomplete="off">
+      </label>
+      <div class="row">
+        <button id="create-btn" class="btn primary">Begin a new saga</button>
+      </div>
+      <div class="row join-row">
+        <input id="code-input" maxlength="4" placeholder="CODE" autocomplete="off">
+        <button id="join-btn" class="btn">Join a saga</button>
+      </div>
+      <p id="lobby-error" class="error"></p>
+    </div>
+
+    <div id="lobby-room" class="hidden">
+      <p class="room-code-label">Gather your party — saga code:</p>
+      <div class="room-code" id="room-code">----</div>
+      <div id="seat-list" class="seat-list"></div>
+      <div class="row">
+        <button id="claim-all-btn" class="btn small">Claim remaining souls</button>
+      </div>
+      <div class="row">
+        <button id="start-btn" class="btn primary hidden">Enter the forest</button>
+        <p id="start-hint" class="hint"></p>
+      </div>
+    </div>
+    <div class="row">
+      <button id="rules-btn-lobby" class="btn tiny">Runes &amp; rules</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= GAME ======================= -->
+<div id="game" class="hidden">
+  <header id="topbar">
+    <span class="brand">ᛗ MIRKWOOD</span>
+    <span id="turn-banner"></span>
+    <span id="stack-meter" title="Tiles remaining — the group's shared hope"></span>
+    <button id="rules-btn" class="btn tiny">Rules</button>
+    <span id="room-tag"></span>
+  </header>
+
+  <main id="layout">
+    <section id="board-wrap">
+      <svg id="board" viewBox="0 0 552 552" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="action-bar"></div>
+    </section>
+
+    <aside id="side">
+      <div id="players"></div>
+      <div id="discard-panel">
+        <h3>Lost to the mist</h3>
+        <div id="discard-counts"></div>
+      </div>
+      <div id="tabs">
+        <div class="tab-buttons">
+          <button data-tab="log" class="tab-btn active">Saga</button>
+          <button data-tab="soul" class="tab-btn">Soul</button>
+          <button data-tab="chat" class="tab-btn">Whispers</button>
+        </div>
+        <div id="log" class="tab-pane"></div>
+        <div id="soul" class="tab-pane hidden"></div>
+        <div id="chat" class="tab-pane hidden">
+          <div id="chat-messages"></div>
+          <form id="chat-form">
+            <input id="chat-input" maxlength="300" placeholder="whisper to the others..." autocomplete="off">
+          </form>
+        </div>
+      </div>
+      <div class="side-footer">
+        <button id="anims-btn" class="btn tiny"></button>
+        <button id="concede-btn" class="btn tiny hidden">Abandon hope</button>
+      </div>
+    </aside>
+  </main>
+
+  <!-- floating tile preview for placements -->
+  <div id="preview" class="hidden">
+    <div id="preview-title"></div>
+    <svg id="preview-svg" viewBox="0 0 92 92"></svg>
+    <button id="rotate-btn" class="btn small">⟳ Rotate</button>
+    <p class="hint" id="preview-hint">Click a glowing space to place</p>
+  </div>
+
+  <!-- modal -->
+  <div id="modal" class="overlay hidden">
+    <div id="modal-card" class="modal-card"></div>
+  </div>
+</div>
+
+<!-- ======================= RULES ======================= -->
+<div id="rules" class="overlay hidden">
+  <div class="modal-card rules-card">
+    <h2>How to survive Myrkviðr</h2>
+
+    <h3>The goal</h3>
+    <p>Win together: all four souls standing on the <b>same Gate</b>, each bearing a
+    <b>different rune</b> of that gate's set. Lose together if both Gates are lost,
+    the runes can no longer be gathered, a falling soul has nothing to land on —
+    or the mist simply cuts you off.</p>
+
+    <h3>Your turn</h3>
+    <ul>
+      <li><b>Move</b> one space along a connected path. New paths are revealed
+        around you (one drawn tile per open passage) — and everything your
+        group's hope no longer lights is <b>lost forever</b>.</li>
+      <li><b>Stay</b> instead: gain 1 Resolve ◆ (max 2), but standing still burns
+        the top tile of the stack. If it's a Draugr, it claws onto a path beside you.</li>
+      <li>After moving you may spend Resolve to <b>move again</b> (up to twice).</li>
+    </ul>
+
+    <h3>Hope</h3>
+    <ul>
+      <li><b>Hopeful</b> — you light all connected paths one space around you (no diagonals).</li>
+      <li><b>Hopeless</b> — you see only your own tile. You <b>must move</b> every turn
+        (staying costs 1 ◆), and you move blind: entering the mist reveals only the
+        tile you step onto.</li>
+      <li><b>Rekindle</b> — stand beside a hopeful soul on a connected path (automatic),
+        or spend 1 ◆ at the start of your turn.</li>
+    </ul>
+
+    <h3>Resolve ◆ <small>(max 2)</small></h3>
+    <p>Gain it by <b>Staying</b>, or by <b>evading</b> a Draugr you triggered.
+    Spend 1 to: <b>Move again</b> · <b>Rekindle</b> · <b>Endure</b> (stay while hopeless) ·
+    <b>Brace</b> (lose 2 tiles instead of 3 when struck) ·
+    <b>Charge</b> a Draugr · <b>Sustain</b> (skip Niflheim's toll).</p>
+
+    <h3>The Draugr</h3>
+    <p>They strike when anyone <b>moves</b> along, into, or out of a straight unbroken
+    pathway connected to them — in all four directions, wrapping around the board's
+    edges. Every soul in sight is struck: <b>3 tiles burned</b> per victim, and their
+    hope is extinguished. Walls, gaps, and Void Rifts block their sight. Ending your
+    move out of the line evades the strike — and steels your Resolve.</p>
+
+    <h3>Fractured paths &amp; Void Rifts</h3>
+    <p>Cracked tiles crumble into <b>Void Rifts</b> when you leave them (or stay on
+    them). Falling ends your turn; next turn you land on a drawn tile anywhere in the
+    rift's row or column — <b>hopeless</b>. If the stack is empty when you must land,
+    you fall forever.</p>
+
+    <h3>Runes &amp; Gates</h3>
+    <p>Step into a <b>Rune Circle</b> to take one mark (it replaces your old one —
+    marks can never be traded). Gates have <b>one doorway</b>, are permanent once
+    placed, and hold any number of souls.</p>
+    <table class="rune-table">
+      <tr><th colspan="2">ᚹ Valhalla</th><th colspan="2">ᛒ Fólkvangr</th></tr>
+      <tr><td>ᚦ</td><td>Thurisaz — strength</td><td>ᛒ</td><td>Berkano — nurture</td></tr>
+      <tr><td>ᛇ</td><td>Eihwaz — endurance</td><td>ᚢ</td><td>Uruz — vitality</td></tr>
+      <tr><td>ᛁ</td><td>Isa — willpower</td><td>ᚨ</td><td>Ansuz — wisdom</td></tr>
+      <tr><td>ᚱ</td><td>Raido — the journey</td><td>ᚹ</td><td>Wunjo — joy</td></tr>
+    </table>
+
+    <h3>Niflheim's Embrace</h3>
+    <p>When the last tile is drawn, no new paths can ever be revealed — and at the
+    end of <b>every</b> turn the group must surrender one tile from the board
+    (1 ◆ to Sustain). Reach a gate before the forest is gone.</p>
+
+    <div class="row"><button id="rules-close" class="btn primary">Back to the forest</button></div>
+  </div>
+</div>
+
+<script type="module" src="/client.js"></script>
+</body>
+</html>

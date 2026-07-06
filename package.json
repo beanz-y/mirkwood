@@ -1,0 +1,15 @@
+{
+  "name": "mirkwood",
+  "version": "0.2.0",
+  "description": "Mirkwood (Myrkviðr) — cooperative tile-placement game of lost Viking souls, played online by 4 players.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8930",
+    "start": "wrangler dev --port 8930",
+    "deploy": "wrangler deploy",
+    "test": "node test/engine.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

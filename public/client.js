@@ -1,0 +1,959 @@
+/* Mirkwood client — lobby, board rendering, decisions. */
+import { RUNES, GATE_NAMES, exitsFor, SIZE, key, DIRNAMES } from '/shared/engine.js';
+
+const $ = id => document.getElementById(id);
+const CS = 90, PAD = 6; // cell size / board padding (viewBox 552)
+
+// ---------------------------------------------------------------- connection
+
+let ws = null;
+let room = null;
+let state = null;
+let token = localStorage.getItem('mk-token') || '';
+let lastCode = localStorage.getItem('mk-code') || '';
+let myName = localStorage.getItem('mk-name') || '';
+let reconnectTimer = null;
+
+// interaction state
+let previewRot = 0;
+let awaitingSig = '';
+let moveAgainArmed = false;
+let lastFxId = 0;
+let clickMap = new Map(); // "r,c" -> handler
+let transientFx = null;   // one-shot animations computed from the state diff
+let soulSeat = null;      // which soul the status card shows (null = auto)
+let anims = localStorage.getItem('mk-anims') !== 'off';
+const sm = s => (anims ? s : ''); // gate SMIL snippets on the animations setting
+
+// one-shot board animations: diff two consecutive states
+function diffFx(prev, cur) {
+  if (!anims || !prev || !cur) return null;
+  if (cur.phase === 'setup' && prev.phase !== 'setup') return null; // new saga
+  const fx = { moves: {}, drops: [], collapses: [], fades: [], runes: [] };
+  for (let i = 0; i < 4; i++) {
+    const a = prev.players[i], b = cur.players[i];
+    if (a.placed && b.placed && (a.r !== b.r || a.c !== b.c)) {
+      // wrap-around moves teleport across the looping edge; don't slide those
+      if (Math.abs(a.r - b.r) <= 1 && Math.abs(a.c - b.c) <= 1) fx.moves[i] = { r: a.r, c: a.c };
+    } else if (!a.placed && b.placed) {
+      fx.drops.push(i); // landed from a fall (or awoke)
+    }
+    const ra = a.rune ? a.rune.p + a.rune.k : '';
+    const rb = b.rune ? b.rune.p + b.rune.k : '';
+    if (rb && ra !== rb) fx.runes.push(i);
+  }
+  for (let k = 0; k < SIZE * SIZE; k++) {
+    const a = prev.grid[k], b = cur.grid[k];
+    if (a && a.tile && b && b.rift) fx.collapses.push({ k, tile: a.tile });
+    else if (a && !b) fx.fades.push({ k, cell: a });
+  }
+  return fx;
+}
+
+// The room code is part of the WebSocket URL so the Cloudflare Worker can
+// route the connection to that room's Durable Object.
+function openSocket(query, onReady) {
+  clearTimeout(reconnectTimer);
+  if (ws) { ws.onclose = null; ws.onmessage = null; try { ws.close(); } catch { /* gone */ } }
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws?${query}`);
+  ws.onopen = onReady;
+  ws.onmessage = (ev) => handle(JSON.parse(ev.data));
+  ws.onclose = () => {
+    clearTimeout(reconnectTimer);
+    if (lastCode && token) reconnectTimer = setTimeout(rejoin, 2000);
+  };
+}
+
+function rejoin() {
+  if (!lastCode || !token) return;
+  openSocket(`room=${encodeURIComponent(lastCode)}`, () =>
+    send({ t: 'join', code: lastCode, name: myName, token }));
+}
+
+function leaveRoom(message) {
+  lastCode = '';
+  localStorage.removeItem('mk-code');
+  room = null; state = null;
+  if (ws) { ws.onclose = null; try { ws.close(); } catch { /* gone */ } }
+  $('lobby').classList.remove('hidden');
+  $('game').classList.add('hidden');
+  $('lobby-entry').classList.remove('hidden');
+  $('lobby-room').classList.add('hidden');
+  if (message) showError(message);
+}
+
+// custom art: public/art/manifest.json maps art keys to image URLs
+// (see art/README.md); anything missing falls back to the built-in SVG art
+let art = {};
+fetch('/art/manifest.json')
+  .then(r => (r.ok ? r.json() : {}))
+  .then(m => { art = m || {}; if (room) render(); })
+  .catch(() => { /* no manifest, procedural art only */ });
+
+function send(msg) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+}
+const act = payload => send({ t: 'act', payload });
+
+function handle(msg) {
+  switch (msg.t) {
+    case 'joined':
+      token = msg.token; lastCode = msg.code;
+      localStorage.setItem('mk-token', token);
+      localStorage.setItem('mk-code', lastCode);
+      break;
+    case 'room':
+      room = msg.room;
+      if (!room.started) state = null;
+      render();
+      break;
+    case 'state': {
+      const prev = state;
+      state = msg.state;
+      transientFx = diffFx(prev, state);
+      render();
+      break;
+    }
+    case 'chat': addChat(msg.from, msg.text); break;
+    case 'error':
+      if (msg.fatal) leaveRoom(msg.msg);
+      else showError(msg.msg);
+      break;
+  }
+}
+
+function showError(text) {
+  if (!room || !room.started) { $('lobby-error').textContent = text; return; }
+  let toast = $('toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast';
+    toast.style.cssText = 'position:fixed;top:52px;left:50%;transform:translateX(-50%);background:#3a1c1c;border:1px solid var(--danger);color:var(--danger);padding:8px 18px;border-radius:8px;z-index:99;font-size:14px;';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = text;
+  toast.style.display = 'block';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { toast.style.display = 'none'; }, 3500);
+}
+
+// ---------------------------------------------------------------- lobby wiring
+
+$('create-btn').onclick = () => {
+  myName = $('name-input').value.trim() || 'Wanderer';
+  localStorage.setItem('mk-name', myName);
+  openSocket('new=1', () => send({ t: 'create', name: myName, token }));
+};
+$('join-btn').onclick = () => {
+  myName = $('name-input').value.trim() || 'Wanderer';
+  localStorage.setItem('mk-name', myName);
+  const code = $('code-input').value.toUpperCase().trim();
+  if (!code) { showError('Enter a saga code.'); return; }
+  openSocket(`room=${encodeURIComponent(code)}`, () => send({ t: 'join', code, name: myName, token }));
+};
+$('claim-all-btn').onclick = () => send({ t: 'claimAll' });
+$('start-btn').onclick = () => send({ t: 'start' });
+$('name-input').value = myName;
+
+$('chat-form').onsubmit = (e) => {
+  e.preventDefault();
+  const text = $('chat-input').value.trim();
+  if (text) send({ t: 'chat', text });
+  $('chat-input').value = '';
+};
+function selectTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  for (const pane of ['log', 'soul', 'chat']) $(pane).classList.toggle('hidden', pane !== name);
+}
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.onclick = () => selectTab(btn.dataset.tab);
+});
+
+// rules overlay
+function openRules() { $('rules').classList.remove('hidden'); }
+$('rules-btn').onclick = openRules;
+$('rules-btn-lobby').onclick = openRules;
+$('rules-close').onclick = () => $('rules').classList.add('hidden');
+$('rules').onclick = (e) => { if (e.target === $('rules')) $('rules').classList.add('hidden'); };
+
+// animations setting
+function applyAnims() {
+  document.body.classList.toggle('no-anims', !anims);
+  $('anims-btn').textContent = anims ? 'Animations: on' : 'Animations: off';
+}
+$('anims-btn').onclick = () => {
+  anims = !anims;
+  localStorage.setItem('mk-anims', anims ? 'on' : 'off');
+  applyAnims();
+  if (room) render();
+};
+applyAnims();
+$('concede-btn').onclick = () => {
+  confirmModal('Abandon all hope and surrender the saga to Niflheim?', () => send({ t: 'concede' }));
+};
+$('rotate-btn').onclick = () => rotatePreview();
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'r' || e.key === 'R') rotatePreview();
+});
+
+function addChat(from, text) {
+  const p = document.createElement('p');
+  const f = document.createElement('span');
+  f.className = 'from'; f.textContent = from + ': ';
+  p.appendChild(f);
+  p.appendChild(document.createTextNode(text));
+  $('chat-messages').appendChild(p);
+  $('chat-messages').scrollTop = $('chat-messages').scrollHeight;
+}
+
+// ---------------------------------------------------------------- helpers
+
+const mySeats = () => room ? room.seats.filter(s => s.you).map(s => s.seat) : [];
+const isMine = seat => mySeats().includes(seat);
+const seatName = seat => (state ? state.players[seat].name : (room && room.seats[seat].name) || '?');
+
+function legalRots(aw) {
+  if (!aw) return [0, 1, 2, 3];
+  if (aw.type === 'place-start') return [0, 1, 2, 3];
+  if (aw.type === 'place-tile') {
+    const set = new Set();
+    aw.targets.forEach(t => t.rots.forEach(r => set.add(r)));
+    return [...set].sort();
+  }
+  if (aw.rots) return aw.rots;
+  return [0, 1, 2, 3];
+}
+
+function rotatePreview() {
+  const aw = state && state.awaiting;
+  const rots = legalRots(aw);
+  if (!rots.length) return;
+  const i = rots.indexOf(previewRot);
+  previewRot = rots[(i + 1) % rots.length];
+  render();
+}
+
+// ---------------------------------------------------------------- render
+
+function render() {
+  if (!room) return;
+  const started = room.started && state;
+  $('lobby').classList.toggle('hidden', !!started);
+  $('game').classList.toggle('hidden', !started);
+  if (!started) { renderLobby(); return; }
+  document.body.classList.toggle('niflheim', !!state.niflheim);
+
+  // reset per-awaiting interaction state
+  const aw = state.awaiting;
+  const sig = aw ? `${aw.type}:${aw.seat}:${aw.tile ? aw.tile.id : ''}:${state.log.length}` : 'none';
+  if (sig !== awaitingSig) {
+    awaitingSig = sig;
+    moveAgainArmed = false;
+    const rots = legalRots(aw);
+    previewRot = rots.includes(previewRot) ? previewRot : (rots[0] ?? 0);
+  }
+
+  renderTopbar();
+  renderPlayers();
+  renderSoul();
+  renderDiscard();
+  renderLog();
+  renderBoard();
+  renderActionBar();
+  renderPreviewPanel();
+  renderModal();
+  $('concede-btn').classList.toggle('hidden', !room.youAreHost || state.phase !== 'play' && state.phase !== 'setup');
+  transientFx = null; // one-shot: replays (rotate, art load) render without them
+}
+
+function renderLobby() {
+  $('lobby-entry').classList.toggle('hidden', !!room.code);
+  $('lobby-room').classList.toggle('hidden', !room.code);
+  if (!room.code) return;
+  $('room-code').textContent = room.code;
+  const list = $('seat-list');
+  list.innerHTML = '';
+  const colors = ['#e8b23c', '#d05e5e', '#4fb8a8', '#a678d8'];
+  room.seats.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'seat' + (s.claimed ? ' claimed' : '') + (s.you ? ' you' : '');
+    div.innerHTML = `<div class="seat-name" style="color:${colors[s.seat]}">Soul ${s.seat + 1}</div>
+      <div class="seat-sub">${s.claimed ? s.name + (s.you ? ' (you)' : '') : 'unclaimed — click to take'}</div>`;
+    div.onclick = () => send({ t: 'claim', seat: s.seat });
+    list.appendChild(div);
+  });
+  const allClaimed = room.seats.every(s => s.claimed);
+  $('start-btn').classList.toggle('hidden', !room.youAreHost);
+  $('start-btn').disabled = !allClaimed;
+  $('start-hint').textContent = allClaimed
+    ? (room.youAreHost ? 'All souls claimed. The forest waits.' : 'Waiting for the host to begin...')
+    : 'All four souls must be claimed. One player may claim several.';
+}
+
+function renderTopbar() {
+  $('room-tag').textContent = room.code;
+  const n = state.stackCount;
+  $('stack-meter').innerHTML = `Hope remaining: <b>${n}</b> tiles`;
+  $('stack-meter').classList.toggle('low', n <= 10);
+  const banner = $('turn-banner');
+  banner.innerHTML = bannerText();
+  const aw = state.awaiting;
+  banner.classList.toggle('mine',
+    !!(aw && isMine(aw.seat) && state.phase !== 'won' && state.phase !== 'lost'));
+}
+
+function bannerText() {
+  const aw = state.awaiting;
+  if (state.phase === 'won') return `<span class="who">The gate of ${GATE_NAMES[state.winnerGate]} is open!</span>`;
+  if (state.phase === 'lost') return `<span class="who">The mist has taken them all.</span>`;
+  if (!aw) return '';
+  const who = `<span style="color:${state.players[aw.seat].color}">◈</span> <span class="who">${seatName(aw.seat)}</span>`;
+  const mine = isMine(aw.seat) ? ' — your decision' : '';
+  const texts = {
+    'place-start': `${who} chooses where to awaken${mine}`,
+    'place-tile': `${who} reveals new paths${mine}`,
+    'action': `${who} must move or stay${mine}`,
+    'post-move': `${who} may press on or rest${mine}`,
+    'block': `${who} is struck by a Draugr${mine}`,
+    'attune': `${who} stands among the runes${mine}`,
+    'swap-draugr': `a Draugr stalks toward ${who}${mine}`,
+    'fall-landing': `${who} tumbles through the void${mine}`,
+    'place-landing': `${who} reaches for footing${mine}`,
+    'place-blind': `${who} feels through the mist${mine}`,
+    'place-scramble': `${who} scrambles for footing${mine}`,
+    'scramble': `${who} scrambles away${mine}`,
+    'niflheim': `Niflheim demands a tile of ${who}${mine}`,
+  };
+  return texts[aw.type] || `${who} decides${mine}`;
+}
+
+function renderPlayers() {
+  const wrap = $('players');
+  wrap.innerHTML = '';
+  state.players.forEach(p => {
+    const div = document.createElement('div');
+    const active = state.awaiting && state.awaiting.seat === p.seat;
+    div.className = 'pcard' + (p.hopeful ? '' : ' hopeless') + (active ? ' active' : '');
+    div.title = "View this soul's status card";
+    const runeFlash = transientFx && transientFx.runes.includes(p.seat) ? ' flash' : '';
+    const rune = p.rune
+      ? `<div class="prune ${p.rune.p}${runeFlash}" title="${runeInfo(p.rune).name} (${GATE_NAMES[p.rune.p]})">${runeInfo(p.rune).g}</div>`
+      : `<div class="prune none" title="No rune mark yet">·</div>`;
+    const status = p.falling
+      ? '<span class="falling-tag">falling into the void</span>'
+      : (p.hopeful ? 'hopeful' : '<span class="hopeless-tag">hopeless</span>');
+    const turnChip = state.phase === 'play' && state.turn === p.seat
+      ? '<span class="turn-chip">turn</span>' : '';
+    div.innerHTML = `
+      <div class="flame" style="background:${p.color}">${(p.name[0] || '?').toUpperCase()}</div>
+      <div class="pinfo">
+        <div class="pname">${p.name}${isMine(p.seat) ? ' ✦' : ''}${turnChip}</div>
+        <div class="pstat">${status} · resolve <span class="resolve-pips">${'◆'.repeat(p.resolve)}${'◇'.repeat(2 - p.resolve)}</span></div>
+      </div>
+      ${rune}`;
+    div.onclick = () => { soulSeat = p.seat; selectTab('soul'); renderSoul(); };
+    wrap.appendChild(div);
+  });
+}
+
+function renderSoul() {
+  const el = $('soul');
+  if (!state) { el.innerHTML = ''; return; }
+  let seat = soulSeat;
+  if (seat === null) {
+    const mine = mySeats();
+    if (state.awaiting && mine.includes(state.awaiting.seat)) seat = state.awaiting.seat;
+    else if (mine.length) seat = mine[0];
+    else seat = state.turn;
+  }
+  const p = state.players[seat];
+  const cls = p.falling ? 'falling' : (p.hopeful ? 'hopeful' : 'hopeless');
+  const word = p.falling ? 'FALLING' : (p.hopeful ? 'HOPEFUL' : 'HOPELESS');
+  const sub = p.falling
+    ? 'Tumbling through the void between the worlds.'
+    : p.hopeful
+      ? 'A flicker of hope lights the paths around you.'
+      : 'The mist has swallowed your light.';
+  const can = [], cant = [];
+  if (p.falling) {
+    can.push('Next turn: land on any empty, unlit space in the fallen rift’s row or column — a tile is drawn for you to land on.');
+    can.push('You will land <b>hopeless</b>. Keep 1 ◆ ready to rekindle, or land beside a hopeful soul.');
+    cant.push('You light nothing while you fall.');
+  } else if (p.hopeful) {
+    can.push('You light every connected path one space around you (no diagonals).');
+    can.push('Move along connected paths — new tiles are revealed at your open passages.');
+    can.push('Stay to steel your Resolve (+1 ◆, max 2 — but standing still burns a tile).');
+    cant.push('Two souls never share a tile (Gates excepted).');
+    cant.push('You cannot step onto a Draugr unless you Charge (1 ◆).');
+  } else {
+    can.push('You see only the tile you stand on.');
+    can.push('You <b>must move</b> every turn — staying costs 1 ◆ (Endure).');
+    can.push('Moving into the mist reveals only the single tile you step onto.');
+    can.push('Rekindle: stand beside a hopeful soul on a connected path (automatic), or spend 1 ◆ at the start of your turn.');
+    cant.push('You reveal no other paths while hopeless.');
+    cant.push('Step carefully — a Draugr drawn beneath your feet strikes at once.');
+  }
+  const acts = [
+    ['Move again', 'after your move, move once more (max twice a turn)', !p.falling],
+    ['Rekindle', 'regain hope at the start of your turn', !p.hopeful],
+    ['Endure', 'stay put while hopeless', !p.hopeful && !p.falling],
+    ['Brace', 'lose 2 tiles instead of 3 when a Draugr strikes', true],
+    ['Charge', 'deliberately enter a Draugr’s tile — its strike will land', p.hopeful],
+    ['Sustain', 'skip Niflheim’s toll at the end of your turn', !!state.niflheim],
+  ];
+  const actHtml = acts.map(([name, desc, relevant]) => `
+    <div class="soul-act ${p.resolve > 0 && relevant ? '' : 'unavailable'}">
+      <span class="cost">1◆</span><span><b>${name}</b> — <small>${desc}</small></span>
+    </div>`).join('');
+  let runeLine = 'Bears no rune mark yet — find a Rune Circle.';
+  if (p.rune) {
+    const i = runeInfo(p.rune);
+    const col = p.rune.p === 'valhalla' ? 'var(--gold)' : 'var(--good)';
+    runeLine = `Marked with <span class="glyph" style="color:${col}">${i.g}</span> ${i.name} — bound for <b>${GATE_NAMES[p.rune.p]}</b>.`;
+  }
+  el.innerHTML = `
+    <div class="soul-card ${cls}">
+      <div class="soul-head">
+        <div class="flame" style="background:${p.color}">${(p.name[0] || '?').toUpperCase()}</div>
+        <div>
+          <div class="soul-name">${escapeHtml(p.name)}${isMine(seat) ? ' ✦' : ''}</div>
+          <div class="pstat">resolve <span class="resolve-pips">${'◆'.repeat(p.resolve)}${'◇'.repeat(2 - p.resolve)}</span></div>
+        </div>
+      </div>
+      <div class="soul-state">${word}</div>
+      <div class="soul-sub">${sub}</div>
+      <ul>
+        ${can.map(t => `<li>${t}</li>`).join('')}
+        ${cant.map(t => `<li class="cant">${t}</li>`).join('')}
+      </ul>
+      <h4>Spend Resolve (1 ◆ each)</h4>
+      <div class="soul-acts">${actHtml}</div>
+      <div class="soul-rune-line">${runeLine}</div>
+    </div>
+    <p class="hint" style="padding:6px 2px">Click any soul above to view their card ·
+      <button id="soul-rules" class="btn tiny">Full rules</button></p>`;
+  const rb = document.getElementById('soul-rules');
+  if (rb) rb.onclick = openRules;
+}
+
+function runeInfo(rune) {
+  return RUNES[rune.p].find(r => r.k === rune.k);
+}
+
+function renderDiscard() {
+  const d = state.discard;
+  const count = kind => d.filter(t => t.kind === kind).length;
+  const gates = d.filter(t => t.kind === 'gate').map(t => GATE_NAMES[t.gate]);
+  $('discard-counts').innerHTML = `
+    <span class="d-item">paths <b>${count('straight') + count('tee') + count('cross') + count('start')}</b></span>
+    <span class="d-item ${count('rune') ? 'bad' : ''}">rune circles <b>${count('rune')}</b>/6</span>
+    <span class="d-item">draugr <b>${count('draugr')}</b>/12</span>
+    <span class="d-item ${gates.length ? 'bad' : ''}">gates <b>${gates.length ? gates.join(', ') : 'none'}</b></span>`;
+}
+
+function renderLog() {
+  const el = $('log');
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 30;
+  el.innerHTML = state.log.map(l => `<p class="k-${l.k}">${escapeHtml(l.m)}</p>`).join('');
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ---------------------------------------------------------------- board
+
+function renderBoard() {
+  const svg = $('board');
+  clickMap = new Map();
+  const lit = new Set(state.lit);
+  const parts = [];
+
+  // background
+  parts.push(`<rect x="0" y="0" width="552" height="552" rx="12" fill="#0b1310" stroke="#1c2c22"/>`);
+  if (art['board-bg']) {
+    parts.push(`<image href="${art['board-bg']}" x="0" y="0" width="552" height="552" preserveAspectRatio="xMidYMid slice"/>`);
+  }
+
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    const x = PAD + c * CS, y = PAD + r * CS;
+    const cell = state.grid[key(r, c)];
+    if (cell && cell.tile) {
+      parts.push(tileSVG(cell.tile, x, y));
+    } else if (cell && cell.rift) {
+      parts.push(riftSVG(x, y));
+    } else {
+      const isLit = lit.has(key(r, c));
+      if (!isLit && art.mist) {
+        parts.push(`<image href="${art.mist}" x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" preserveAspectRatio="xMidYMid slice"/>`);
+      } else {
+        parts.push(`<rect x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" rx="6" class="${isLit ? 'cell-empty-lit' : 'cell-mist'}"/>`);
+        if (!isLit) parts.push(mistSVG(x, y, r * 7 + c * 13));
+      }
+    }
+  }
+
+  // one-shot transitions from the previous state
+  if (transientFx) {
+    for (const { k, tile } of transientFx.collapses) {
+      // a fractured tile crumbles into the Void
+      const r = Math.floor(k / SIZE), c = k % SIZE;
+      parts.push(`<g class="collapse">${tileSVG(tile, PAD + c * CS, PAD + r * CS)}</g>`);
+    }
+    for (const { k, cell } of transientFx.fades) {
+      // lost to the mist
+      const r = Math.floor(k / SIZE), c = k % SIZE;
+      const x = PAD + c * CS, y = PAD + r * CS;
+      parts.push(`<g class="mistfade">${cell.tile ? tileSVG(cell.tile, x, y) : riftSVG(x, y)}</g>`);
+    }
+  }
+
+  // fx: draugr attack flash
+  if (anims && state.fx && state.fxId !== lastFxId) {
+    for (const [mr, mc] of state.fx.monsters) {
+      const x = PAD + mc * CS, y = PAD + mr * CS;
+      parts.push(`<rect x="${x}" y="${y}" width="${CS}" height="${CS}" rx="6" fill="#d05e5e" opacity="0.35"><animate attributeName="opacity" from="0.5" to="0" dur="1.4s" fill="freeze"/></rect>`);
+    }
+  }
+
+  // players
+  const byCell = new Map();
+  state.players.forEach(p => {
+    if (!p.placed) return;
+    const k = key(p.r, p.c);
+    if (!byCell.has(k)) byCell.set(k, []);
+    byCell.get(k).push(p);
+  });
+  for (const [k, ps] of byCell) {
+    const r = Math.floor(k / SIZE), c = k % SIZE;
+    const cx = PAD + c * CS + CS / 2, cy = PAD + r * CS + CS / 2;
+    const offs = ps.length === 1 ? [[0, 0]] : [[-13, -13], [13, -13], [-13, 13], [13, 13]];
+    ps.forEach((p, i) => {
+      const [ox, oy] = offs[i] || [0, 0];
+      const dim = p.hopeful ? '' : 'opacity="0.55"';
+      const glow = p.hopeful
+        ? `<circle cx="${cx + ox}" cy="${cy + oy}" r="${ps.length === 1 ? 20 : 15}" fill="none" stroke="${p.color}" stroke-opacity="0.35">${sm('<animate attributeName="stroke-opacity" values="0.35;0.1;0.35" dur="2.2s" repeatCount="indefinite"/>')}</circle>`
+        : '';
+      // whose-turn ring beneath the acting soul's token
+      const ring = state.phase === 'play' && state.turn === p.seat
+        ? `<circle cx="${cx + ox}" cy="${cy + oy}" r="${(ps.length === 1 ? 15 : 11) + 9}" fill="none" stroke="${p.color}" stroke-width="2" stroke-dasharray="7 6" stroke-opacity="0.8">${sm(`<animateTransform attributeName="transform" type="rotate" from="0 ${cx + ox} ${cy + oy}" to="360 ${cx + ox} ${cy + oy}" dur="10s" repeatCount="indefinite"/>`)}</circle>`
+        : '';
+      // slide in from the previous tile / drop in after a fall
+      let slide = '';
+      if (transientFx) {
+        const mv = transientFx.moves[p.seat];
+        if (mv) {
+          slide = `<animateTransform attributeName="transform" type="translate" from="${(mv.c - c) * CS} ${(mv.r - r) * CS}" to="0 0" dur="0.35s" calcMode="spline" keySplines="0.25 0.1 0.25 1" keyTimes="0;1" fill="freeze"/>`;
+        } else if (transientFx.drops.includes(p.seat)) {
+          slide = `<animateTransform attributeName="transform" type="translate" from="0 -70" to="0 0" dur="0.45s" calcMode="spline" keySplines="0.3 0 0.6 1" keyTimes="0;1" fill="freeze"/>`;
+        }
+      }
+      const tokenArt = art[`token-${p.seat}`];
+      if (tokenArt) {
+        const R = ps.length === 1 ? 18 : 13;
+        parts.push(`<g ${dim}>${slide}${ring}${glow}<image href="${tokenArt}" x="${cx + ox - R}" y="${cy + oy - R}" width="${R * 2}" height="${R * 2}"/></g>`);
+      } else {
+        parts.push(`<g ${dim}>${slide}${ring}
+          <circle cx="${cx + ox}" cy="${cy + oy}" r="${ps.length === 1 ? 15 : 11}" fill="${p.color}" stroke="#0a100d" stroke-width="2"/>
+          ${glow}
+          <text x="${cx + ox}" y="${cy + oy + 4.5}" text-anchor="middle" font-size="${ps.length === 1 ? 14 : 11}" fill="#0a100d" font-weight="bold" font-family="Georgia">${(p.name[0] || '?').toUpperCase()}</text>
+        </g>`);
+      }
+    });
+  }
+
+  // rune attunement burst above everything
+  if (transientFx) {
+    for (const seat of transientFx.runes) {
+      const p = state.players[seat];
+      if (!p.placed || !p.rune) continue;
+      const info = RUNES[p.rune.p].find(rr => rr.k === p.rune.k);
+      const col = p.rune.p === 'valhalla' ? '#e8b23c' : '#6fce9a';
+      const cx = PAD + p.c * CS + CS / 2, cy = PAD + p.r * CS + CS / 2;
+      parts.push(`<g class="runeburst">
+        <circle cx="${cx}" cy="${cy}" r="22" fill="none" stroke="${col}" stroke-width="2"/>
+        <text x="${cx}" y="${cy - 24}" text-anchor="middle" font-size="32" fill="${col}" font-family="Georgia">${info.g}</text>
+      </g>`);
+    }
+  }
+
+  // interaction highlights + click targets
+  const aw = state.awaiting;
+  const myDecision = aw && isMine(aw.seat) && state.phase !== 'won' && state.phase !== 'lost';
+  if (myDecision) addInteractions(parts, aw);
+  svg.classList.toggle('my-turn', !!myDecision);
+
+  svg.innerHTML = parts.join('');
+  lastFxId = state.fxId;
+
+  // wire clicks
+  svg.querySelectorAll('[data-click]').forEach(el => {
+    el.addEventListener('click', () => {
+      const h = clickMap.get(el.getAttribute('data-click'));
+      if (h) h();
+    });
+  });
+}
+
+function hlRect(x, y, cls) {
+  return `<rect x="${x + 4}" y="${y + 4}" width="${CS - 8}" height="${CS - 8}" rx="8" class="hl ${cls}"/>`;
+}
+function clickRect(parts, r, c, cls, handler) {
+  const x = PAD + c * CS, y = PAD + r * CS;
+  const id = `${r},${c},${cls}`;
+  parts.push(hlRect(x, y, cls));
+  parts.push(`<rect x="${x}" y="${y}" width="${CS}" height="${CS}" fill="transparent" class="clickable" data-click="${id}"/>`);
+  clickMap.set(id, handler);
+}
+
+function addInteractions(parts, aw) {
+  switch (aw.type) {
+    case 'place-start': {
+      for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+        if (!state.grid[key(r, c)]) {
+          clickRect(parts, r, c, 'place', () => act({ r, c, rot: previewRot }));
+        }
+      }
+      break;
+    }
+    case 'place-tile': {
+      aw.targets.filter(t => t.rots.includes(previewRot)).forEach(t => {
+        clickRect(parts, t.r, t.c, 'place', () => act({ r: t.r, c: t.c, rot: previewRot }));
+      });
+      break;
+    }
+    case 'place-blind':
+    case 'place-landing':
+    case 'place-scramble': {
+      clickRect(parts, aw.r, aw.c, 'place', () => act({ rot: previewRot }));
+      break;
+    }
+    case 'action': {
+      aw.moves.forEach(m => {
+        clickRect(parts, m.r, m.c, m.kind, () => {
+          if (m.kind === 'charge') {
+            confirmModal('Charge the Draugr? It costs 1 Resolve — and its strike WILL land.', () => act({ kind: 'move', d: m.d }));
+          } else if (m.kind === 'jump') {
+            confirmModal('Leap into the Void Rift? You will fall, and land hopeless.', () => act({ kind: 'move', d: m.d }));
+          } else {
+            act({ kind: 'move', d: m.d });
+          }
+        });
+      });
+      break;
+    }
+    case 'post-move': {
+      if (moveAgainArmed && aw.canMoveAgain) {
+        aw.moves.forEach(m => {
+          clickRect(parts, m.r, m.c, m.kind, () => {
+            if (m.kind === 'charge') {
+              confirmModal('Charge the Draugr? This costs 2 Resolve in total.', () => act({ kind: 'move', d: m.d }));
+            } else if (m.kind === 'jump') {
+              confirmModal('Leap into the Void Rift?', () => act({ kind: 'move', d: m.d }));
+            } else {
+              act({ kind: 'move', d: m.d });
+            }
+          });
+        });
+      }
+      break;
+    }
+    case 'swap-draugr': {
+      aw.options.forEach(o => clickRect(parts, o.r, o.c, 'charge', () => act({ r: o.r, c: o.c })));
+      break;
+    }
+    case 'fall-landing': {
+      aw.options.forEach(o => clickRect(parts, o.r, o.c, 'jump', () => act({ r: o.r, c: o.c })));
+      break;
+    }
+    case 'scramble': {
+      aw.options.forEach(o => clickRect(parts, o.r, o.c, 'move', () => act({ r: o.r, c: o.c })));
+      break;
+    }
+    case 'niflheim': {
+      aw.options.forEach(o => clickRect(parts, o.r, o.c, 'remove', () => act({ r: o.r, c: o.c })));
+      break;
+    }
+  }
+}
+
+// ---------------------------------------------------------------- tile art
+
+function tileSVG(tile, x, y) {
+  const cx = x + CS / 2, cy = y + CS / 2;
+  const exits = tile.exits || exitsFor(tile.kind, tile.rot || 0);
+
+  // custom art override: image is authored in rot-0 orientation and the
+  // whole piece is rotated with the tile (see art/README.md)
+  const artKey = tile.kind === 'gate' ? `gate-${tile.gate}` : tile.kind;
+  const src = (tile.fractured && art[`${artKey}-fractured`]) || art[artKey];
+  if (src) {
+    let out = `<image href="${src}" x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" preserveAspectRatio="xMidYMid slice" transform="rotate(${(tile.rot || 0) * 90} ${cx} ${cy})"/>`;
+    if (tile.fractured && !art[`${artKey}-fractured`]) out += crackSVG(x, y);
+    return out;
+  }
+
+  const parts = [];
+  parts.push(`<rect x="${x + 3}" y="${y + 3}" width="${CS - 6}" height="${CS - 6}" rx="8" fill="var(--tile)" stroke="var(--tile-edge)" stroke-width="1.5"/>`);
+  // passages
+  const W = 26;
+  const ends = [[cx, y + 3], [x + CS - 3, cy], [cx, y + CS - 3], [x + 3, cy]];
+  for (let d = 0; d < 4; d++) {
+    if (exits[d]) parts.push(`<line x1="${cx}" y1="${cy}" x2="${ends[d][0]}" y2="${ends[d][1]}" stroke="var(--path)" stroke-width="${W}"/>`);
+  }
+  if (exits.some(Boolean)) parts.push(`<circle cx="${cx}" cy="${cy}" r="${W / 2}" fill="var(--path)"/>`);
+
+  // fracture cracks
+  if (tile.fractured) parts.push(crackSVG(x, y));
+
+  // kind decorations
+  if (tile.kind === 'start') {
+    parts.push(`<text x="${cx}" y="${cy + 7}" text-anchor="middle" font-size="22" fill="#1c2a22" font-family="Georgia">ᛟ</text>`);
+  } else if (tile.kind === 'rune') {
+    parts.push(`<circle cx="${cx}" cy="${cy}" r="17" fill="none" stroke="#d8c27a" stroke-width="2" stroke-dasharray="4 3"/>`);
+    parts.push(`<text x="${cx}" y="${cy + 7}" text-anchor="middle" font-size="20" fill="#e8d9a0" font-family="Georgia">ᚱ</text>`);
+  } else if (tile.kind === 'gate') {
+    const col = tile.gate === 'valhalla' ? '#e8b23c' : '#6fce9a';
+    parts.push(`<rect x="${cx - 20}" y="${cy - 12}" width="8" height="26" fill="${col}" opacity="0.9"/>`);
+    parts.push(`<rect x="${cx + 12}" y="${cy - 12}" width="8" height="26" fill="${col}" opacity="0.9"/>`);
+    parts.push(`<path d="M ${cx - 24} ${cy - 10} Q ${cx} ${cy - 34} ${cx + 24} ${cy - 10}" fill="none" stroke="${col}" stroke-width="7"/>`);
+    parts.push(`<text x="${cx}" y="${cy + 26}" text-anchor="middle" font-size="12" fill="${col}" font-family="Georgia">${tile.gate === 'valhalla' ? 'VALHALLA' : 'FÓLKVANGR'}</text>`);
+  } else if (tile.kind === 'draugr') {
+    // spectral figure
+    parts.push(`<g opacity="0.95">
+      <path d="M ${cx - 13} ${cy + 14} v -14 a 13 13 0 0 1 26 0 v 14 l -5 -5 l -4 5 l -4 -5 l -4 5 l -4 -5 z" fill="#aebfd6"/>
+      <circle cx="${cx - 5}" cy="${cy - 3}" r="2.6" fill="#0a100d"/>
+      <circle cx="${cx + 5}" cy="${cy - 3}" r="2.6" fill="#0a100d"/>
+      <circle cx="${cx}" cy="${cy}" r="22" fill="none" stroke="#aebfd6" stroke-opacity="0.3">
+        <animate attributeName="stroke-opacity" values="0.3;0.08;0.3" dur="2.6s" repeatCount="indefinite"/>
+      </circle>
+    </g>`);
+  }
+  return parts.join('');
+}
+
+function crackSVG(x, y) {
+  return `<path d="M ${x + 14} ${y + 20} l 10 8 l -6 10 l 12 9 M ${x + CS - 16} ${y + CS - 22} l -9 -7 l 5 -9 l -11 -8" stroke="#0d1512" stroke-width="2.4" fill="none" opacity="0.9"/>`;
+}
+
+function riftSVG(x, y) {
+  const cx = x + CS / 2, cy = y + CS / 2;
+  if (art.rift) {
+    return `<image href="${art.rift}" x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" preserveAspectRatio="xMidYMid slice"/>`;
+  }
+  return `<g>
+    <rect x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" rx="6" fill="#05070a"/>
+    <circle cx="${cx}" cy="${cy}" r="26" fill="none" stroke="#5c3e8f" stroke-width="2" stroke-opacity="0.7" stroke-dasharray="10 6">
+      <animateTransform attributeName="transform" type="rotate" from="0 ${cx} ${cy}" to="360 ${cx} ${cy}" dur="14s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="${cx}" cy="${cy}" r="15" fill="none" stroke="#7a55b8" stroke-width="1.6" stroke-opacity="0.6" stroke-dasharray="6 5">
+      <animateTransform attributeName="transform" type="rotate" from="360 ${cx} ${cy}" to="0 ${cx} ${cy}" dur="9s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="${cx}" cy="${cy}" r="6" fill="#0d0518"/>
+  </g>`;
+}
+
+function mistSVG(x, y, seed) {
+  const o1 = 0.05 + (seed % 5) * 0.01;
+  return `<g opacity="0.5">
+    <ellipse cx="${x + 30 + (seed % 20)}" cy="${y + 34}" rx="26" ry="9" fill="#2a3d34" opacity="${o1}"/>
+    <ellipse cx="${x + 56 - (seed % 16)}" cy="${y + 60}" rx="22" ry="8" fill="#2a3d34" opacity="${o1 + 0.03}"/>
+  </g>`;
+}
+
+// ---------------------------------------------------------------- action bar
+
+function renderActionBar() {
+  const bar = $('action-bar');
+  bar.innerHTML = '';
+  const aw = state.awaiting;
+  if (state.phase === 'won' || state.phase === 'lost') return;
+  if (!aw) return;
+  if (!isMine(aw.seat)) {
+    bar.innerHTML = `<span class="note">waiting for ${escapeHtml(seatName(aw.seat))}...</span>`;
+    return;
+  }
+  const note = t => { const s = document.createElement('span'); s.className = 'note'; s.textContent = t; bar.appendChild(s); };
+  const btn = (label, fn, cls = '') => {
+    const b = document.createElement('button');
+    b.className = 'btn small ' + cls; b.innerHTML = label; b.onclick = fn;
+    bar.appendChild(b); return b;
+  };
+
+  switch (aw.type) {
+    case 'place-start': note('Choose any dark clearing to awaken in — rotate your paths with ⟳'); break;
+    case 'place-tile': note('Place the revealed tile on a glowing space'); break;
+    case 'place-blind': note('Orient the tile you feel beneath your hands, then click it'); break;
+    case 'place-landing': note('Choose how you land — rotate, then click'); break;
+    case 'place-scramble': note('Orient your footing, then click'); break;
+    case 'action': {
+      const p = state.players[aw.seat];
+      if (aw.rekindle) btn('Rekindle hope <small>(1 ◆)</small>', () => act({ kind: 'rekindle' }));
+      if (aw.stay) {
+        const label = p.hopeful ? 'Stay <small>(+1 ◆, burn a tile)</small>' : 'Stay <small>(1 ◆)</small>';
+        btn(label, () => act({ kind: 'stay' }));
+      }
+      if (aw.moves.length) note('or click a glowing space to move');
+      else note('no paths lead onward');
+      break;
+    }
+    case 'post-move': {
+      btn('End turn', () => act({ kind: 'end' }), 'primary');
+      if (aw.canMoveAgain) {
+        btn(moveAgainArmed ? 'Cancel move' : 'Move again <small>(1 ◆)</small>', () => {
+          moveAgainArmed = !moveAgainArmed;
+          render();
+        });
+        if (moveAgainArmed) note('click a glowing space');
+      }
+      break;
+    }
+    case 'swap-draugr': note('The Draugr must take a connected path — choose which'); break;
+    case 'fall-landing': note('Choose where to fall back into Myrkviðr (along the rift’s row or column)'); break;
+    case 'scramble': note('Scramble to an adjacent space'); break;
+    case 'niflheim': {
+      if (aw.canSustain) btn('Sustain <small>(1 ◆)</small>', () => act({ sustain: true }));
+      note('Niflheim claims a tile — click one to surrender it');
+      break;
+    }
+  }
+}
+
+// ---------------------------------------------------------------- preview panel
+
+function renderPreviewPanel() {
+  const aw = state.awaiting;
+  const types = ['place-start', 'place-tile', 'place-blind', 'place-landing', 'place-scramble'];
+  const show = aw && types.includes(aw.type) && isMine(aw.seat);
+  $('preview').classList.toggle('hidden', !show);
+  if (!show) return;
+  const tile = aw.type === 'place-start'
+    ? { kind: 'start', fractured: true, rot: previewRot }
+    : { ...aw.tile, rot: previewRot };
+  tile.exits = exitsFor(tile.kind, previewRot);
+  $('preview-title').textContent = tileName(tile);
+  const svg = $('preview-svg');
+  svg.innerHTML = tileSVG(tile, 1, 1).replaceAll(`${CS}`, `${CS}`); // draws at 90 within 92 viewbox
+  const rots = legalRots(aw);
+  $('rotate-btn').style.display = rots.length > 1 ? '' : 'none';
+}
+
+function tileName(tile) {
+  return {
+    start: 'Forest clearing', straight: 'Straight path', tee: 'Forking path',
+    cross: 'Crossroads', rune: 'Rune Circle', draugr: 'Draugr',
+    gate: tile.gate ? `Gate of ${GATE_NAMES[tile.gate]}` : 'Gate',
+  }[tile.kind] + (tile.fractured ? ' (fractured)' : '');
+}
+
+// ---------------------------------------------------------------- modal
+
+let modalLock = null; // custom confirm content
+
+function confirmModal(text, onYes) {
+  modalLock = { text, onYes };
+  renderModal();
+}
+
+function renderModal() {
+  const modal = $('modal');
+  const card = $('modal-card');
+  const aw = state && state.awaiting;
+
+  // custom confirm has priority
+  if (modalLock) {
+    card.innerHTML = `<p style="font-size:16px;color:var(--text)">${escapeHtml(modalLock.text)}</p>`;
+    const row = document.createElement('div'); row.className = 'row';
+    const yes = document.createElement('button'); yes.className = 'btn danger'; yes.textContent = 'Do it';
+    const no = document.createElement('button'); no.className = 'btn'; no.textContent = 'Never mind';
+    yes.onclick = () => { const fn = modalLock.onYes; modalLock = null; fn(); renderModal(); };
+    no.onclick = () => { modalLock = null; renderModal(); };
+    row.append(yes, no); card.appendChild(row);
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  if (!state) { modal.classList.add('hidden'); return; }
+
+  // endgame
+  if (state.phase === 'won' || state.phase === 'lost') {
+    const win = state.phase === 'won';
+    card.innerHTML = `<div class="endgame ${win ? 'win' : 'loss'}">
+      <div style="font-size:44px">${win ? 'ᚹ' : 'ᛁ'}</div>
+      <h1>${win ? GATE_NAMES[state.winnerGate].toUpperCase() : 'THE MIST TAKES ALL'}</h1>
+      <p>${win
+        ? 'The four runes blaze as one. The gate swings wide, and the souls pass out of Myrkviðr forever.'
+        : escapeHtml(state.lossReason || 'The souls are lost.')}</p>
+    </div>`;
+    const row = document.createElement('div'); row.className = 'row';
+    if (room.youAreHost) {
+      const again = document.createElement('button');
+      again.className = 'btn primary'; again.textContent = 'Tell the saga again';
+      again.onclick = () => send({ t: 'restart' });
+      row.appendChild(again);
+    } else {
+      const p = document.createElement('p'); p.className = 'hint';
+      p.textContent = 'The host may begin a new saga.';
+      row.appendChild(p);
+    }
+    card.appendChild(row);
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  // block decision
+  if (aw && aw.type === 'block' && isMine(aw.seat)) {
+    const p = state.players[aw.seat];
+    card.innerHTML = `<h2>The Draugr strikes ${escapeHtml(p.name)}!</h2>
+      <p>Its spite burns away the paths. Brace against it?</p>`;
+    const row = document.createElement('div'); row.className = 'row';
+    const brace = document.createElement('button');
+    brace.className = 'btn primary'; brace.innerHTML = 'Brace <small>(1 ◆ — lose 2 tiles)</small>';
+    brace.onclick = () => act({ block: true });
+    const take = document.createElement('button');
+    take.className = 'btn danger'; take.innerHTML = 'Endure it <small>(lose 3 tiles)</small>';
+    take.onclick = () => act({ block: false });
+    row.append(brace, take); card.appendChild(row);
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  // attune decision
+  if (aw && aw.type === 'attune' && isMine(aw.seat)) {
+    const p = state.players[aw.seat];
+    card.innerHTML = `<h2>The Rune Circle</h2>
+      <p>Ancient marks wait in the stones. ${escapeHtml(p.name)} may take one — it replaces any mark they bear. All four souls need <b>different</b> runes of the <b>same</b> gate.</p>`;
+    const grid = document.createElement('div'); grid.className = 'rune-grid';
+    for (const pantheon of ['valhalla', 'folkvangr']) {
+      const col = document.createElement('div'); col.className = 'rune-col ' + pantheon;
+      col.innerHTML = `<h4>${GATE_NAMES[pantheon].toUpperCase()}</h4>`;
+      RUNES[pantheon].forEach(rn => {
+        const holder = aw.taken.find(t => t.p === pantheon && t.k === rn.k);
+        const b = document.createElement('button');
+        b.className = 'rune-btn' + (holder && holder.seat === aw.seat ? ' mine' : '');
+        b.innerHTML = `<span class="glyph">${rn.g}</span><span>${rn.name}<br><small style="color:var(--dim)">${rn.gloss}</small></span>
+          ${holder ? `<span class="taken">${escapeHtml(seatName(holder.seat))}</span>` : ''}`;
+        b.onclick = () => act({ p: pantheon, k: rn.k });
+        col.appendChild(b);
+      });
+      grid.appendChild(col);
+    }
+    card.appendChild(grid);
+    const row = document.createElement('div'); row.className = 'row';
+    const skip = document.createElement('button');
+    skip.className = 'btn'; skip.textContent = 'Leave the runes untouched';
+    skip.onclick = () => act({ skip: true });
+    row.appendChild(skip); card.appendChild(row);
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  modal.classList.add('hidden');
+}
+
+// ---------------------------------------------------------------- go
+
+// returning player: rejoin the last saga automatically
+if (lastCode && token) rejoin();

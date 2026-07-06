@@ -1,0 +1,3 @@
+{
+  "_readme": "Map art keys to image URLs to replace the built-in SVG art. See art/README.md for all keys, sizes, and orientation rules. Example: \"draugr\": \"/art/draugr.png\""
+}

@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Example custom tile: four-way crossroads, authored at rotation 0.
+       Path mouths centered on all four edges, ~29% of edge width (148/512). -->
+  <defs>
+    <radialGradient id="moss" cx="50%" cy="45%" r="75%">
+      <stop offset="0%" stop-color="#2c4433"/>
+      <stop offset="100%" stop-color="#182a1f"/>
+    </radialGradient>
+    <linearGradient id="stone" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7d8a78"/>
+      <stop offset="100%" stop-color="#525f52"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ground -->
+  <rect width="512" height="512" rx="36" fill="url(#moss)"/>
+  <rect x="8" y="8" width="496" height="496" rx="30" fill="none" stroke="#3d5a45" stroke-width="6"/>
+
+  <!-- stone paths (148 wide, centered) -->
+  <rect x="182" y="0" width="148" height="512" fill="url(#stone)"/>
+  <rect x="0" y="182" width="512" height="148" fill="url(#stone)"/>
+
+  <!-- flagstones -->
+  <g fill="#6a7767" stroke="#465345" stroke-width="4">
+    <ellipse cx="256" cy="90" rx="46" ry="26"/>
+    <ellipse cx="230" cy="160" rx="38" ry="22"/>
+    <ellipse cx="290" cy="220" rx="44" ry="26"/>
+    <ellipse cx="256" cy="300" rx="40" ry="24"/>
+    <ellipse cx="240" cy="390" rx="46" ry="26"/>
+    <ellipse cx="280" cy="455" rx="38" ry="22"/>
+    <ellipse cx="100" cy="256" rx="42" ry="24"/>
+    <ellipse cx="170" cy="280" rx="34" ry="20"/>
+    <ellipse cx="360" cy="270" rx="42" ry="24"/>
+    <ellipse cx="440" cy="245" rx="38" ry="22"/>
+  </g>
+
+  <!-- moss creeping over path edges -->
+  <g fill="#2c4433" opacity="0.7">
+    <circle cx="188" cy="60" r="18"/>
+    <circle cx="326" cy="120" r="14"/>
+    <circle cx="196" cy="440" r="16"/>
+    <circle cx="60" cy="336" r="15"/>
+    <circle cx="452" cy="192" r="17"/>
+  </g>
+
+  <!-- pine silhouettes in the corners -->
+  <g fill="#0f1d15">
+    <path d="M 70 118 l 34 -62 l 34 62 z M 78 88 l 26 -46 l 26 46 z"/>
+    <path d="M 380 448 l 30 -56 l 30 56 z M 388 422 l 22 -40 l 22 40 z"/>
+    <path d="M 412 66 l 24 -44 l 24 44 z"/>
+    <path d="M 54 460 l 24 -44 l 24 44 z"/>
+  </g>
+
+  <!-- a faint rune scratched where the roads meet -->
+  <path d="M 256 226 v 60 M 256 238 l 26 20 M 256 258 l 26 20"
+        stroke="#39493c" stroke-width="8" fill="none" stroke-linecap="round"/>
+</svg>
