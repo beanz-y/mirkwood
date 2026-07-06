@@ -127,8 +127,7 @@ export function createGame(opts = {}) {
     winnerGate: null,
     lossReason: null,
     log: [],
-    fx: null,
-    fxId: 0,
+    events: [], // ordered semantic events of the current action, for client animation
     rngState: (opts.seed ?? Math.floor(Math.random() * 2 ** 31)) | 0,
     tileSeq: 0,
     moveCtx: null,
@@ -160,6 +159,13 @@ export function createGame(opts = {}) {
 function log(s, m, k = 'info') {
   s.log.push({ m, k });
   if (s.log.length > 250) s.log.splice(0, s.log.length - 250);
+}
+
+// semantic events in resolution order, consumed by the client's animation
+// timeline; cleared at the start of every applyAction
+function ev(s, e, data) {
+  s.events.push({ e, ...data });
+  if (s.events.length > 80) s.events.splice(0, s.events.length - 80);
 }
 
 const P = (s, seat) => s.players[seat];
@@ -203,6 +209,7 @@ function describeTile(t) {
 
 function sweep(s) {
   const lit = litSet(s);
+  const lost = [];
   for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
     const cl = cellAt(s, r, c);
     if (!cl || lit.has(key(r, c))) continue;
@@ -212,8 +219,10 @@ function sweep(s) {
       if (cl.tile.kind === 'rune') log(s, 'A Rune Circle is swallowed by the mist.', 'danger');
       else if (cl.tile.kind === 'draugr') log(s, 'A Draugr fades back into the mist.', 'good');
     }
+    lost.push({ r, c, tile: cl.tile || null, rift: !!cl.rift });
     s.grid[key(r, c)] = null; // rifts close silently when unlit
   }
+  if (lost.length) ev(s, 'sweep', { cells: lost });
 }
 
 // ---------------------------------------------------------------- draugr sight
@@ -273,20 +282,45 @@ function expandChains(s, trig) {
   return [...seen].map(k => [Math.floor(k / SIZE), k % SIZE]);
 }
 
+function raysFor(s, mr, mc) {
+  // ordered corridor cells per direction — the shape of the monster's strike
+  const rays = [];
+  for (let d = 0; d < 4; d++) {
+    const ray = [];
+    let r = mr, c = mc;
+    for (let i = 0; i < SIZE - 1; i++) {
+      const here = tileAt(s, r, c);
+      if (!here || !here.exits[d]) break;
+      const [nr, nc] = stepDir(r, c, d);
+      if (nr === mr && nc === mc) break;
+      const next = tileAt(s, nr, nc);
+      if (!next || !next.exits[OPP(d)]) break;
+      ray.push([nr, nc]);
+      r = nr; c = nc;
+    }
+    if (ray.length) rays.push(ray);
+  }
+  return rays;
+}
+
 function startHitWave(s, trig, ctx) {
   // ctx: {mover, lateral} — mover may earn Resolve for evading (lateral moves only)
   s.moveCtx = { mover: ctx.mover, lateral: !!ctx.lateral, triggered: trig.length, moverHit: false };
   if (trig.length === 0) { s.queue.unshift({ t: 'after-hits' }); return; }
   const monsters = expandChains(s, trig);
-  s.fx = { monsters: monsters.map(([r, c]) => [r, c]), victims: [] };
-  s.fxId++;
   const hits = [];
   for (const [mr, mc] of monsters) {
+    const rays = raysFor(s, mr, mc);
     const los = losFor(s, mr, mc);
+    const victims = [];
     for (const p of s.players) {
       if (!p.placed) continue;
-      if (los.has(key(p.r, p.c))) hits.push({ t: 'hit', seat: p.seat, m: [mr, mc] });
+      if (los.has(key(p.r, p.c))) {
+        victims.push(p.seat);
+        hits.push({ t: 'hit', seat: p.seat, m: [mr, mc] });
+      }
     }
+    ev(s, 'attack', { m: [mr, mc], rays, victims });
   }
   log(s, monsters.length > 1
     ? `${monsters.length} Draugr shriek in a chain of spite!`
@@ -295,12 +329,15 @@ function startHitWave(s, trig, ctx) {
 }
 
 function discardN(s, n) {
+  let burned = 0;
   for (let i = 0; i < n && s.stack.length; i++) {
     const t = s.stack.pop();
     s.discard.push(t);
+    burned++;
     if (t.kind === 'gate') log(s, `The Gate of ${GATE_NAMES[t.gate]} is lost to the mist!`, 'danger');
     else if (t.kind === 'rune') log(s, 'A Rune Circle is lost from the path stack.', 'danger');
   }
+  if (burned) ev(s, 'burn', { n: burned });
 }
 
 function drawTile(s) { return s.stack.pop() || null; }
@@ -313,6 +350,7 @@ function fractureCell(s, r, c) {
   s.discard.push(t);
   if (t.kind === 'rune') log(s, 'The Rune Circle crumbles into a Void Rift!', 'danger');
   else log(s, 'The fractured path crumbles into a Void Rift.', 'info');
+  ev(s, 'fracture', { r, c, tile: t });
   s.grid[key(r, c)] = { rift: true };
 }
 
@@ -465,7 +503,6 @@ STEPS['illum'] = (s, { forSeat, chooser }) => {
 
 STEPS['begin-turn'] = (s) => {
   const p = P(s, s.turn);
-  s.fx = null;
   s.moveCtx = null;
   s.movesThisTurn = 0;
   log(s, `— ${p.name}'s turn —`, 'turn');
@@ -530,6 +567,7 @@ STEPS['stay-fracture'] = (s) => {
     fractureCell(s, r, c);
     p.placed = false; p.r = null; p.c = null;
     p.falling = { r, c };
+    ev(s, 'fall', { seat: p.seat, from: [r, c], r, c });
     log(s, `${p.name} falls as the path crumbles beneath them!`, 'danger');
     s.queue.unshift({ t: 'end-turn' });
     startHitWave(s, trig, { mover: p.seat, lateral: false });
@@ -541,7 +579,6 @@ STEPS['stay-fracture'] = (s) => {
 STEPS['hit'] = (s, { seat, m }) => {
   const p = P(s, seat);
   if (!p.placed) return; // fell out of sight mid-wave (shouldn't happen)
-  if (s.fx) { s.fx.victims.push(seat); }
   if (p.resolve > 0) {
     s.pendingHit = { seat, m };
     s.awaiting = { type: 'block', seat, m };
@@ -552,6 +589,7 @@ STEPS['hit'] = (s, { seat, m }) => {
 
 function applyHit(s, seat, n, braced) {
   const p = P(s, seat);
+  ev(s, 'hit', { seat, n });
   discardN(s, n);
   p.hopeful = false;
   if (s.moveCtx && s.moveCtx.mover === seat) s.moveCtx.moverHit = true;
@@ -616,6 +654,7 @@ STEPS['relight'] = (s) => {
         if (q) {
           p.hopeful = true;
           rekindled.push(p.seat);
+          ev(s, 'rekindle', { seat: p.seat });
           log(s, `${p.name}'s hope is rekindled by ${q.name}.`, 'good');
           changed = true;
           break;
@@ -693,6 +732,7 @@ STEPS['scramble'] = (s, { seat, from, free, then }) => {
     // nowhere to scramble: the soul drops into the dark
     p.placed = false; p.r = null; p.c = null;
     p.falling = { r: fr, c: fc };
+    ev(s, 'fall', { seat: p.seat, from: [fr, fc], r: fr, c: fc });
     log(s, `${p.name} has nowhere to scramble — they tumble into the dark!`, 'danger');
     sweep(s);
     s.queue.unshift({ t: 'end-turn' });
@@ -722,6 +762,7 @@ export function applyAction(s, seat, payload) {
   if (aw.seat !== seat) err('It is not this soul’s decision.');
   const handler = ACTIONS[aw.type];
   if (!handler) err('Unknown decision type.');
+  s.events = []; // each action broadcast carries only its own events
   handler(s, P(s, seat), payload, aw);
   run(s);
   return s;
@@ -736,6 +777,8 @@ ACTIONS['place-start'] = (s, p, { r, c, rot }) => {
   const def = makeTileDef(s, 'start', { fractured: true });
   setTile(s, r, c, def, rot);
   p.r = r; p.c = c; p.placed = true;
+  ev(s, 'reveal', { r, c });
+  ev(s, 'land', { seat: p.seat, r, c });
   log(s, `${p.name} awakens in a forest clearing.`, 'info');
   s.queue.unshift({ t: 'illum', forSeat: p.seat, chooser: p.seat }, { t: 'setup', seat: p.seat + 1 });
 };
@@ -746,6 +789,7 @@ ACTIONS['place-tile'] = (s, p, { r, c, rot }, aw) => {
   if (!target.rots.includes(rot)) err('That rotation does not connect.');
   s.awaiting = null;
   setTile(s, r, c, aw.tile, rot);
+  ev(s, 'reveal', { r, c });
   if (aw.tile.kind === 'gate') log(s, `The Gate of ${GATE_NAMES[aw.tile.gate]} looms out of the mist!`, 'good');
   else if (aw.tile.kind === 'draugr') log(s, 'A Draugr stands silent in the newly lit path...', 'danger');
   else if (aw.tile.kind === 'rune') log(s, 'A Rune Circle is revealed.', 'good');
@@ -759,6 +803,7 @@ ACTIONS['action'] = (s, p, payload, aw) => {
     s.awaiting = null;
     p.resolve--;
     p.hopeful = true;
+    ev(s, 'rekindle', { seat: p.seat });
     log(s, `${p.name} spends Resolve to rekindle their hope.`, 'good');
     s.queue.unshift({ t: 'illum', forSeat: p.seat, chooser: p.seat }, { t: 'relight', chooser: s.turn }, { t: 'action' });
     return;
@@ -781,6 +826,7 @@ ACTIONS['action'] = (s, p, payload, aw) => {
 };
 
 function doStay(s, p, aw) {
+  ev(s, 'stay', { seat: p.seat });
   const forced = !p.hopeful && aw.moves.length === 0 && p.resolve === 0;
   if (!p.hopeful && !forced) {
     p.resolve--;
@@ -814,9 +860,11 @@ function doStay(s, p, aw) {
         return;
       }
       s.discard.push(t);
+      ev(s, 'burn', { n: 1 });
       log(s, 'A Draugr stirs in the mist, finds no path, and sinks away.', 'info');
     } else {
       s.discard.push(t);
+      ev(s, 'burn', { n: 1 });
       if (t.kind === 'gate') log(s, `The Gate of ${GATE_NAMES[t.gate]} is lost to the mist!`, 'danger');
       else if (t.kind === 'rune') log(s, 'A Rune Circle is lost from the path stack.', 'danger');
       else log(s, 'Standing still burns hope — a path tile is lost.', 'info');
@@ -831,6 +879,7 @@ ACTIONS['swap-draugr'] = (s, p, { r, c }, aw) => {
   const old = tileAt(s, r, c);
   s.discard.push(old);
   setTile(s, r, c, aw.tile, 0);
+  ev(s, 'reveal', { r, c });
   log(s, `A Draugr claws its way onto the path beside ${p.name}!`, 'danger');
   // continuation (stay-fracture) is already queued
 };
@@ -847,6 +896,7 @@ function doMove(s, p, mv, then) {
   if (kind === 'jump') {
     log(s, `${p.name} leaps into the Void Rift.`, 'info');
     const trig = triggeredBy(s, [originKey]);
+    ev(s, 'fall', { seat: p.seat, from: [or_, oc], r: nr, c: nc });
     if (originFractured) fractureCell(s, or_, oc);
     p.placed = false; p.r = null; p.c = null;
     p.falling = { r: nr, c: nc };
@@ -861,6 +911,7 @@ function doMove(s, p, mv, then) {
     log(s, `${p.name} charges the Draugr!`, 'danger');
     const trig = triggeredBy(s, [originKey, destKey]);
     p.r = nr; p.c = nc;
+    ev(s, 'move', { seat: p.seat, from: [or_, oc], to: [nr, nc] });
     if (originFractured) fractureCell(s, or_, oc);
     s.queue.unshift({ t: 'scramble', seat: p.seat, from: [nr, nc], free: false, then });
     startHitWave(s, trig, { mover: p.seat, lateral: false });
@@ -875,6 +926,8 @@ function doMove(s, p, mv, then) {
       log(s, `${p.name} stumbles blindly onto a Draugr!`, 'danger');
       const trig = triggeredBy(s, [originKey, destKey]);
       p.r = nr; p.c = nc;
+      ev(s, 'reveal', { r: nr, c: nc });
+      ev(s, 'move', { seat: p.seat, from: [or_, oc], to: [nr, nc] });
       if (originFractured) fractureCell(s, or_, oc);
       s.queue.unshift({ t: 'scramble', seat: p.seat, from: [nr, nc], free: false, then });
       startHitWave(s, trig, { mover: p.seat, lateral: false });
@@ -890,6 +943,7 @@ function doMove(s, p, mv, then) {
   log(s, `${p.name} moves ${DIRNAMES[d]}.`, 'info');
   const trig = triggeredBy(s, [originKey, destKey]);
   p.r = nr; p.c = nc;
+  ev(s, 'move', { seat: p.seat, from: [or_, oc], to: [nr, nc] });
   if (originFractured) fractureCell(s, or_, oc);
   s.queue.unshift({ t: 'arrive', seat: p.seat, then });
   startHitWave(s, trig, { mover: p.seat, lateral: true });
@@ -905,6 +959,8 @@ ACTIONS['place-blind'] = (s, p, { rot }, aw) => {
   const destKey = key(aw.r, aw.c);
   const trig = triggeredBy(s, [originKey, destKey]);
   p.r = aw.r; p.c = aw.c;
+  ev(s, 'reveal', { r: aw.r, c: aw.c });
+  ev(s, 'move', { seat: p.seat, from: origin, to: [aw.r, aw.c] });
   if (originFractured) fractureCell(s, origin[0], origin[1]);
   log(s, `${p.name} feels their way onto ${describeTile(aw.tile)}.`, 'info');
   s.queue.unshift({ t: 'arrive', seat: p.seat, then });
@@ -935,6 +991,7 @@ ACTIONS['attune'] = (s, p, payload) => {
   if (!set || !set.some(r => r.k === k)) err('No such rune.');
   p.rune = { p: pantheon, k };
   const r = set.find(r => r.k === k);
+  ev(s, 'rune', { seat: p.seat });
   log(s, `${p.name} is marked with ${r.name} ${r.g} (${GATE_NAMES[pantheon]}).`, 'good');
   winCheck(s);
 };
@@ -974,6 +1031,7 @@ ACTIONS['place-landing'] = (s, p, { rot }, aw) => {
   if (!aw.rots.includes(rot)) err('Bad rotation.');
   s.awaiting = null;
   setTile(s, aw.r, aw.c, aw.tile, rot);
+  ev(s, 'reveal', { r: aw.r, c: aw.c });
   landSoul(s, p, aw.r, aw.c);
   s.queue.unshift({ t: 'arrive', seat: p.seat, then: 'action' });
 };
@@ -983,6 +1041,7 @@ function landSoul(s, p, r, c) {
   p.placed = true;
   p.r = r; p.c = c;
   p.hopeful = false; // Mirkwood: souls land hopeless
+  ev(s, 'land', { seat: p.seat, r, c });
   log(s, `${p.name} falls back into Myrkviðr, hope extinguished.`, 'info');
 }
 
@@ -992,6 +1051,7 @@ ACTIONS['scramble'] = (s, p, { r, c }, aw) => {
   s.awaiting = null;
   const then = aw.then;
   if (!opt.draw) {
+    ev(s, 'move', { seat: p.seat, from: [aw.from.r, aw.from.c], to: [r, c] });
     p.r = r; p.c = c; p.placed = true; p.falling = null;
     log(s, `${p.name} scrambles away.`, 'info');
     s.queue.unshift({ t: 'arrive', seat: p.seat, then });
@@ -1006,6 +1066,8 @@ ACTIONS['scramble'] = (s, p, { r, c }, aw) => {
   }
   if (tile.kind === 'draugr') {
     setTile(s, r, c, tile, 0);
+    ev(s, 'reveal', { r, c });
+    ev(s, 'move', { seat: p.seat, from: [aw.from.r, aw.from.c], to: [r, c] });
     p.r = r; p.c = c; p.placed = true; p.falling = null;
     log(s, `${p.name} scrambles straight onto another Draugr!`, 'danger');
     s.queue.unshift({ t: 'scramble', seat: p.seat, from: [r, c], free: false, then });
@@ -1015,16 +1077,18 @@ ACTIONS['scramble'] = (s, p, { r, c }, aw) => {
   const rots = aw.free
     ? [0, 1, 2, 3]
     : [0, 1, 2, 3].filter(rot => exitsFor(tile.kind, rot)[OPP(opt.d)]);
-  s.blindCtx = { scramble: true, then };
+  s.blindCtx = { scramble: true, then, from: [aw.from.r, aw.from.c] };
   s.awaiting = { type: 'place-scramble', seat: p.seat, tile, r, c, rots };
 };
 
 ACTIONS['place-scramble'] = (s, p, { rot }, aw) => {
   if (!aw.rots.includes(rot)) err('Bad rotation.');
   s.awaiting = null;
-  const { then } = s.blindCtx;
+  const { then, from } = s.blindCtx;
   s.blindCtx = null;
   setTile(s, aw.r, aw.c, aw.tile, rot);
+  ev(s, 'reveal', { r: aw.r, c: aw.c });
+  if (from) ev(s, 'move', { seat: p.seat, from, to: [aw.r, aw.c] });
   p.r = aw.r; p.c = aw.c; p.placed = true; p.falling = null;
   log(s, `${p.name} scrambles onto ${describeTile(aw.tile)}.`, 'info');
   s.queue.unshift({ t: 'arrive', seat: p.seat, then });
@@ -1065,6 +1129,7 @@ ACTIONS['niflheim'] = (s, p, payload, aw) => {
   const t = tileAt(s, payload.r, payload.c);
   s.discard.push(t);
   s.grid[key(payload.r, payload.c)] = null;
+  ev(s, 'sweep', { cells: [{ r: payload.r, c: payload.c, tile: t, rift: false }] });
   log(s, `Niflheim's cold claims ${describeTile(t)}.`, 'danger');
 };
 
@@ -1095,8 +1160,7 @@ export function publicState(s) {
     log: s.log.slice(-120),
     discard: s.discard,
     stackCount: s.stack.length,
-    fx: s.fx,
-    fxId: s.fxId,
+    events: s.events,
     lit: [...litSet(s)],
   };
 }

@@ -249,10 +249,12 @@ body.niflheim #board-wrap::after {
 }
 body.niflheim #topbar { border-bottom-color: #3a5a8c; }
 
-/* ---------------- board transition animations ---------------- */
+/* ---------------- board transition animations ----------------
+   All one-shots use fill-mode "both" so a delayed animation holds its 0%
+   state until its moment in the turn's choreography arrives. */
 .collapse {
   transform-box: fill-box; transform-origin: center;
-  animation: collapse 0.7s ease-in forwards;
+  animation: collapse 0.7s ease-in both;
   pointer-events: none;
 }
 @keyframes collapse {
@@ -261,21 +263,89 @@ body.niflheim #topbar { border-bottom-color: #3a5a8c; }
 }
 .mistfade {
   transform-box: fill-box; transform-origin: center;
-  animation: mistfade 0.6s ease-out forwards;
+  animation: mistfade 0.6s ease-out both;
   pointer-events: none;
 }
 @keyframes mistfade {
-  to { transform: scale(0.92); opacity: 0; }
+  0%  { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.92); opacity: 0; }
 }
 .runeburst {
   transform-box: fill-box; transform-origin: center;
-  animation: runeburst 1.5s ease-out forwards;
+  animation: runeburst 1.5s ease-out both;
   pointer-events: none;
 }
 @keyframes runeburst {
   0%   { transform: scale(0.4); opacity: 0; }
   20%  { opacity: 1; }
   100% { transform: scale(1.9) translateY(-10px); opacity: 0; }
+}
+.reveal {
+  transform-box: fill-box; transform-origin: center;
+  animation: reveal 0.3s ease-out both;
+}
+@keyframes reveal {
+  0%   { opacity: 0; transform: scale(0.72); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.raypulse {
+  fill: #d05e5e; opacity: 0;
+  animation: raypulse 0.5s ease-out both;
+  pointer-events: none;
+}
+@keyframes raypulse {
+  0%   { opacity: 0; }
+  35%  { opacity: 0.55; }
+  100% { opacity: 0; }
+}
+.shriek {
+  transform-box: fill-box; transform-origin: center;
+  animation: shriek 0.6s ease-out both;
+  pointer-events: none;
+}
+@keyframes shriek {
+  0%   { transform: scale(0.3); opacity: 0.95; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.shake { animation: shake 0.4s linear both; }
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-3px, 1px); }
+  40% { transform: translate(3px, -2px); }
+  60% { transform: translate(-3px, -1px); }
+  80% { transform: translate(2px, 2px); }
+}
+.fallsink {
+  transform-box: fill-box; transform-origin: center;
+  animation: fallsink 0.75s ease-in both;
+  pointer-events: none;
+}
+@keyframes fallsink {
+  0%   { transform: translate(var(--dx, 0px), var(--dy, 0px)); opacity: 1; }
+  40%  { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(0, 6px) scale(0.05); opacity: 0; }
+}
+.bloom {
+  transform-box: fill-box; transform-origin: center;
+  animation: bloom 0.7s ease-out both;
+  pointer-events: none;
+}
+@keyframes bloom {
+  0%   { transform: scale(0.2); opacity: 1; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.staypulse {
+  transform-box: fill-box; transform-origin: center;
+  animation: staypulse 0.7s ease-out both;
+  pointer-events: none;
+}
+@keyframes staypulse {
+  0%   { transform: scale(0.5); opacity: 0.9; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+#stack-meter.burnflash b { animation: burnflash 0.9s ease-out; }
+@keyframes burnflash {
+  0%  { color: #ff8a70; text-shadow: 0 0 12px rgba(255, 130, 95, 0.9); }
 }
 
 /* ---------------- turn indication ---------------- */

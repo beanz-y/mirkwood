@@ -18,36 +18,82 @@ let reconnectTimer = null;
 let previewRot = 0;
 let awaitingSig = '';
 let moveAgainArmed = false;
-let lastFxId = 0;
 let clickMap = new Map(); // "r,c" -> handler
-let transientFx = null;   // one-shot animations computed from the state diff
+let transientFx = null;   // choreographed one-shot animation timeline
 let soulSeat = null;      // which soul the status card shows (null = auto)
 let anims = localStorage.getItem('mk-anims') !== 'off';
 const sm = s => (anims ? s : ''); // gate SMIL snippets on the animations setting
 
-// one-shot board animations: diff two consecutive states
-function diffFx(prev, cur) {
-  if (!anims || !prev || !cur) return null;
-  if (cur.phase === 'setup' && prev.phase !== 'setup') return null; // new saga
-  const fx = { moves: {}, drops: [], collapses: [], fades: [], runes: [] };
-  for (let i = 0; i < 4; i++) {
-    const a = prev.players[i], b = cur.players[i];
-    if (a.placed && b.placed && (a.r !== b.r || a.c !== b.c)) {
-      // wrap-around moves teleport across the looping edge; don't slide those
-      if (Math.abs(a.r - b.r) <= 1 && Math.abs(a.c - b.c) <= 1) fx.moves[i] = { r: a.r, c: a.c };
-    } else if (!a.placed && b.placed) {
-      fx.drops.push(i); // landed from a fall (or awoke)
+// Choreographed one-shot animations: the engine emits semantic events in
+// resolution order; each event is assigned a start time so a single action
+// (move -> path crumbles -> draugr strikes -> tiles fade) plays as a sequence.
+function buildTimeline(events) {
+  if (!anims || !events || !events.length) return null;
+  const T = {
+    moves: {}, drops: {}, dims: {}, brights: {}, shakes: {},
+    falls: [], collapses: [], fades: [], reveals: {}, attacks: [],
+    runes: [], blooms: [], stays: [], burn: false, total: 0,
+  };
+  let t = 0;
+  for (const e of events) {
+    switch (e.e) {
+      case 'move':
+        T.moves[e.seat] = { from: e.from, at: t };
+        t += 0.32; break;
+      case 'land':
+        T.drops[e.seat] = { at: t };
+        t += 0.4; break;
+      case 'fall':
+        T.falls.push({ seat: e.seat, from: e.from, r: e.r, c: e.c, at: t });
+        t += 0.6; break;
+      case 'fracture':
+        T.collapses.push({ r: e.r, c: e.c, tile: e.tile, at: t });
+        t += 0.3; break;
+      case 'reveal':
+        T.reveals[e.r * SIZE + e.c] = { at: t };
+        t += 0.15; break;
+      case 'attack': {
+        const maxRay = Math.max(0, ...e.rays.map(ray => ray.length));
+        T.attacks.push({ m: e.m, rays: e.rays, at: t });
+        t += 0.4 + maxRay * 0.06; break;
+      }
+      case 'hit':
+        T.shakes[e.seat] = { at: t };
+        T.dims[e.seat] = t + 0.1;
+        t += 0.3; break;
+      case 'sweep':
+        for (const cl of e.cells) T.fades.push({ r: cl.r, c: cl.c, tile: cl.tile, rift: cl.rift, at: t });
+        t += 0.35; break;
+      case 'rune':
+        T.runes.push({ seat: e.seat, at: t });
+        t += 0.5; break;
+      case 'rekindle':
+        T.blooms.push({ seat: e.seat, at: t });
+        T.brights[e.seat] = t;
+        t += 0.3; break;
+      case 'stay':
+        T.stays.push({ seat: e.seat, at: t });
+        t += 0.25; break;
+      case 'burn':
+        T.burn = true; break;
     }
-    const ra = a.rune ? a.rune.p + a.rune.k : '';
-    const rb = b.rune ? b.rune.p + b.rune.k : '';
-    if (rb && ra !== rb) fx.runes.push(i);
   }
-  for (let k = 0; k < SIZE * SIZE; k++) {
-    const a = prev.grid[k], b = cur.grid[k];
-    if (a && a.tile && b && b.rift) fx.collapses.push({ k, tile: a.tile });
-    else if (a && !b) fx.fades.push({ k, cell: a });
+  // long chains stay snappy: compress the whole sequence into ~2.8s
+  if (t > 2.8) {
+    const k = 2.8 / t;
+    const sc = o => { if (o && typeof o.at === 'number') o.at *= k; };
+    Object.values(T.moves).forEach(sc);
+    Object.values(T.drops).forEach(sc);
+    Object.values(T.shakes).forEach(sc);
+    Object.values(T.reveals).forEach(sc);
+    for (const s of Object.keys(T.dims)) T.dims[s] *= k;
+    for (const s of Object.keys(T.brights)) T.brights[s] *= k;
+    [T.falls, T.collapses, T.fades, T.attacks, T.runes, T.blooms, T.stays]
+      .forEach(arr => arr.forEach(sc));
+    t = 2.8;
   }
-  return fx;
+  T.total = t;
+  return T;
 }
 
 // The room code is part of the WebSocket URL so the Cloudflare Worker can
@@ -83,6 +129,32 @@ function leaveRoom(message) {
   if (message) showError(message);
 }
 
+// shared SVG gradient defs for the procedural art, injected once so both the
+// board and the tile-preview panel can reference them
+document.body.insertAdjacentHTML('beforeend', `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <radialGradient id="mk-ground" cx="50%" cy="40%" r="85%">
+    <stop offset="0%" stop-color="#2e4837"/><stop offset="70%" stop-color="#20362a"/><stop offset="100%" stop-color="#152419"/>
+  </radialGradient>
+  <linearGradient id="mk-stone" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#54634f"/><stop offset="100%" stop-color="#39443c"/>
+  </linearGradient>
+  <radialGradient id="mk-void" cx="50%" cy="50%" r="62%">
+    <stop offset="0%" stop-color="#1c0e33"/><stop offset="55%" stop-color="#0c0618"/><stop offset="100%" stop-color="#050309"/>
+  </radialGradient>
+  <radialGradient id="mk-gold" cx="50%" cy="40%" r="65%">
+    <stop offset="0%" stop-color="#f2d489" stop-opacity="0.75"/><stop offset="100%" stop-color="#f2d489" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="mk-green" cx="50%" cy="40%" r="65%">
+    <stop offset="0%" stop-color="#9fe8c0" stop-opacity="0.7"/><stop offset="100%" stop-color="#9fe8c0" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="mk-ember" cx="50%" cy="50%" r="50%">
+    <stop offset="0%" stop-color="#ffb45e" stop-opacity="0.85"/><stop offset="60%" stop-color="#d96f35" stop-opacity="0.45"/><stop offset="100%" stop-color="#d96f35" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="mk-spectre" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#dbe8f7"/><stop offset="100%" stop-color="#8ba3c4"/>
+  </linearGradient>
+</defs></svg>`);
+
 // custom art: public/art/manifest.json maps art keys to image URLs
 // (see art/README.md); anything missing falls back to the built-in SVG art
 let art = {};
@@ -109,9 +181,8 @@ function handle(msg) {
       render();
       break;
     case 'state': {
-      const prev = state;
       state = msg.state;
-      transientFx = diffFx(prev, state);
+      transientFx = buildTimeline(state.events);
       render();
       break;
     }
@@ -296,6 +367,12 @@ function renderTopbar() {
   const n = state.stackCount;
   $('stack-meter').innerHTML = `Hope remaining: <b>${n}</b> tiles`;
   $('stack-meter').classList.toggle('low', n <= 10);
+  if (transientFx && transientFx.burn) {
+    const m = $('stack-meter');
+    m.classList.remove('burnflash');
+    void m.offsetWidth; // restart the flash animation
+    m.classList.add('burnflash');
+  }
   const banner = $('turn-banner');
   banner.innerHTML = bannerText();
   const aw = state.awaiting;
@@ -336,7 +413,7 @@ function renderPlayers() {
     const active = state.awaiting && state.awaiting.seat === p.seat;
     div.className = 'pcard' + (p.hopeful ? '' : ' hopeless') + (active ? ' active' : '');
     div.title = "View this soul's status card";
-    const runeFlash = transientFx && transientFx.runes.includes(p.seat) ? ' flash' : '';
+    const runeFlash = transientFx && transientFx.runes.some(rn => rn.seat === p.seat) ? ' flash' : '';
     const rune = p.rune
       ? `<div class="prune ${p.rune.p}${runeFlash}" title="${runeInfo(p.rune).name} (${GATE_NAMES[p.rune.p]})">${runeInfo(p.rune).g}</div>`
       : `<div class="prune none" title="No rune mark yet">·</div>`;
@@ -481,40 +558,62 @@ function renderBoard() {
     const x = PAD + c * CS, y = PAD + r * CS;
     const cell = state.grid[key(r, c)];
     if (cell && cell.tile) {
-      parts.push(tileSVG(cell.tile, x, y));
+      const tileStr = tileSVG(cell.tile, x, y);
+      const rv = transientFx && transientFx.reveals[key(r, c)];
+      parts.push(rv ? `<g class="reveal" style="animation-delay:${rv.at}s">${tileStr}</g>` : tileStr);
     } else if (cell && cell.rift) {
       parts.push(riftSVG(x, y));
     } else {
-      const isLit = lit.has(key(r, c));
-      if (!isLit && art.mist) {
-        parts.push(`<image href="${art.mist}" x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" preserveAspectRatio="xMidYMid slice"/>`);
-      } else {
-        parts.push(`<rect x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" rx="6" class="${isLit ? 'cell-empty-lit' : 'cell-mist'}"/>`);
-        if (!isLit) parts.push(mistSVG(x, y, r * 7 + c * 13));
+      parts.push(mistCellSVG(x, y, r * 7 + c * 13, lit.has(key(r, c))));
+    }
+  }
+
+  // choreographed one-shot overlays, in event order
+  if (transientFx) {
+    for (const cl of transientFx.collapses) {
+      // a fractured tile crumbles into the Void
+      const x = PAD + cl.c * CS, y = PAD + cl.r * CS;
+      parts.push(`<g class="collapse" style="animation-delay:${cl.at}s">${tileSVG(cl.tile, x, y)}</g>`);
+    }
+    for (const f of transientFx.fades) {
+      // lost to the mist
+      const x = PAD + f.c * CS, y = PAD + f.r * CS;
+      parts.push(`<g class="mistfade" style="animation-delay:${f.at}s">${f.tile ? tileSVG(f.tile, x, y) : riftSVG(x, y)}</g>`);
+    }
+    for (const atk of transientFx.attacks) {
+      // the draugr shrieks, then its spite races down each corridor
+      const [mr, mc] = atk.m;
+      const mx = PAD + mc * CS, my = PAD + mr * CS;
+      parts.push(`<circle cx="${mx + CS / 2}" cy="${my + CS / 2}" r="30" fill="none" stroke="#d05e5e" stroke-width="3" class="shriek" style="animation-delay:${atk.at}s"/>`);
+      parts.push(`<rect x="${mx + 2}" y="${my + 2}" width="${CS - 4}" height="${CS - 4}" rx="8" class="raypulse" style="animation-delay:${atk.at}s"/>`);
+      for (const ray of atk.rays) {
+        ray.forEach(([rr, rc], i) => {
+          const x = PAD + rc * CS, y = PAD + rr * CS;
+          parts.push(`<rect x="${x + 2}" y="${y + 2}" width="${CS - 4}" height="${CS - 4}" rx="8" class="raypulse" style="animation-delay:${atk.at + 0.12 + i * 0.06}s"/>`);
+        });
       }
     }
-  }
-
-  // one-shot transitions from the previous state
-  if (transientFx) {
-    for (const { k, tile } of transientFx.collapses) {
-      // a fractured tile crumbles into the Void
-      const r = Math.floor(k / SIZE), c = k % SIZE;
-      parts.push(`<g class="collapse">${tileSVG(tile, PAD + c * CS, PAD + r * CS)}</g>`);
+    for (const f of transientFx.falls) {
+      // a ghost of the token tumbles into the rift
+      const p = state.players[f.seat];
+      const cx = PAD + f.c * CS + CS / 2, cy = PAD + f.r * CS + CS / 2;
+      const dx = f.from ? (f.from[1] - f.c) * CS : 0, dy = f.from ? (f.from[0] - f.r) * CS : 0;
+      parts.push(`<g class="fallsink" style="--dx:${dx}px;--dy:${dy}px;animation-delay:${f.at}s">
+        <circle cx="${cx}" cy="${cy}" r="15" fill="${p.color}" stroke="#0a100d" stroke-width="2"/>
+        <text x="${cx}" y="${cy + 4.5}" text-anchor="middle" font-size="14" fill="#0a100d" font-weight="bold" font-family="Georgia">${(p.name[0] || '?').toUpperCase()}</text>
+      </g>`);
     }
-    for (const { k, cell } of transientFx.fades) {
-      // lost to the mist
-      const r = Math.floor(k / SIZE), c = k % SIZE;
-      const x = PAD + c * CS, y = PAD + r * CS;
-      parts.push(`<g class="mistfade">${cell.tile ? tileSVG(cell.tile, x, y) : riftSVG(x, y)}</g>`);
+    for (const st of transientFx.stays) {
+      const p = state.players[st.seat];
+      if (!p.placed) continue;
+      const cx = PAD + p.c * CS + CS / 2, cy = PAD + p.r * CS + CS / 2;
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="18" fill="none" stroke="${p.color}" stroke-width="2.5" class="staypulse" style="animation-delay:${st.at}s"/>`);
     }
-  }
-
-  // fx: draugr attack flash
-  if (anims && state.fx && state.fxId !== lastFxId) {
-    for (const [mr, mc] of state.fx.monsters) {
-      const x = PAD + mc * CS, y = PAD + mr * CS;
-      parts.push(`<rect x="${x}" y="${y}" width="${CS}" height="${CS}" rx="6" fill="#d05e5e" opacity="0.35"><animate attributeName="opacity" from="0.5" to="0" dur="1.4s" fill="freeze"/></rect>`);
+    for (const b of transientFx.blooms) {
+      const p = state.players[b.seat];
+      if (!p.placed) continue;
+      const cx = PAD + p.c * CS + CS / 2, cy = PAD + p.r * CS + CS / 2;
+      parts.push(`<circle cx="${cx}" cy="${cy}" r="16" fill="none" stroke="#f2d489" stroke-width="3" class="bloom" style="animation-delay:${b.at}s"/>`);
     }
   }
 
@@ -532,7 +631,6 @@ function renderBoard() {
     const offs = ps.length === 1 ? [[0, 0]] : [[-13, -13], [13, -13], [-13, 13], [13, 13]];
     ps.forEach((p, i) => {
       const [ox, oy] = offs[i] || [0, 0];
-      const dim = p.hopeful ? '' : 'opacity="0.55"';
       const glow = p.hopeful
         ? `<circle cx="${cx + ox}" cy="${cy + oy}" r="${ps.length === 1 ? 20 : 15}" fill="none" stroke="${p.color}" stroke-opacity="0.35">${sm('<animate attributeName="stroke-opacity" values="0.35;0.1;0.35" dur="2.2s" repeatCount="indefinite"/>')}</circle>`
         : '';
@@ -540,39 +638,55 @@ function renderBoard() {
       const ring = state.phase === 'play' && state.turn === p.seat
         ? `<circle cx="${cx + ox}" cy="${cy + oy}" r="${(ps.length === 1 ? 15 : 11) + 9}" fill="none" stroke="${p.color}" stroke-width="2" stroke-dasharray="7 6" stroke-opacity="0.8">${sm(`<animateTransform attributeName="transform" type="rotate" from="0 ${cx + ox} ${cy + oy}" to="360 ${cx + ox} ${cy + oy}" dur="10s" repeatCount="indefinite"/>`)}</circle>`
         : '';
-      // slide in from the previous tile / drop in after a fall
-      let slide = '';
+      // choreographed one-shots: slide from previous tile / drop from a fall,
+      // hope dimming or brightening at its moment in the sequence, hit shake.
+      // Delayed SMIL uses begin="indefinite" + beginElementAt after insertion;
+      // a holding transform keeps the token at its origin until the slide runs.
+      let slide = '', hold = '', opacityAttr = p.hopeful ? '' : 'opacity="0.55"', opacityAnim = '';
+      let shakeOpen = '<g>', shakeClose = '</g>';
       if (transientFx) {
         const mv = transientFx.moves[p.seat];
-        if (mv) {
-          slide = `<animateTransform attributeName="transform" type="translate" from="${(mv.c - c) * CS} ${(mv.r - r) * CS}" to="0 0" dur="0.35s" calcMode="spline" keySplines="0.25 0.1 0.25 1" keyTimes="0;1" fill="freeze"/>`;
-        } else if (transientFx.drops.includes(p.seat)) {
-          slide = `<animateTransform attributeName="transform" type="translate" from="0 -70" to="0 0" dur="0.45s" calcMode="spline" keySplines="0.3 0 0.6 1" keyTimes="0;1" fill="freeze"/>`;
+        const drop = transientFx.drops[p.seat];
+        if (mv && Math.abs(mv.from[0] - r) <= 1 && Math.abs(mv.from[1] - c) <= 1) {
+          const dx = (mv.from[1] - c) * CS, dy = (mv.from[0] - r) * CS;
+          hold = `transform="translate(${dx} ${dy})"`;
+          slide = `<animateTransform attributeName="transform" type="translate" from="${dx} ${dy}" to="0 0" dur="0.32s" calcMode="spline" keySplines="0.25 0.1 0.25 1" keyTimes="0;1" fill="freeze" begin="indefinite" data-mk-delay="${mv.at}"/>`;
+        } else if (drop) {
+          hold = `transform="translate(0 -70)"`;
+          slide = `<animateTransform attributeName="transform" type="translate" from="0 -70" to="0 0" dur="0.45s" calcMode="spline" keySplines="0.3 0 0.6 1" keyTimes="0;1" fill="freeze" begin="indefinite" data-mk-delay="${drop.at}"/>`;
         }
+        const dimAt = transientFx.dims[p.seat];
+        const brightAt = transientFx.brights[p.seat];
+        if (!p.hopeful && dimAt !== undefined) {
+          opacityAttr = 'opacity="1"';
+          opacityAnim = `<animate attributeName="opacity" to="0.55" dur="0.25s" fill="freeze" begin="indefinite" data-mk-delay="${dimAt}"/>`;
+        } else if (p.hopeful && brightAt !== undefined) {
+          opacityAttr = 'opacity="0.55"';
+          opacityAnim = `<animate attributeName="opacity" to="1" dur="0.3s" fill="freeze" begin="indefinite" data-mk-delay="${brightAt}"/>`;
+        }
+        const shake = transientFx.shakes[p.seat];
+        if (shake) { shakeOpen = `<g class="shake" style="animation-delay:${shake.at}s">`; }
       }
       const tokenArt = art[`token-${p.seat}`];
-      if (tokenArt) {
-        const R = ps.length === 1 ? 18 : 13;
-        parts.push(`<g ${dim}>${slide}${ring}${glow}<image href="${tokenArt}" x="${cx + ox - R}" y="${cy + oy - R}" width="${R * 2}" height="${R * 2}"/></g>`);
-      } else {
-        parts.push(`<g ${dim}>${slide}${ring}
-          <circle cx="${cx + ox}" cy="${cy + oy}" r="${ps.length === 1 ? 15 : 11}" fill="${p.color}" stroke="#0a100d" stroke-width="2"/>
-          ${glow}
-          <text x="${cx + ox}" y="${cy + oy + 4.5}" text-anchor="middle" font-size="${ps.length === 1 ? 14 : 11}" fill="#0a100d" font-weight="bold" font-family="Georgia">${(p.name[0] || '?').toUpperCase()}</text>
-        </g>`);
-      }
+      const R = ps.length === 1 ? 18 : 13;
+      const body = tokenArt
+        ? `<image href="${tokenArt}" x="${cx + ox - R}" y="${cy + oy - R}" width="${R * 2}" height="${R * 2}"/>`
+        : `<circle cx="${cx + ox}" cy="${cy + oy}" r="${ps.length === 1 ? 15 : 11}" fill="${p.color}" stroke="#0a100d" stroke-width="2"/>
+           ${glow}
+           <text x="${cx + ox}" y="${cy + oy + 4.5}" text-anchor="middle" font-size="${ps.length === 1 ? 14 : 11}" fill="#0a100d" font-weight="bold" font-family="Georgia">${(p.name[0] || '?').toUpperCase()}</text>`;
+      parts.push(`<g ${opacityAttr} ${hold}>${slide}${opacityAnim}${shakeOpen}${ring}${tokenArt ? glow : ''}${body}${shakeClose}</g>`);
     });
   }
 
   // rune attunement burst above everything
   if (transientFx) {
-    for (const seat of transientFx.runes) {
-      const p = state.players[seat];
+    for (const rn of transientFx.runes) {
+      const p = state.players[rn.seat];
       if (!p.placed || !p.rune) continue;
       const info = RUNES[p.rune.p].find(rr => rr.k === p.rune.k);
       const col = p.rune.p === 'valhalla' ? '#e8b23c' : '#6fce9a';
       const cx = PAD + p.c * CS + CS / 2, cy = PAD + p.r * CS + CS / 2;
-      parts.push(`<g class="runeburst">
+      parts.push(`<g class="runeburst" style="animation-delay:${rn.at}s">
         <circle cx="${cx}" cy="${cy}" r="22" fill="none" stroke="${col}" stroke-width="2"/>
         <text x="${cx}" y="${cy - 24}" text-anchor="middle" font-size="32" fill="${col}" font-family="Georgia">${info.g}</text>
       </g>`);
@@ -586,7 +700,12 @@ function renderBoard() {
   svg.classList.toggle('my-turn', !!myDecision);
 
   svg.innerHTML = parts.join('');
-  lastFxId = state.fxId;
+
+  // start delayed SMIL animations relative to now (begin offsets in markup
+  // would be relative to document load, not insertion)
+  svg.querySelectorAll('[data-mk-delay]').forEach(a => {
+    try { a.beginElementAt(parseFloat(a.getAttribute('data-mk-delay'))); } catch { /* no SMIL */ }
+  });
 
   // wire clicks
   svg.querySelectorAll('[data-click]').forEach(el => {
@@ -681,6 +800,13 @@ function addInteractions(parts, aw) {
 
 // ---------------------------------------------------------------- tile art
 
+// a two-tier pine silhouette, base centered at (px, py)
+function pine(px, py, s, fill) {
+  return `<path d="M ${px - s * 0.5} ${py} l ${s * 0.5} ${-s * 0.95} l ${s * 0.5} ${s * 0.95} z
+    M ${px - s * 0.36} ${py - s * 0.55} l ${s * 0.36} ${-s * 0.7} l ${s * 0.36} ${s * 0.7} z
+    M ${px - s * 0.08} ${py} h ${s * 0.16} v ${s * 0.18} h ${-s * 0.16} z" fill="${fill}"/>`;
+}
+
 function tileSVG(tile, x, y) {
   const cx = x + CS / 2, cy = y + CS / 2;
   const exits = tile.exits || exitsFor(tile.kind, tile.rot || 0);
@@ -695,47 +821,109 @@ function tileSVG(tile, x, y) {
     return out;
   }
 
+  const seed = (x * 31 + y * 17) | 0;
   const parts = [];
-  parts.push(`<rect x="${x + 3}" y="${y + 3}" width="${CS - 6}" height="${CS - 6}" rx="8" fill="var(--tile)" stroke="var(--tile-edge)" stroke-width="1.5"/>`);
-  // passages
-  const W = 26;
-  const ends = [[cx, y + 3], [x + CS - 3, cy], [cx, y + CS - 3], [x + 3, cy]];
+  // forest floor
+  parts.push(`<rect x="${x + 2.5}" y="${y + 2.5}" width="${CS - 5}" height="${CS - 5}" rx="9" fill="url(#mk-ground)" stroke="#33503f" stroke-width="1.5"/>`);
+  // seeded corner growth: pines or moss clumps
+  const corners = [[x + 13, y + 21], [x + CS - 13, y + 22], [x + 14, y + CS - 9], [x + CS - 14, y + CS - 10]];
+  corners.forEach(([px, py], i) => {
+    if ((seed >> i) & 1) parts.push(pine(px, py, 13, '#1b2f22'));
+    else parts.push(`<circle cx="${px}" cy="${py - 5}" r="4.5" fill="#24402f"/><circle cx="${px + 5}" cy="${py - 2}" r="3" fill="#1e3627"/>`);
+  });
+  // stone passages: dark earth edging under a stone causeway, flagstones on top
+  const ends = [[cx, y + 2.5], [x + CS - 2.5, cy], [cx, y + CS - 2.5], [x + 2.5, cy]];
   for (let d = 0; d < 4; d++) {
-    if (exits[d]) parts.push(`<line x1="${cx}" y1="${cy}" x2="${ends[d][0]}" y2="${ends[d][1]}" stroke="var(--path)" stroke-width="${W}"/>`);
+    if (!exits[d]) continue;
+    parts.push(`<line x1="${cx}" y1="${cy}" x2="${ends[d][0]}" y2="${ends[d][1]}" stroke="#37452f" stroke-width="30"/>`);
   }
-  if (exits.some(Boolean)) parts.push(`<circle cx="${cx}" cy="${cy}" r="${W / 2}" fill="var(--path)"/>`);
-
-  // fracture cracks
-  if (tile.fractured) parts.push(crackSVG(x, y));
+  for (let d = 0; d < 4; d++) {
+    if (!exits[d]) continue;
+    const [ex, ey] = ends[d];
+    parts.push(`<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" stroke="url(#mk-stone)" stroke-width="25"/>`);
+    for (let f = 1; f <= 2; f++) {
+      const vert = d % 2 === 0;
+      const jit = ((seed >> (d + f)) & 1) ? 3 : -3;
+      const fx = cx + (ex - cx) * (f * 0.34) + (vert ? jit : 0);
+      const fy = cy + (ey - cy) * (f * 0.34) + (vert ? 0 : jit);
+      parts.push(`<ellipse cx="${fx}" cy="${fy}" rx="${vert ? 7 : 5}" ry="${vert ? 5 : 7}" fill="#49574a" stroke="#303c31" stroke-width="1.2"/>`);
+    }
+  }
+  if (exits.some(Boolean)) {
+    parts.push(`<circle cx="${cx}" cy="${cy}" r="14" fill="url(#mk-stone)" stroke="#303c31" stroke-width="1.2"/>`);
+  }
 
   // kind decorations
   if (tile.kind === 'start') {
-    parts.push(`<text x="${cx}" y="${cy + 7}" text-anchor="middle" font-size="22" fill="#1c2a22" font-family="Georgia">ᛟ</text>`);
+    // a cold campfire in the clearing where the soul awoke
+    parts.push(`<circle cx="${cx}" cy="${cy}" r="13" fill="url(#mk-ember)"/>`);
+    parts.push(`<rect x="${cx - 7.5}" y="${cy - 1.6}" width="15" height="3.2" rx="1.6" fill="#4a3a28" transform="rotate(28 ${cx} ${cy})"/>`);
+    parts.push(`<rect x="${cx - 7.5}" y="${cy - 1.6}" width="15" height="3.2" rx="1.6" fill="#57432c" transform="rotate(-38 ${cx} ${cy})"/>`);
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + (seed % 7) * 0.3;
+      parts.push(`<circle cx="${cx + Math.cos(a) * 11.5}" cy="${cy + Math.sin(a) * 11.5}" r="2.5" fill="#6d7a64" stroke="#414d40" stroke-width="0.8"/>`);
+    }
   } else if (tile.kind === 'rune') {
-    parts.push(`<circle cx="${cx}" cy="${cy}" r="17" fill="none" stroke="#d8c27a" stroke-width="2" stroke-dasharray="4 3"/>`);
-    parts.push(`<text x="${cx}" y="${cy + 7}" text-anchor="middle" font-size="20" fill="#e8d9a0" font-family="Georgia">ᚱ</text>`);
+    // standing stones at the diagonals around a ritual ring
+    parts.push(`<circle cx="${cx}" cy="${cy}" r="12" fill="url(#mk-gold)" opacity="0.55"/>`);
+    parts.push(`<circle cx="${cx}" cy="${cy}" r="19" fill="none" stroke="#d8c27a" stroke-width="1.6" stroke-dasharray="5 4" opacity="0.85"/>`);
+    const stones = [[-18, -18], [18, -18], [-18, 18], [18, 18]];
+    const glyphs = ['ᚠ', 'ᚢ', 'ᛃ', 'ᛜ'];
+    stones.forEach(([sx, sy], i) => {
+      parts.push(`<path d="M ${cx + sx - 5.5} ${cy + sy + 8} l 1.6 -13.5 q 4 -4.5 7.8 0 l 1.6 13.5 z" fill="url(#mk-stone)" stroke="#39463a" stroke-width="1"/>`);
+      parts.push(`<text x="${cx + sx}" y="${cy + sy + 4}" text-anchor="middle" font-size="7.5" fill="#e8d9a0" font-family="Georgia" opacity="0.95">${glyphs[i]}</text>`);
+    });
+    parts.push(`<text x="${cx}" y="${cy + 6}" text-anchor="middle" font-size="17" fill="#efe0a8" font-family="Georgia">ᚱ</text>`);
   } else if (tile.kind === 'gate') {
+    // the whole monument rotates with the tile so the doorway faces its passage
+    const rot = (tile.rot || 0) * 90;
     const col = tile.gate === 'valhalla' ? '#e8b23c' : '#6fce9a';
-    parts.push(`<rect x="${cx - 20}" y="${cy - 12}" width="8" height="26" fill="${col}" opacity="0.9"/>`);
-    parts.push(`<rect x="${cx + 12}" y="${cy - 12}" width="8" height="26" fill="${col}" opacity="0.9"/>`);
-    parts.push(`<path d="M ${cx - 24} ${cy - 10} Q ${cx} ${cy - 34} ${cx + 24} ${cy - 10}" fill="none" stroke="${col}" stroke-width="7"/>`);
-    parts.push(`<text x="${cx}" y="${cy + 26}" text-anchor="middle" font-size="12" fill="${col}" font-family="Georgia">${tile.gate === 'valhalla' ? 'VALHALLA' : 'FÓLKVANGR'}</text>`);
+    const glowId = tile.gate === 'valhalla' ? 'mk-gold' : 'mk-green';
+    const g1 = tile.gate === 'valhalla' ? 'ᚦ' : 'ᛒ';
+    const g2 = tile.gate === 'valhalla' ? 'ᚱ' : 'ᚹ';
+    parts.push(`<g transform="rotate(${rot} ${cx} ${cy})">
+      <ellipse cx="${cx}" cy="${cy - 6}" rx="27" ry="24" fill="url(#${glowId})"/>
+      <rect x="${cx - 13}" y="${y + 5}" width="26" height="5" rx="1.5" fill="#4a4438"/>
+      <rect x="${cx - 16}" y="${y + 10}" width="32" height="4" rx="1.5" fill="#3c372e"/>
+      <ellipse cx="${cx}" cy="${cy - 3}" rx="11" ry="15" fill="url(#${glowId})"/>
+      <rect x="${cx - 21}" y="${cy - 12}" width="8" height="28" rx="2" fill="url(#mk-stone)" stroke="#39463a" stroke-width="1"/>
+      <rect x="${cx + 13}" y="${cy - 12}" width="8" height="28" rx="2" fill="url(#mk-stone)" stroke="#39463a" stroke-width="1"/>
+      <rect x="${cx - 23}" y="${cy - 16}" width="12" height="5" rx="1.5" fill="#5d6b58" stroke="#39463a" stroke-width="0.8"/>
+      <rect x="${cx + 11}" y="${cy - 16}" width="12" height="5" rx="1.5" fill="#5d6b58" stroke="#39463a" stroke-width="0.8"/>
+      <path d="M ${cx - 22} ${cy - 13} Q ${cx} ${cy - 37} ${cx + 22} ${cy - 13}" fill="none" stroke="${col}" stroke-width="5.5"/>
+      <path d="M ${cx - 4} ${cy - 28} l 4 -5.5 l 4 5.5 l -4 5.5 z" fill="${col}"/>
+      <text x="${cx - 17}" y="${cy + 2}" text-anchor="middle" font-size="7" fill="#1c2a22" font-family="Georgia">${g1}</text>
+      <text x="${cx + 17}" y="${cy + 2}" text-anchor="middle" font-size="7" fill="#1c2a22" font-family="Georgia">${g2}</text>
+    </g>`);
+    parts.push(`<text x="${cx}" y="${y + CS - 8}" text-anchor="middle" font-size="9.5" fill="${col}" font-family="Georgia" letter-spacing="1.5">${tile.gate === 'valhalla' ? 'VALHALLA' : 'FÓLKVANGR'}</text>`);
   } else if (tile.kind === 'draugr') {
-    // spectral figure
-    parts.push(`<g opacity="0.95">
-      <path d="M ${cx - 13} ${cy + 14} v -14 a 13 13 0 0 1 26 0 v 14 l -5 -5 l -4 5 l -4 -5 l -4 5 l -4 -5 z" fill="#aebfd6"/>
-      <circle cx="${cx - 5}" cy="${cy - 3}" r="2.6" fill="#0a100d"/>
-      <circle cx="${cx + 5}" cy="${cy - 3}" r="2.6" fill="#0a100d"/>
-      <circle cx="${cx}" cy="${cy}" r="22" fill="none" stroke="#aebfd6" stroke-opacity="0.3">
-        <animate attributeName="stroke-opacity" values="0.3;0.08;0.3" dur="2.6s" repeatCount="indefinite"/>
-      </circle>
+    // a hooded specter with cold-burning eyes, wreathed in grave-mist
+    const body = `M ${cx - 15} ${cy + 15} C ${cx - 18} ${cy - 4} ${cx - 13} ${cy - 18} ${cx} ${cy - 18} C ${cx + 13} ${cy - 18} ${cx + 18} ${cy - 4} ${cx + 15} ${cy + 15} L ${cx + 10} ${cy + 9} L ${cx + 5} ${cy + 16} L ${cx} ${cy + 10} L ${cx - 5} ${cy + 16} L ${cx - 10} ${cy + 9} Z`;
+    parts.push(`<g>
+      <ellipse cx="${cx}" cy="${cy + 17}" rx="15" ry="4.5" fill="#0a1410" opacity="0.65"/>
+      <path d="${body}" fill="url(#mk-spectre)" opacity="0.25" transform="translate(${cx} ${cy}) scale(1.18) translate(${-cx} ${-cy})"/>
+      <path d="${body}" fill="url(#mk-spectre)" opacity="0.95"/>
+      <path d="M ${cx - 11} ${cy - 9} q 11 -7 22 0 l -2 6 q -9 -5 -18 0 z" fill="#5a7091" opacity="0.85"/>
+      <circle cx="${cx - 5.5}" cy="${cy - 4}" r="2.7" fill="#101820"/>
+      <circle cx="${cx + 5.5}" cy="${cy - 4}" r="2.7" fill="#101820"/>
+      <circle cx="${cx - 5.5}" cy="${cy - 4}" r="1.1" fill="#8fd8ff"/>
+      <circle cx="${cx + 5.5}" cy="${cy - 4}" r="1.1" fill="#8fd8ff"/>
+      <path d="M ${cx - 3.5} ${cy + 3.5} q 3.5 3 7 0" stroke="#2c3a4d" stroke-width="1.6" fill="none"/>
+      <path d="M ${cx - 19} ${cy + 8} q -5 -3 -4 -9 M ${cx + 19} ${cy + 8} q 5 -3 4 -9" stroke="#b9cce4" stroke-width="1.5" fill="none" opacity="0.5"/>
+      <circle cx="${cx}" cy="${cy}" r="23" fill="none" stroke="#aebfd6" stroke-opacity="0.3">${sm('<animate attributeName="stroke-opacity" values="0.3;0.08;0.3" dur="2.6s" repeatCount="indefinite"/>')}</circle>
     </g>`);
   }
+
+  // fracture cracks — the void already seeping through
+  if (tile.fractured) parts.push(crackSVG(x, y));
   return parts.join('');
 }
 
 function crackSVG(x, y) {
-  return `<path d="M ${x + 14} ${y + 20} l 10 8 l -6 10 l 12 9 M ${x + CS - 16} ${y + CS - 22} l -9 -7 l 5 -9 l -11 -8" stroke="#0d1512" stroke-width="2.4" fill="none" opacity="0.9"/>`;
+  return `<g>
+    <path d="M ${x + 16} ${y + 18} l 9 7 l -5 9 l 11 8 l -4 9" stroke="#43306b" stroke-width="4.5" fill="none" opacity="0.4" stroke-linecap="round"/>
+    <path d="M ${x + 16} ${y + 18} l 9 7 l -5 9 l 11 8 l -4 9 M ${x + CS - 17} ${y + CS - 21} l -8 -6 l 4 -8 l -10 -7" stroke="#101812" stroke-width="2.2" fill="none" opacity="0.95"/>
+  </g>`;
 }
 
 function riftSVG(x, y) {
@@ -744,23 +932,33 @@ function riftSVG(x, y) {
     return `<image href="${art.rift}" x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" preserveAspectRatio="xMidYMid slice"/>`;
   }
   return `<g>
-    <rect x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" rx="6" fill="#05070a"/>
-    <circle cx="${cx}" cy="${cy}" r="26" fill="none" stroke="#5c3e8f" stroke-width="2" stroke-opacity="0.7" stroke-dasharray="10 6">
-      <animateTransform attributeName="transform" type="rotate" from="0 ${cx} ${cy}" to="360 ${cx} ${cy}" dur="14s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="${cx}" cy="${cy}" r="15" fill="none" stroke="#7a55b8" stroke-width="1.6" stroke-opacity="0.6" stroke-dasharray="6 5">
-      <animateTransform attributeName="transform" type="rotate" from="360 ${cx} ${cy}" to="0 ${cx} ${cy}" dur="9s" repeatCount="indefinite"/>
-    </circle>
-    <circle cx="${cx}" cy="${cy}" r="6" fill="#0d0518"/>
+    <rect x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" rx="6" fill="url(#mk-void)"/>
+    <path d="M ${x + 6} ${y + 25} l 13 3 M ${x + CS - 6} ${y + 35} l -12 2 M ${x + 31} ${y + CS - 5} l 3 -11 M ${x + 60} ${y + 6} l -4 12" stroke="#2b1848" stroke-width="2" opacity="0.85"/>
+    <circle cx="${cx}" cy="${cy}" r="26" fill="none" stroke="#5c3e8f" stroke-width="2" stroke-opacity="0.7" stroke-dasharray="10 6">${sm(`<animateTransform attributeName="transform" type="rotate" from="0 ${cx} ${cy}" to="360 ${cx} ${cy}" dur="14s" repeatCount="indefinite"/>`)}</circle>
+    <circle cx="${cx}" cy="${cy}" r="15" fill="none" stroke="#7a55b8" stroke-width="1.6" stroke-opacity="0.6" stroke-dasharray="6 5">${sm(`<animateTransform attributeName="transform" type="rotate" from="360 ${cx} ${cy}" to="0 ${cx} ${cy}" dur="9s" repeatCount="indefinite"/>`)}</circle>
+    <circle cx="${cx + 13}" cy="${cy - 14}" r="1.3" fill="#7a55b8" opacity="0.7"/>
+    <circle cx="${cx - 16}" cy="${cy + 9}" r="1" fill="#5c3e8f" opacity="0.7"/>
+    <circle cx="${cx}" cy="${cy}" r="6" fill="#070310"/>
   </g>`;
 }
 
-function mistSVG(x, y, seed) {
-  const o1 = 0.05 + (seed % 5) * 0.01;
-  return `<g opacity="0.5">
-    <ellipse cx="${x + 30 + (seed % 20)}" cy="${y + 34}" rx="26" ry="9" fill="#2a3d34" opacity="${o1}"/>
-    <ellipse cx="${x + 56 - (seed % 16)}" cy="${y + 60}" rx="22" ry="8" fill="#2a3d34" opacity="${o1 + 0.03}"/>
-  </g>`;
+function mistCellSVG(x, y, seed, isLit) {
+  if (!isLit && art.mist) {
+    return `<image href="${art.mist}" x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" preserveAspectRatio="xMidYMid slice"/>`;
+  }
+  if (isLit) {
+    // an empty clearing your hope can reach — faintly visible ground
+    return `<rect x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" rx="6" class="cell-empty-lit"/>`
+      + pine(x + 16 + (seed % 9), y + CS - 12, 10, '#101c14');
+  }
+  // deep mist: barely-there trees swallowed by fog
+  return `<rect x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" rx="6" class="cell-mist"/>`
+    + pine(x + 18 + (seed % 14), y + 34, 14, '#0d1811')
+    + pine(x + CS - 24 - (seed % 10), y + CS - 12, 17, '#0b150f')
+    + `<g opacity="0.5">
+        <ellipse cx="${x + 30 + (seed % 20)}" cy="${y + 38}" rx="26" ry="9" fill="#2a3d34" opacity="0.09"/>
+        <ellipse cx="${x + 56 - (seed % 16)}" cy="${y + 64}" rx="24" ry="8" fill="#2a3d34" opacity="0.11"/>
+      </g>`;
 }
 
 // ---------------------------------------------------------------- action bar
