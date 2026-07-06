@@ -144,7 +144,7 @@ Spend 1 Resolve to:
 | **Rekindle** | Regain Hope at the start of your turn. |
 | **Endure** | Stay while Hopeless. |
 | **Brace** | When a Draugr strikes you, lose 2 tiles from the stack instead of 3. |
-| **Charge** | Deliberately move onto a Draugr: its strike always lands on you (Brace still allowed). Once its attack concludes, the Draugr is **banished from the forest** — its tile is lost — and you scramble onto an adjacent space. The only way to destroy a Draugr. |
+| **Charge** | Deliberately move onto a Draugr: its strike always lands on you (Brace still allowed). Once its attack concludes, the Draugr is **banished from the forest** — its tile is lost — and you scramble onto an adjacent space. |
 | **Sustain** | During Niflheim's Embrace, skip removing an extra tile at the end of your turn. |
 
 ## Fractured Paths & Void Rifts
@@ -176,15 +176,19 @@ Lost souls who sought Valhalla and failed. They despise your hope.
 - Rifts, empty spaces, and walls break its sight.
 - **Every soul in its line of sight is struck:** discard 3 tiles from the
   stack per victim (2 with Brace) and that soul becomes **Hopeless**.
-- Moving *out* of the line evades the strike itself (and steels your Resolve).
+- Moving *out* of the line means the strike **misses you** — every other soul
+  still in its sight is struck as normal — and evading its gaze steels your
+  Resolve (+1). *(Unchanged from TNC's Wax Eaters, save the Resolve reward.)*
 - If a Draugr's sight reaches another Draugr, it too attacks — a chain of
   spite.
 - Falling breaks line of sight: a soul that falls triggers watching Draugr
   but drops away before the strike lands.
-- **Charging** (1 Resolve) is the only way to destroy a Draugr: its strike
-  lands on you, and then its spite is spent — the Draugr vanishes from the
-  forest, leaving bare ground. (A Draugr *fallen onto* from the void instead
-  collapses into a Rift; one merely stumbled onto in the dark remains.)
+- **Charging** (1 Resolve) destroys a Draugr outright: its strike lands on
+  you, and then its spite is spent — the Draugr vanishes from the forest,
+  leaving bare ground. But it is not the only way past one: evade its line,
+  or simply walk away — a Draugr no soul lights any longer fades back into
+  the mist like any tile. (One *fallen onto* from the void collapses into a
+  Rift; one merely stumbled onto in the dark remains.)
 
 ## Rune Circles
 
