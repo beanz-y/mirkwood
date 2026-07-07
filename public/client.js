@@ -23,6 +23,15 @@ let transientFx = null;   // choreographed one-shot animation timeline
 let decisionDeadline = null; // soft turn-timer deadline for the current decision
 let soulSeat = null;      // which soul the status card shows (null = auto)
 
+// Touch ("coarse pointer") devices get a two-tap place flow: the first tap
+// ghosts the tile on the board, the second tap (or ✓ Place) confirms it.
+// ?touch=1 forces it for testing in a desktop browser.
+const IS_COARSE = (window.matchMedia && matchMedia('(pointer: coarse)').matches)
+  || /[?&]touch=1/.test(location.search);
+let armedCell = null;   // "r,c" ghosted and awaiting a confirming second tap (touch)
+let armedAction = null; // the confirm for the armed cell (also behind ✓ Place)
+let hoverCell = null;   // hovered placement target (desktop ghost preview)
+
 function updateTimer() {
   const el = $('turn-timer');
   if (!el) return;
@@ -286,6 +295,24 @@ $('claim-all-btn').onclick = () => send({ t: 'claimAll' });
 $('start-btn').onclick = () => send({ t: 'start' });
 $('name-input').value = myName;
 
+// The primary CTA follows intent: a typed code means "join this saga",
+// an empty one means "begin a new one". Enter submits either way.
+function updateLobbyCTA() {
+  const joining = !!$('code-input').value.trim();
+  $('join-btn').classList.toggle('primary', joining);
+  $('create-btn').classList.toggle('primary', !joining);
+}
+$('code-input').addEventListener('input', () => {
+  const el = $('code-input');
+  el.value = el.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
+  updateLobbyCTA();
+});
+$('code-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('join-btn').click(); });
+$('name-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') ($('code-input').value.trim() ? $('join-btn') : $('create-btn')).click();
+});
+updateLobbyCTA();
+
 // ------- difficulty (host) -------
 const CFG_KEYS = ['straight', 'tee', 'teeFractured', 'cross', 'rune', 'draugr'];
 function pushConfig(label) {
@@ -362,9 +389,25 @@ $('leave-btn').onclick = () => {
   }
 };
 $('rotate-btn').onclick = () => rotatePreview();
+$('preview-svg').addEventListener('click', () => rotatePreview());
 document.addEventListener('keydown', (e) => {
+  const tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return; // typing, not rotating
   if (e.key === 'r' || e.key === 'R') rotatePreview();
 });
+// scroll over the board (or the preview) to rotate the pending tile
+const placingNow = () => {
+  const aw = state && state.awaiting;
+  return aw && isMine(aw.seat)
+    && ['place-start', 'place-tile', 'place-blind', 'place-landing', 'place-scramble'].includes(aw.type);
+};
+for (const el of [$('board'), $('preview')]) {
+  el.addEventListener('wheel', (e) => {
+    if (!placingNow()) return;
+    e.preventDefault();
+    rotatePreview(e.deltaY < 0 ? -1 : 1);
+  }, { passive: false });
+}
 
 function addChat(from, text) {
   const p = document.createElement('p');
@@ -394,12 +437,24 @@ function legalRots(aw) {
   return [0, 1, 2, 3];
 }
 
-function rotatePreview() {
+// rotation choices can differ per cell (a tile only connects at certain
+// rotations in certain spots) — while a cell is ghosted, cycle its own choices
+function activeCellRots(aw) {
+  const cell = armedCell || hoverCell;
+  if (aw && aw.type === 'place-tile' && cell) {
+    const [r, c] = cell.split(',').map(Number);
+    const t = aw.targets.find(tg => tg.r === r && tg.c === c);
+    if (t) return t.rots;
+  }
+  return legalRots(aw);
+}
+
+function rotatePreview(dir = 1) {
   const aw = state && state.awaiting;
-  const rots = legalRots(aw);
+  const rots = activeCellRots(aw);
   if (!rots.length) return;
   const i = rots.indexOf(previewRot);
-  previewRot = rots[(i + 1) % rots.length];
+  previewRot = rots[(i + dir + rots.length) % rots.length];
   render();
 }
 
@@ -419,6 +474,7 @@ function render() {
   if (sig !== awaitingSig) {
     awaitingSig = sig;
     moveAgainArmed = false;
+    armedCell = null; armedAction = null; hoverCell = null;
     const rots = legalRots(aw);
     previewRot = rots.includes(previewRot) ? previewRot : (rots[0] ?? 0);
     // soft turn timer: a fresh countdown for every decision
@@ -864,6 +920,7 @@ function renderBoard() {
   if (myDecision) addInteractions(parts, aw);
   svg.classList.toggle('my-turn', !!myDecision);
 
+  parts.push('<g id="ghost-layer" class="ghost"></g>');
   svg.innerHTML = parts.join('');
 
   // start delayed SMIL animations relative to now (begin offsets in markup
@@ -879,38 +936,93 @@ function renderBoard() {
       if (h) h();
     });
   });
+
+  // ghost preview: on desktop it follows the pointer across placement targets
+  if (!IS_COARSE) {
+    svg.querySelectorAll('[data-hover]').forEach(el => {
+      el.addEventListener('mouseenter', () => { hoverCell = el.getAttribute('data-hover'); updateGhost(); });
+    });
+    svg.onmouseleave = () => { hoverCell = null; updateGhost(); };
+  }
+  updateGhost();
+}
+
+// Draw the pending tile, semi-transparent, in the cell it would occupy — at
+// the rotation that will actually be used there (snapped to fit the paths).
+function updateGhost() {
+  const layer = document.getElementById('ghost-layer');
+  if (!layer) return;
+  const aw = state && state.awaiting;
+  let cell = null, rots = null, tile = null;
+  if (aw && isMine(aw.seat)) {
+    if (aw.type === 'place-blind' || aw.type === 'place-landing' || aw.type === 'place-scramble') {
+      cell = `${aw.r},${aw.c}`; rots = aw.rots || [0, 1, 2, 3]; tile = aw.tile;
+    } else if (aw.type === 'place-tile') {
+      cell = armedCell || hoverCell;
+      if (cell) {
+        const [r, c] = cell.split(',').map(Number);
+        const t = aw.targets.find(tg => tg.r === r && tg.c === c);
+        if (t) { rots = t.rots; tile = aw.tile; } else cell = null;
+      }
+    } else if (aw.type === 'place-start') {
+      cell = armedCell || hoverCell;
+      rots = [0, 1, 2, 3]; tile = { kind: 'start', fractured: true };
+    }
+  }
+  if (!cell || !tile) { layer.innerHTML = ''; return; }
+  const [r, c] = cell.split(',').map(Number);
+  const rot = rots.includes(previewRot) ? previewRot : rots[0];
+  const x = PAD + c * CS, y = PAD + r * CS;
+  layer.innerHTML = tileSVG({ ...tile, rot, exits: exitsFor(tile.kind, rot) }, x, y)
+    + `<rect x="${x + 3}" y="${y + 3}" width="${CS - 6}" height="${CS - 6}" rx="8" class="ghost-outline"/>`;
 }
 
 function hlRect(x, y, cls) {
   return `<rect x="${x + 4}" y="${y + 4}" width="${CS - 8}" height="${CS - 8}" rx="8" class="hl ${cls}"/>`;
 }
-function clickRect(parts, r, c, cls, handler) {
+function clickRect(parts, r, c, cls, handler, hoverId) {
   const x = PAD + c * CS, y = PAD + r * CS;
   const id = `${r},${c},${cls}`;
   parts.push(hlRect(x, y, cls));
-  parts.push(`<rect x="${x}" y="${y}" width="${CS}" height="${CS}" fill="transparent" class="clickable" data-click="${id}"/>`);
+  parts.push(`<rect x="${x}" y="${y}" width="${CS}" height="${CS}" fill="transparent" class="clickable" ${hoverId ? `data-hover="${hoverId}" ` : ''}data-click="${id}"/>`);
   clickMap.set(id, handler);
+}
+
+// A placement target. Desktop: hovering ghosts the tile in the cell at the
+// rotation that will actually be used (snapped to fit), and a click places it.
+// Touch: the first tap ghosts it, a second tap (or ✓ Place) confirms.
+function placeRect(parts, r, c, rots, put) {
+  const id = `${r},${c}`;
+  const confirm = () => put(rots.includes(previewRot) ? previewRot : rots[0]);
+  clickRect(parts, r, c, 'place', () => {
+    if (IS_COARSE && armedCell !== id) {
+      armedCell = id;
+      if (!rots.includes(previewRot)) previewRot = rots[0];
+      armedAction = confirm;
+      render();
+      return;
+    }
+    confirm();
+  }, id);
 }
 
 function addInteractions(parts, aw) {
   switch (aw.type) {
     case 'place-start': {
       for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-        if (!state.grid[key(r, c)]) {
-          clickRect(parts, r, c, 'place', () => act({ r, c, rot: previewRot }));
-        }
+        if (!state.grid[key(r, c)]) placeRect(parts, r, c, [0, 1, 2, 3], rot => act({ r, c, rot }));
       }
       break;
     }
     case 'place-tile': {
-      aw.targets.filter(t => t.rots.includes(previewRot)).forEach(t => {
-        clickRect(parts, t.r, t.c, 'place', () => act({ r: t.r, c: t.c, rot: previewRot }));
-      });
+      // every legal spot glows; the rotation snaps to fit the spot you pick
+      aw.targets.forEach(t => placeRect(parts, t.r, t.c, t.rots, rot => act({ r: t.r, c: t.c, rot })));
       break;
     }
     case 'place-blind':
     case 'place-landing':
     case 'place-scramble': {
+      // single known spot: the ghost already shows in place — a tap confirms it
       clickRect(parts, aw.r, aw.c, 'place', () => act({ rot: previewRot }));
       break;
     }
@@ -1146,11 +1258,37 @@ function renderActionBar() {
   };
 
   switch (aw.type) {
-    case 'place-start': note('Choose any dark clearing to awaken in — rotate your paths with ⟳'); break;
-    case 'place-tile': note('Place the revealed tile on a glowing space'); break;
-    case 'place-blind': note('Orient the tile you feel beneath your hands, then click it'); break;
-    case 'place-landing': note('Choose how you land — rotate, then click'); break;
-    case 'place-scramble': note('Orient the tile you clutch at, then click'); break;
+    case 'place-start':
+    case 'place-tile':
+    case 'place-blind':
+    case 'place-landing':
+    case 'place-scramble': {
+      const texts = {
+        'place-start': IS_COARSE
+          ? 'Tap a clearing to preview your awakening — tap it again to settle'
+          : 'Choose any dark clearing to awaken in',
+        'place-tile': IS_COARSE
+          ? 'Tap a glowing space to preview the tile — tap it again to place'
+          : 'Place the revealed tile on a glowing space',
+        'place-blind': IS_COARSE
+          ? 'Turn the tile you feel beneath you, then ✓ Place'
+          : 'Turn the tile you feel beneath you (R), then click it',
+        'place-landing': IS_COARSE
+          ? 'Turn your landing to fit, then ✓ Place'
+          : 'Turn your landing to fit (R), then click it',
+        'place-scramble': IS_COARSE
+          ? 'Turn the tile you clutch at, then ✓ Place'
+          : 'Turn the tile you clutch at (R), then click it',
+      };
+      note(texts[aw.type]);
+      if (IS_COARSE) {
+        if (activeCellRots(aw).length > 1) btn('⟳ Rotate', () => rotatePreview());
+        const single = aw.type !== 'place-start' && aw.type !== 'place-tile';
+        if (single) btn('✓ Place', () => act({ rot: previewRot }), 'primary');
+        else if (armedCell && armedAction) btn('✓ Place here', () => armedAction(), 'primary');
+      }
+      break;
+    }
     case 'action': {
       const p = state.players[aw.seat];
       if (aw.rekindle) btn('Rekindle hope <small>(1 ◆)</small>', () => act({ kind: 'rekindle' }));
@@ -1199,8 +1337,12 @@ function renderPreviewPanel() {
   $('preview-title').textContent = tileName(tile);
   const svg = $('preview-svg');
   svg.innerHTML = tileSVG(tile, 1, 1).replaceAll(`${CS}`, `${CS}`); // draws at 90 within 92 viewbox
-  const rots = legalRots(aw);
+  const rots = activeCellRots(aw);
   $('rotate-btn').style.display = rots.length > 1 ? '' : 'none';
+  $('rotate-btn').innerHTML = IS_COARSE ? '⟳ Rotate' : '⟳ Rotate <small>(R)</small>';
+  $('preview-hint').textContent = rots.length > 1
+    ? (IS_COARSE ? 'Tap the tile to turn it' : 'Click tile · R · scroll to turn')
+    : 'Only one way fits';
 }
 
 function tileName(tile) {
@@ -1358,6 +1500,7 @@ if (urlRoom && /^[a-zA-Z]{4}$/.test(urlRoom)) {
     rejoin();
   } else {
     $('code-input').value = code;
+    updateLobbyCTA(); // an invited visitor's primary action is Join
     $('lobby-error').textContent = 'You were invited to saga ' + code + ' — choose a name and join!';
     $('name-input').focus();
   }

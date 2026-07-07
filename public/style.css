@@ -241,6 +241,11 @@ input:focus { outline: 1px solid var(--gold); }
 .hl.remove { stroke: var(--danger); }
 @keyframes pulse { 0%,100% { stroke-opacity: 1; } 50% { stroke-opacity: 0.35; } }
 
+/* ghost preview: the pending tile shown semi-transparent in the cell it
+   would occupy, with a dashed "not yet real" outline */
+.ghost { pointer-events: none; opacity: 0.65; }
+.ghost-outline { fill: none; stroke: var(--good); stroke-width: 2.5; stroke-dasharray: 7 5; }
+
 /* ---------------- floating preview ---------------- */
 #preview {
   position: absolute; right: 360px; bottom: 80px; z-index: 20;
@@ -249,7 +254,7 @@ input:focus { outline: 1px solid var(--gold); }
   box-shadow: 0 4px 30px rgba(0,0,0,0.7);
 }
 #preview-title { font-size: 13px; color: var(--gold); margin-bottom: 6px; }
-#preview-svg { width: 92px; height: 92px; }
+#preview-svg { width: 92px; height: 92px; cursor: pointer; }
 #preview .hint { font-size: 11px; }
 
 /* ---------------- modal ---------------- */
@@ -480,6 +485,20 @@ body.no-anims *, body.no-anims *::before, body.no-anims *::after {
   .pcard { font-size: 12px; }
   #topbar { flex-wrap: wrap; gap: 6px 12px; }
   #turn-banner { order: 5; flex-basis: 100%; text-align: left; }
-  /* keep the tile preview floating over the board while the page scrolls */
-  #preview { position: fixed; right: 10px; bottom: 10px; z-index: 40; }
+  /* keep the tile preview floating over the board while the page scrolls —
+     compact, so it never hides the action bar's Rotate / ✓ Place buttons */
+  #preview { position: fixed; right: 8px; bottom: 8px; z-index: 40; width: 118px; padding: 8px; }
+  #preview-svg { width: 64px; height: 64px; }
+}
+
+/* narrow phones: the rune picker's two columns become one */
+@media (max-width: 520px) {
+  .rune-grid { grid-template-columns: 1fr; }
+}
+
+/* touch devices: give fingers real targets */
+@media (pointer: coarse) {
+  .btn.small { font-size: 14px; padding: 10px 14px; }
+  .btn.tiny { padding: 8px 12px; }
+  #action-bar { gap: 8px; }
 }
