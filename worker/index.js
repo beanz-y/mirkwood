@@ -6,7 +6,8 @@
  * authoritative engine state in DO storage so games survive disconnects and
  * hibernation. WebSockets use the hibernation API, so idle rooms cost nothing.
  */
-import { createGame, applyAction, publicState, concede, normTiles } from '../public/shared/engine.js';
+import { createGame, applyAction, publicState, concede, normTiles, STATE_VERSION } from '../public/shared/engine.js';
+import { logSaga } from './firestore.js';
 
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const makeCode = () =>
@@ -43,6 +44,13 @@ export class MirkwoodRoom {
   async load() {
     if (this.room === undefined) {
       this.room = (await this.ctx.storage.get('room')) ?? null;
+      // a saga persisted by an older engine cannot safely continue after a
+      // deploy that changed the state shape — end it gracefully
+      if (this.room && this.room.state && this.room.state.v !== STATE_VERSION) {
+        this.room.state = null;
+        this.room.notice = 'The forest shifted while you were away — that saga could not survive the update. Begin a new telling.';
+        await this.save();
+      }
     }
   }
 
@@ -131,6 +139,39 @@ export class MirkwoodRoom {
     return (m && m.name) || 'A wanderer';
   }
 
+  // one Firestore document per finished saga — silent no-op unless the
+  // Firebase env/secret are configured (see worker/firestore.js); telemetry
+  // failures must never affect gameplay
+  async maybeLogEnd() {
+    const r = this.room;
+    const st = r && r.state;
+    if (!st || (st.phase !== 'won' && st.phase !== 'lost') || st.telemetryLogged) return;
+    st.telemetryLogged = true;
+    await this.save();
+    try {
+      const cfg = r.config || {};
+      const humans = new Set(r.seats.filter(Boolean).map(s => s.token)).size;
+      await logSaga(this.env, {
+        code: r.code,
+        result: st.phase,
+        winnerGate: st.winnerGate || null,
+        lossReason: st.lossReason || null,
+        turns: st.turnsTaken || 0,
+        stackLeft: (st.stack && st.stack.length) || 0,
+        niflheim: !!st.niflheim,
+        difficulty: cfg.label || 'Normal',
+        randomRunes: !!cfg.randomRunes,
+        turnTimer: cfg.turnTimer || 0,
+        humans,
+        durationSec: st.startedAt ? Math.round((Date.now() - st.startedAt) / 1000) : null,
+        endedAt: new Date(),
+        stateVersion: st.v || 0,
+      });
+    } catch (e) {
+      console.error('saga telemetry failed:', e.message);
+    }
+  }
+
   // ---------------------------------------------------------------- messages
 
   async webSocketMessage(ws, raw) {
@@ -187,8 +228,19 @@ export class MirkwoodRoom {
       else if (clean(msg.name)) r.members[token].name = name;
       if (!r.host) r.host = token; // first soul to register hosts the saga
       ws.serializeAttachment({ token });
+      // orphaned lobby: if the host's token is gone for good (e.g. cleared
+      // browser storage), the horn passes to whoever shows up
+      if (!r.state && r.host !== token) {
+        const hostLive = this.ctx.getWebSockets().some(w => this.tokenOf(w) === r.host);
+        if (!hostLive) r.host = token;
+      }
       await this.save();
       this.send(ws, { t: 'joined', code: r.code, token });
+      if (r.notice) {
+        this.send(ws, { t: 'error', msg: r.notice });
+        r.notice = null;
+        await this.save();
+      }
       this.broadcast();
       return;
     }
@@ -200,11 +252,28 @@ export class MirkwoodRoom {
       case 'claim': {
         const i = msg.seat | 0;
         if (i < 0 || i > 3) return;
-        if (r.state) { this.send(ws, { t: 'error', msg: 'The saga has already begun.' }); return; }
-        if (r.seats[i] && r.seats[i].token !== token) {
-          this.send(ws, { t: 'error', msg: 'That soul is already claimed.' }); return;
+        if (r.state) {
+          // mid-game: only a vacant soul (kicked or abandoned) may be adopted
+          if (r.seats[i]) { this.send(ws, { t: 'error', msg: 'That soul is already claimed.' }); return; }
+          r.seats[i] = { token, name: this.nameOf(token) };
+        } else {
+          if (r.seats[i] && r.seats[i].token !== token) {
+            this.send(ws, { t: 'error', msg: 'That soul is already claimed.' }); return;
+          }
+          r.seats[i] = r.seats[i] ? null : { token, name: this.nameOf(token) };
         }
-        r.seats[i] = r.seats[i] ? null : { token, name: this.nameOf(token) };
+        await this.save();
+        this.broadcast();
+        return;
+      }
+      case 'kick': {
+        // the host may release any other player's soul (e.g. someone who
+        // vanished mid-game) so another player can adopt it
+        if (r.host !== token) return;
+        const i = msg.seat | 0;
+        if (i < 0 || i > 3) return;
+        if (!r.seats[i] || r.seats[i].token === token) return;
+        r.seats[i] = null;
         await this.save();
         this.broadcast();
         return;
@@ -242,7 +311,13 @@ export class MirkwoodRoom {
         const tiles = normTiles(msg.config || {});
         const label = ['Normal', 'Hard', 'Custom'].includes(msg.config && msg.config.label)
           ? msg.config.label : 'Custom';
-        r.config = { ...tiles, label, randomRunes: msg.config && msg.config.randomRunes ? 1 : 0 };
+        const tt = [0, 60, 90, 120, 180].includes(+(msg.config && msg.config.turnTimer))
+          ? +msg.config.turnTimer : 0;
+        r.config = {
+          ...tiles, label,
+          randomRunes: msg.config && msg.config.randomRunes ? 1 : 0,
+          turnTimer: tt,
+        };
         await this.save();
         this.broadcast();
         return;
@@ -258,6 +333,7 @@ export class MirkwoodRoom {
         applyAction(r.state, aw.seat, msg.payload || {});
         await this.save();
         this.broadcast();
+        await this.maybeLogEnd();
         return;
       }
       case 'concede': {
@@ -266,6 +342,7 @@ export class MirkwoodRoom {
         concede(r.state);
         await this.save();
         this.broadcast();
+        await this.maybeLogEnd();
         return;
       }
       case 'restart': {

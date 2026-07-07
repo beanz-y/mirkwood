@@ -119,7 +119,30 @@ input:focus { outline: 1px solid var(--gold); }
 #stack-meter { color: var(--dim); }
 #stack-meter b { color: var(--gold); font-size: 16px; }
 #stack-meter.low b { color: var(--danger); }
-#room-tag { color: var(--dim); letter-spacing: 2px; }
+#room-tag { color: var(--dim); letter-spacing: 2px; cursor: pointer; }
+#room-tag:hover { color: var(--gold); }
+.room-code { cursor: pointer; }
+
+.conn { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.conn.on { background: var(--good); box-shadow: 0 0 6px rgba(111, 206, 154, 0.7); }
+.conn.wait { background: var(--gold); animation: connpulse 1.2s ease-in-out infinite; }
+.conn.off { background: var(--danger); }
+@keyframes connpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+#turn-timer { color: var(--dim); font-size: 14px; min-width: 58px; text-align: right; }
+#turn-timer.urgent { color: var(--danger); animation: connpulse 1s ease-in-out infinite; }
+
+.pcard .seat-admin {
+  border: 1px solid var(--line); background: var(--bg2); color: var(--dim);
+  border-radius: 5px; font-size: 10px; padding: 2px 6px; cursor: pointer;
+  font-family: inherit; flex-shrink: 0;
+}
+.pcard .seat-admin:hover { border-color: var(--gold); color: var(--gold); }
+.seat .seat-kick {
+  float: right; border: none; background: none; color: var(--dim);
+  cursor: pointer; font-size: 13px; padding: 0 2px;
+}
+.seat .seat-kick:hover { color: var(--danger); }
 
 #layout { flex: 1; display: flex; min-height: 0; }
 #board-wrap {

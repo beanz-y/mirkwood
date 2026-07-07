@@ -30,8 +30,8 @@
     </div>
 
     <div id="lobby-room" class="hidden">
-      <p class="room-code-label">Gather your party — saga code:</p>
-      <div class="room-code" id="room-code">----</div>
+      <p class="room-code-label">Gather your party — saga code (click to copy an invite link):</p>
+      <div class="room-code" id="room-code" title="Click to copy an invite link">----</div>
       <div id="seat-list" class="seat-list"></div>
       <div class="row">
         <button id="claim-all-btn" class="btn small">Claim remaining souls</button>
@@ -47,6 +47,16 @@
           </div>
           <label class="tile-check random-row" title="At a Rune Circle, a random unclaimed rune is assigned instead of choosing">
             <input type="checkbox" id="cfg-randomRunes"> Random runes — the stones choose your mark
+          </label>
+          <label class="tile-check random-row" title="A visible countdown per decision — a nudge, not an enforcer">
+            Turn timer
+            <select id="cfg-turnTimer">
+              <option value="0">off</option>
+              <option value="60">60s</option>
+              <option value="90">90s</option>
+              <option value="120">2 min</option>
+              <option value="180">3 min</option>
+            </select>
           </label>
           <div id="custom-tiles" class="hidden">
             <label class="tile-field">Straight paths <input type="number" id="cfg-straight" min="2" max="20"></label>
@@ -77,10 +87,12 @@
   <header id="topbar">
     <span class="brand">ᛗ MIRKWOOD</span>
     <span id="turn-banner"></span>
+    <span id="turn-timer" class="hidden"></span>
     <span id="stack-meter" title="Tiles remaining — the group's shared hope"></span>
     <button id="replay-btn" class="btn tiny hidden" title="Replay the last move's animations">⟲ Replay</button>
     <button id="rules-btn" class="btn tiny">Rules</button>
-    <span id="room-tag"></span>
+    <span id="room-tag" title="Click to copy an invite link"></span>
+    <span id="conn-dot" class="conn wait" title="Connecting..."></span>
   </header>
 
   <main id="layout">

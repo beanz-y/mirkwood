@@ -18,19 +18,41 @@ npm test           # engine test suite + 200-game random self-play
 
 ## Deploying to Cloudflare
 
-One-time setup:
+### Option A — dashboard only, no CLI (recommended)
+
+Connect the repo once; every `git push` to main deploys automatically
+(Cloudflare's build system runs wrangler for you — you never install it):
+
+1. Push this folder to a GitHub repository (private is fine; `.gitignore`
+   already excludes node_modules, `.wrangler/`, and any credentials).
+2. **dash.cloudflare.com** → *Workers & Pages* → **Create** → *Workers* →
+   **Import a repository** (connect/authorize GitHub the first time) →
+   select the repo.
+3. Build configuration: leave the defaults — no build command needed; deploy
+   command `npx wrangler deploy` (it reads [wrangler.jsonc](wrangler.jsonc):
+   the Durable Object migration, static assets, everything).
+4. **Deploy.** The first deploy registers the `MirkwoodRoom` Durable Object
+   and prints your `https://mirkwood.<subdomain>.workers.dev` URL.
+5. From then on: commit to main → push → it's live in ~1 minute. The
+   *Deployments* tab shows history and one-click rollback; pushes to other
+   branches get preview URLs.
+
+Optional: *Settings → Domains & Routes* to attach a custom domain.
+
+### Option B — CLI
 
 ```
-npx wrangler login          # opens browser, authorize your CF account
+npx wrangler login
 npm run deploy
 ```
 
-That's it — the deploy prints your URL (`https://mirkwood.<your-subdomain>.workers.dev`).
-Send that link and a room code to the playtest group. Subsequent deploys are
-just `npm run deploy`.
+### Secrets in the dashboard
 
-Optional, in the Cloudflare dashboard: attach a custom domain to the Worker
-(Workers & Pages → mirkwood → Settings → Domains & Routes).
+*Workers & Pages → mirkwood → Settings → Variables and Secrets → Add* —
+choose type **Secret**, then `FIREBASE_PROJECT_ID` and
+`FIREBASE_SERVICE_ACCOUNT` (paste the whole JSON as the value; multi-line is
+fine). Secrets set here persist across git deploys and are encrypted and
+write-only. This is the full telemetry setup — no CLI involved.
 
 Notes:
 - The `migrations` block in [wrangler.jsonc](wrangler.jsonc) declares the
@@ -61,18 +83,68 @@ mouths centered on edges; the engine rotates the whole image). A worked
 example lives at `public/art/examples/cross-sample.svg` — enable it with
 `"cross": "/art/examples/cross-sample.svg"` in the manifest.
 
-## Firebase — when (and whether) you need it
+## Saga telemetry (Firebase, optional)
 
-Live play needs **no external database**: room + game state live in each
-room's Durable Object storage, which is simpler, faster, and credential-free.
+Every **finished** game can be mirrored as one document to a Firestore
+`sagas` collection (difficulty, variants, result, loss reason, turns, stack
+left, duration…) — the raw material for balance work. It is a silent no-op
+until configured:
 
-Firestore becomes worth adding when you want data that outlives a room:
-saga history / win-loss stats, player accounts, or an invite-code gate like
-your other projects. The integration seam is `save()` in
-[worker/index.js](worker/index.js) — every completed game passes through it,
-so mirroring a finished saga's summary to Firestore (via the Firestore REST
-API with a service-account token in a Worker secret) is a ~30-line addition
-that doesn't touch the engine.
+1. Create a Firebase project → Firestore database (keep the default
+   locked-mode rules: no client ever reads this data, so deny-all is correct).
+2. **Least privilege (recommended):** in Google Cloud console → IAM & Admin →
+   Service Accounts, create a dedicated account (e.g. `mirkwood-telemetry`)
+   with only the **Cloud Datastore User** role, and generate a JSON key for
+   *that* account — if the key ever leaked, it could touch Firestore and
+   nothing else. (The Firebase console's "Generate new private key" also
+   works, but that admin account can do far more.)
+3. `npx wrangler secret put FIREBASE_PROJECT_ID` → your project id.
+4. `npx wrangler secret put FIREBASE_SERVICE_ACCOUNT` → paste the entire JSON.
+5. `npm run deploy`.
+
+Both values are **Cloudflare secrets**: encrypted at rest, write-only, stored
+only in your Cloudflare account — you can also manage them in the dashboard
+(Workers & Pages → mirkwood → Settings → Variables & Secrets). **Nothing
+Firebase-related exists in this repository**, so publishing the repo exposes
+no credentials. Never commit the key JSON; `.gitignore` already excludes
+`*service-account*.json` and `.dev.vars` (the file wrangler reads for local-
+dev secrets, if you ever want telemetry from `npm run dev`). To rotate the
+key: create a new key in IAM, re-run step 4, delete the old key.
+
+Server-side service-account writes bypass firestore.rules — no rules changes
+needed. Implementation: [worker/firestore.js](worker/firestore.js), called
+from `maybeLogEnd()` in [worker/index.js](worker/index.js); the worker mints
+short-lived (1 h) OAuth tokens from the key at runtime. Telemetry failures
+are logged and never affect gameplay.
+
+## Balance harness (self-play)
+
+```
+npm run selfplay -- --games 500 --preset hard --randomRunes --seed 7
+```
+
+[tools/selfplay.js](tools/selfplay.js) plays full games headlessly against the
+real engine with a greedy heuristic policy (~0.5 ms/game) and prints win rate,
+loss-reason histogram, average turns/stack/matching-marks. **This is the tool
+for balance questions** — refine the `policy()` function, re-run thousands of
+games, compare. Current v1 policy result: 0% wins with ~80% of losses being
+rune-circle starvation — the rune economy is the first thing to investigate
+(policy weakness and/or tuning knob).
+
+## Room quality-of-life
+
+- **Invite links**: click the room code (lobby or top bar) to copy
+  `https://…/?room=CODE`; opening it joins directly (first-time visitors get
+  the code pre-filled so they can pick a name).
+- **Connection dot** (top bar): green connected / amber reconnecting.
+- **Kick & adopt**: the host can release another player's soul (✕ on seat or
+  player card, lobby or mid-game); anyone can **adopt** an unclaimed soul
+  mid-game — the rescue for a player who vanished.
+- **Turn timer** (host option): a soft countdown per decision (60s–3min) in
+  the top bar — a nudge, not an enforcer.
+- **State versioning**: rooms persisted by an older engine version are
+  gracefully reset to the lobby after a deploy instead of crashing
+  (`STATE_VERSION` in the engine — bump it on breaking state changes).
 
 ## Architecture
 

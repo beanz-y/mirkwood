@@ -1,2 +1,7 @@
 node_modules/
 .wrangler/
+
+# local secrets — never commit credentials
+.dev.vars
+*service-account*.json
+*serviceAccount*.json

@@ -1,0 +1,166 @@
+# MIRKWOOD — Project Handoff
+
+*Written 2026-07-07 by the previous Claude instance at the end of the initial build
+sessions. Read this first; then RULES.md for the game rules and README.md for
+run/deploy. Everything below has been built, tested, and browser-verified.*
+
+---
+
+## What this is
+
+**Mirkwood (Myrkviðr)** is Dan's Norse-mythology adaptation of the board game
+*The Night Cage* (TNC — rulebook PDF was in his Downloads): a cooperative
+tile-placement game where 4 Viking souls explore a mist-shrouded 6×6 forest
+(edges wrap) seeking the gates of Valhalla and Fólkvangr. It's a web app for
+online play at **`E:\Claude\mirkwood`** — not a git repo yet.
+
+- **Run locally:** `npm run dev` (wrangler dev, port 8930). **Test:** `npm test`
+  (104 assertions + 200-game random self-play soak — keep it green).
+  **Deploy:** Dan is dashboard-only, NO CLI — the repo connects to a Worker
+  via the dashboard's Git integration (Workers Builds), so `git push` to main
+  deploys. Never tell him to run wrangler commands; dashboard paths only
+  (secrets: Settings → Variables and Secrets). See README "Deploying".
+- 1–4 humans control the 4 souls; rooms are 4-letter codes; one player may
+  claim several seats. Reconnect is automatic (localStorage token).
+
+## Game rules in one paragraph (full detail: RULES.md)
+
+Souls are Hopeful (see/illuminate 1 tile around them) or Hopeless (see only
+their tile, must move, move blind). Each turn: Move (reveal tiles at your open
+passages, unlit tiles are lost forever) or Stay (+1 Resolve max 2, burn a stack
+tile). Fractured tiles crumble to Void Rifts behind you; falling drops you out
+and you land hopeless in the rift's row/column next turn. Draugr strike
+everyone in straight-line sight when anyone moves (3 tiles burned + hopeless
+each; move out of the line and it misses you, +1 Resolve). Resolve spends:
+Move again / Rekindle / Endure / Brace (3→2) / Charge / Sustain. Each soul
+bears one rune mark from Rune Circles; win = all 4 souls on the same Gate with
+4 *distinct* runes of that gate's set. Stack empty = Niflheim's Embrace (a
+board tile is removed after every turn). Lose: both gates lost, rune circles
+can't complete the set (auto-checked), a faller with no tile to land on, or
+concession.
+
+## Key design decisions & departures from TNC (rationale in RULES.md §Design decisions)
+
+1. Rune glyphs corrected to real Elder Futhark (Dan's draft had mismatches).
+2. Resolve is earned by *evading* a triggered Draugr, never by being hit
+   (else Brace would be free).
+3. **Rekindle** (new spend): hopeless soul spends 1◆ at turn start to relight —
+   required because falls land you hopeless (Dan's rule) and a lone faller
+   would otherwise be unrecoverable.
+4. Two single-doorway Gates, permanent once placed, exempt from Niflheim
+   removal; still losable from the stack (watch the discard tracker).
+5. No rune passing (TNC passes keys); re-attunement is the safety valve.
+6. **Charge** (Dan's playtest rule): strike always lands on the charger, and
+   after the attack resolves *and the charger scrambles off*, the Draugr is
+   **banished** — bare ground, tile discarded. Only deliberate charges banish;
+   fall-onto → rift; blind stumble → remains.
+7. **Sweep before rekindle** (Dan's playtest rule): after every arrival, unlit
+   tiles are removed *before* the relight check, so a monster abandoned in
+   hopelessness can't be preserved by a rekindle a moment later.
+8. **Rekindled souls place their own tiles** (Dan: "a player never places
+   tiles for another player") — departs from TNC where the current player draws.
+9. **Random Runes** (host variant): the stones assign a random rune not borne
+   by any soul (decline allowed). With it, **lingering**: Staying on a Rune
+   Circle doesn't crumble it — tile burns, turn passes, fresh draw each turn;
+   crumbles on leave.
+10. Stay ends the turn (no stay-then-move-again); scrambling never re-triggers
+    the attack; landing choice is row∪column at landing time.
+
+## Architecture
+
+| Piece | What to know |
+|---|---|
+| `public/shared/engine.js` | **Single source of truth.** Pure rules engine, no I/O. Queue-driven state machine: `s.queue` of steps, `s.awaiting` = the one pending player decision (`type` + `seat` + options); `applyAction(state, seat, payload)` validates and runs until the next decision. Emits semantic **events** (`move/fall/land/fracture/reveal/attack(+rays)/hit/sweep/banish/rune/rekindle/stay/burn`) per action into `s.events` (cleared each action) and `s.turnEvents` → snapshotted to `s.lastTurn` at each begin-turn (drives Replay). `publicState()` redacts the stack to a count. Difficulty: `TILE_PRESETS` (normal/hard) + `normTiles()` clamps. Bundled into the Worker AND served to the browser. |
+| `worker/index.js` | Cloudflare Worker entry + `MirkwoodRoom` Durable Object (SQLite-backed = free plan; declared in wrangler.jsonc migrations). One DO per room, addressed by code; hibernating WebSockets (`serializeAttachment` holds the token); room + engine state persisted to DO storage on every action (survives disconnects/restarts); 24h idle purge alarm. Handles: create/join/claim/claimAll/config/start/act/concede/restart/chat/leave. Seat ownership validated per action. Host handoff on leave; pre-game seats freed on disconnect; restart prunes absent players' seats. |
+| `public/client.js` | No-build browser client. Renders whole board SVG per state. **Animation choreography:** `buildTimeline(events, cap)` assigns sequential start times; CSS overlays use `animation-delay` + `fill-mode: both`; delayed SMIL uses `begin="indefinite"` + `beginElementAt` (`data-mk-delay` attr) because SMIL begin offsets are document-relative. Token movement = chained translate segments (multi-move turns replay smoothly). Procedural Norse tile art (shared `#mk-*` gradient defs injected at startup) with **art-manifest overrides**. Animations toggle (`mk-anims` localStorage) strips ALL motion. |
+| `public/art/` | Custom art system: `manifest.json` maps keys → images (per-tile replacement, procedural fallback). Full artist spec in `art/README.md` (rot-0 orientation, ~29% path mouths, `-fractured` variants, `token-0..3`, `rift/mist/board-bg`). Example: `examples/cross-sample.svg`. |
+| `test/engine.test.js` | 104 assertions covering every mechanic + playtest rules + difficulty + replay + random runes, plus the 200-game soak. Test decks: `deck(n)` = 2 gates + 4 rune circles + n crosses (4 circles needed or the rune-scarcity auto-loss fires instantly). |
+
+Client↔server protocol: JSON over WS at `/ws?new=1` or `/ws?room=CODE` (URL
+routes to the DO). Messages: `create/join/claim/claimAll/config/start/act
+{payload}/concede/restart/chat/leave`; server sends `joined/room/state/chat/
+error{fatal?}`.
+
+## UI features
+
+Lobby (name → create/join → seat claiming → host difficulty panel with
+Normal/Hard presets + full tile-count customization + Random Runes toggle,
+summary synced to all). In-game: turn indicators (TURN chip, rotating token
+ring, ◈ banner, board glow on your decision), tile preview with rotation (R
+key), modals (attune / rune-draw / brace / confirm / endgame), Soul status card
+tab (per-soul do's/don'ts + resolve spends, click any player card), in-app
+rules modal, saga log + chat tabs, discard tracker, ⟲ Replay (previous
+player's whole turn, available to everyone incl. late joiners), Animations
+toggle, Leave buttons everywhere (lobby/in-game/endgame), mobile layout
+(tab panes have fixed heights — they collapse to 0 otherwise).
+
+## Working conventions (Dan)
+
+- Dan commits to main himself and runs deploys — build and verify, don't nag
+  about git (no repo here yet anyway).
+- Playtest-feedback driven: he brings specific rule changes; implement
+  faithfully, flag balance implications, document departures in RULES.md's
+  numbered list.
+- Firebase deliberately NOT integrated: DO storage covers live play. The seam
+  for later (stats/accounts/invite gate like his other apps) is `save()` in
+  worker/index.js.
+- Preview-tab gotcha: Chrome throttles timers/rAF in the hidden preview tab
+  after ~5 min — reload the page or restart the preview before long eval loops
+  or screenshots.
+
+## Watchlist / open balance questions
+
+- **No evidence the game is winnable by good play** (random play: 0/200).
+  Priority: telemetry or a heuristic bot. Knobs: rune circle count (6),
+  landing-hopeless, 3-tile hit penalty.
+- Evade-Resolve farming (dance in/out of draugr sight); tile costs probably
+  self-police — watch.
+- Linger + Stay is slightly self-funding (+1◆ per re-roll turn, cap 2); lever:
+  skip resolve gain on linger turns (one line in `doStay`).
+- Hard (5 circles) + rune-scarcity auto-loss is knife-edged; Random Runes'
+  linger rule was added partly to defuse Random+Hard.
+- Gate assembly funnel: single doorway + single-occupancy approach tile means
+  the last souls queue up; seems thematic, confirm it isn't miserable.
+
+## Built in the final session (all verified)
+
+- **Firestore telemetry**: one doc per finished saga → `sagas` collection.
+  `worker/firestore.js` (service-account JWT → REST API; bypasses rules);
+  called from `maybeLogEnd()` in the DO. **Inert until Dan configures BOTH
+  as Cloudflare secrets**: `FIREBASE_PROJECT_ID` + `FIREBASE_SERVICE_ACCOUNT`
+  (`wrangler secret put …`). Nothing Firebase-related lives in the repo —
+  safe to publish. README documents least-privilege setup (dedicated SA with
+  only Cloud Datastore User role) and key rotation. Never blocks gameplay.
+- **Invite links**: `/?room=CODE` auto-joins (first-timers get code pre-filled
+  to pick a name); clicking the room code (lobby or topbar) copies the link.
+- **STATE_VERSION** (engine export, currently 1): DO `load()` resets
+  mismatched persisted sagas to the lobby with a friendly notice. **Bump it on
+  any breaking state-shape change.**
+- **Admin QOL**: connection dot (topbar); host kick (✕ on seats/player cards,
+  lobby AND mid-game); anyone may **adopt** an unclaimed soul mid-game (worker
+  'kick' msg + mid-game 'claim' of vacant seats) — the vanished-player rescue.
+  Orphaned lobby hosts (lost token) hand off to the next joiner.
+- **Soft turn timer** (host option, 60s–3min, in room.config): per-decision
+  countdown in the topbar; social pressure only, no auto-action.
+- **Self-play harness**: `npm run selfplay -- --games 500 --preset hard
+  --randomRunes`. Greedy policy in `tools/selfplay.js` (~0.5ms/game,
+  seeded, zero cost). **Baseline result: 0% wins; ~80% of losses are
+  "Too many Rune Circles are lost" (avg 2.1 matching marks at end).**
+  The rune-circle economy is the primary suspect — first improve `policy()`
+  (protect circles, coordinate pantheons, use linger) to separate policy
+  weakness from genuine imbalance, THEN tune tile counts. Stalemates
+  (cut off in Niflheim) are auto-conceded by the harness after 600 stagnant
+  steps and counted as losses.
+
+## Recommended next steps (not started)
+
+1. **Balance pass using the harness** — refine `policy()` in tools/selfplay.js
+   until it plays credibly, then measure win rates across presets and tune
+   (rune circle count is knob #1). This is a script job, NOT Claude playing
+   games — thousands of games cost nothing.
+2. Sound manifest mirroring the art manifest, hooked into the event timeline
+   (shriek/fracture/rune/banish), with a mute toggle.
+3. End-of-game "Saga Chronicle" shareable summary screen.
+4. Later, after balance: Advanced-game monsters gated by the difficulty panel —
+   Garm (Keeper), Níðhöggr (Pit Fiend/diagonal rifts), Hel's Herald (Dirge/omens).
+5. git init + GitHub + CI running npm test.

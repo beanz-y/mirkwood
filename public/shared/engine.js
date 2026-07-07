@@ -7,6 +7,10 @@
  * Directions: 0=N 1=E 2=S 3=W.
  */
 
+// Bump when the state shape changes incompatibly: rooms persisted with an
+// older version are gracefully reset by the worker instead of crashing.
+export const STATE_VERSION = 1;
+
 export const SIZE = 6;
 export const DIRS = [[-1, 0], [0, 1], [1, 0], [0, -1]];
 export const DIRNAMES = ['north', 'east', 'south', 'west'];
@@ -140,6 +144,9 @@ function buildStack(s, C) {
 
 export function createGame(opts = {}) {
   const s = {
+    v: STATE_VERSION,
+    startedAt: Date.now(),
+    turnsTaken: 0,
     phase: 'setup', // setup | play | won | lost
     grid: Array(SIZE * SIZE).fill(null), // null | {tile:{id,kind,fractured,gate,rot,exits}} | {rift:true}
     stack: [],
@@ -559,6 +566,7 @@ STEPS['begin-turn'] = (s) => {
   const p = P(s, s.turn);
   snapshotTurn(s, s.turnOwner ?? s.turn);
   s.turnOwner = s.turn;
+  s.turnsTaken = (s.turnsTaken || 0) + 1;
   s.moveCtx = null;
   s.movesThisTurn = 0;
   log(s, `— ${p.name}'s turn —`, 'turn');
@@ -1278,6 +1286,7 @@ export function publicState(s) {
     events: s.events,
     lastTurn: s.lastTurn || null,
     randomRunes: !!s.randomRunes,
+    turnsTaken: s.turnsTaken || 0,
     lit: [...litSet(s)],
   };
 }

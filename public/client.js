@@ -20,7 +20,27 @@ let awaitingSig = '';
 let moveAgainArmed = false;
 let clickMap = new Map(); // "r,c" -> handler
 let transientFx = null;   // choreographed one-shot animation timeline
+let decisionDeadline = null; // soft turn-timer deadline for the current decision
 let soulSeat = null;      // which soul the status card shows (null = auto)
+
+function updateTimer() {
+  const el = $('turn-timer');
+  if (!el) return;
+  if (!decisionDeadline || !state || (state.phase !== 'play' && state.phase !== 'setup')) {
+    el.classList.add('hidden');
+    return;
+  }
+  el.classList.remove('hidden');
+  const left = Math.ceil((decisionDeadline - Date.now()) / 1000);
+  if (left <= 0) {
+    el.textContent = '⌛ 0:00';
+    el.classList.add('urgent');
+    return;
+  }
+  el.classList.toggle('urgent', left <= 10);
+  el.textContent = `⌛ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+}
+setInterval(updateTimer, 500);
 let anims = localStorage.getItem('mk-anims') !== 'off';
 const sm = s => (anims ? s : ''); // gate SMIL snippets on the animations setting
 
@@ -103,21 +123,30 @@ function buildTimeline(events, cap = 2.8) {
 
 // The room code is part of the WebSocket URL so the Cloudflare Worker can
 // route the connection to that room's Durable Object.
+function setConn(st) {
+  const d = $('conn-dot');
+  if (!d) return;
+  d.className = 'conn ' + st;
+  d.title = { on: 'Connected', wait: 'Reconnecting…', off: 'Disconnected' }[st] || st;
+}
+
 function openSocket(query, onReady) {
   clearTimeout(reconnectTimer);
   if (ws) { ws.onclose = null; ws.onmessage = null; try { ws.close(); } catch { /* gone */ } }
+  setConn('wait');
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}/ws?${query}`);
-  ws.onopen = onReady;
+  ws.onopen = () => { setConn('on'); onReady(); };
   ws.onmessage = (ev) => handle(JSON.parse(ev.data));
   ws.onclose = () => {
     clearTimeout(reconnectTimer);
-    if (lastCode && token) reconnectTimer = setTimeout(rejoin, 2000);
+    if (lastCode && token) { setConn('wait'); reconnectTimer = setTimeout(rejoin, 2000); }
+    else setConn('off');
   };
 }
 
 function rejoin() {
-  if (!lastCode || !token) return;
+  if (!lastCode) return; // token may be empty on a first visit: the server mints one
   openSocket(`room=${encodeURIComponent(lastCode)}`, () =>
     send({ t: 'join', code: lastCode, name: myName, token }));
 }
@@ -209,19 +238,34 @@ function handle(msg) {
   }
 }
 
+function toast(text, ok) {
+  let el = $('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+  }
+  el.style.cssText = `position:fixed;top:52px;left:50%;transform:translateX(-50%);padding:8px 18px;border-radius:8px;z-index:99;font-size:14px;border:1px solid ${ok ? 'var(--good)' : 'var(--danger)'};background:${ok ? '#16301f' : '#3a1c1c'};color:${ok ? 'var(--good)' : 'var(--danger)'};`;
+  el.textContent = text;
+  el.style.display = 'block';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = 'none'; }, 3500);
+}
+
+function copyInvite() {
+  if (!room || !room.code) return;
+  const url = `${location.origin}/?room=${room.code}`;
+  navigator.clipboard.writeText(url).then(
+    () => toast('Invite link copied — send it to your party!', true),
+    () => toast(url, true), // clipboard blocked: at least show it
+  );
+}
+$('room-tag').onclick = copyInvite;
+$('room-code').onclick = copyInvite;
+
 function showError(text) {
   if (!room || !room.started) { $('lobby-error').textContent = text; return; }
-  let toast = $('toast');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.id = 'toast';
-    toast.style.cssText = 'position:fixed;top:52px;left:50%;transform:translateX(-50%);background:#3a1c1c;border:1px solid var(--danger);color:var(--danger);padding:8px 18px;border-radius:8px;z-index:99;font-size:14px;';
-    document.body.appendChild(toast);
-  }
-  toast.textContent = text;
-  toast.style.display = 'block';
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => { toast.style.display = 'none'; }, 3500);
+  toast(text, false);
 }
 
 // ---------------------------------------------------------------- lobby wiring
@@ -250,17 +294,20 @@ function pushConfig(label) {
   cfg.gateValhalla = $('cfg-gateValhalla').checked ? 1 : 0;
   cfg.gateFolkvangr = $('cfg-gateFolkvangr').checked ? 1 : 0;
   cfg.randomRunes = $('cfg-randomRunes').checked ? 1 : 0;
+  cfg.turnTimer = +$('cfg-turnTimer').value;
   send({ t: 'config', config: cfg });
 }
 const randomRunesOn = () => ($('cfg-randomRunes').checked ? 1 : 0);
-$('preset-normal').onclick = () => send({ t: 'config', config: { ...TILE_PRESETS.normal, randomRunes: randomRunesOn(), label: 'Normal' } });
-$('preset-hard').onclick = () => send({ t: 'config', config: { ...TILE_PRESETS.hard, randomRunes: randomRunesOn(), label: 'Hard' } });
+const timerVal = () => +$('cfg-turnTimer').value;
+$('preset-normal').onclick = () => send({ t: 'config', config: { ...TILE_PRESETS.normal, randomRunes: randomRunesOn(), turnTimer: timerVal(), label: 'Normal' } });
+$('preset-hard').onclick = () => send({ t: 'config', config: { ...TILE_PRESETS.hard, randomRunes: randomRunesOn(), turnTimer: timerVal(), label: 'Hard' } });
 $('custom-toggle').onclick = () => $('custom-tiles').classList.toggle('hidden');
 for (const k of CFG_KEYS) $('cfg-' + k).onchange = () => pushConfig('Custom');
 $('cfg-gateValhalla').onchange = () => pushConfig('Custom');
 $('cfg-gateFolkvangr').onchange = () => pushConfig('Custom');
-// the variant is orthogonal to difficulty: toggling it keeps the preset label
+// variants are orthogonal to difficulty: toggling them keeps the preset label
 $('cfg-randomRunes').onchange = () => pushConfig((room && room.config && room.config.label) || 'Normal');
+$('cfg-turnTimer').onchange = () => pushConfig((room && room.config && room.config.label) || 'Normal');
 
 $('chat-form').onsubmit = (e) => {
   e.preventDefault();
@@ -374,6 +421,11 @@ function render() {
     moveAgainArmed = false;
     const rots = legalRots(aw);
     previewRot = rots.includes(previewRot) ? previewRot : (rots[0] ?? 0);
+    // soft turn timer: a fresh countdown for every decision
+    const tt = room.config && room.config.turnTimer;
+    decisionDeadline = (tt && aw && (state.phase === 'play' || state.phase === 'setup'))
+      ? Date.now() + tt * 1000 : null;
+    updateTimer();
   }
 
   renderTopbar();
@@ -400,9 +452,13 @@ function renderLobby() {
   room.seats.forEach(s => {
     const div = document.createElement('div');
     div.className = 'seat' + (s.claimed ? ' claimed' : '') + (s.you ? ' you' : '');
-    div.innerHTML = `<div class="seat-name" style="color:${colors[s.seat]}">Soul ${s.seat + 1}</div>
-      <div class="seat-sub">${s.claimed ? s.name + (s.you ? ' (you)' : '') : 'unclaimed — click to take'}</div>`;
+    const kick = room.youAreHost && s.claimed && !s.you
+      ? `<button class="seat-kick" title="Release this soul">✕</button>` : '';
+    div.innerHTML = `<div class="seat-name" style="color:${colors[s.seat]}">Soul ${s.seat + 1}${kick}</div>
+      <div class="seat-sub">${s.claimed ? escapeHtml(s.name) + (s.you ? ' (you)' : '') : 'unclaimed — click to take'}</div>`;
     div.onclick = () => send({ t: 'claim', seat: s.seat });
+    const kb = div.querySelector('.seat-kick');
+    if (kb) kb.onclick = (e) => { e.stopPropagation(); send({ t: 'kick', seat: s.seat }); };
     list.appendChild(div);
   });
   const allClaimed = room.seats.every(s => s.claimed);
@@ -423,12 +479,14 @@ function renderLobby() {
     $('cfg-gateValhalla').checked = !!cfg.gateValhalla;
     $('cfg-gateFolkvangr').checked = !!cfg.gateFolkvangr;
     $('cfg-randomRunes').checked = !!cfg.randomRunes;
+    $('cfg-turnTimer').value = String(cfg.turnTimer || 0);
   }
   const total = CFG_KEYS.reduce((n, k) => n + cfg[k], 0) + cfg.gateValhalla + cfg.gateFolkvangr;
   const gates = cfg.gateValhalla + cfg.gateFolkvangr;
   $('diff-summary').textContent =
     `${cfg.label || 'Custom'} — ${total} tiles · ${cfg.rune} rune circles · ${cfg.draugr} draugr · ${gates} gate${gates === 1 ? '' : 's'}`
-    + (cfg.randomRunes ? ' · random runes' : '');
+    + (cfg.randomRunes ? ' · random runes' : '')
+    + (cfg.turnTimer ? ` · ${cfg.turnTimer}s timer` : '');
 }
 
 function renderTopbar() {
@@ -494,14 +552,28 @@ function renderPlayers() {
       : (p.hopeful ? 'hopeful' : '<span class="hopeless-tag">hopeless</span>');
     const turnChip = state.phase === 'play' && state.turn === p.seat
       ? '<span class="turn-chip">turn</span>' : '';
+    // mid-game seat administration: adopt an abandoned soul; host may release one
+    const seatInfo = room.seats[p.seat];
+    let admin = '';
+    if (seatInfo && !seatInfo.claimed) {
+      admin = `<button class="seat-admin" data-act="adopt" title="Take control of this abandoned soul">adopt</button>`;
+    } else if (room.youAreHost && seatInfo && seatInfo.claimed && !seatInfo.you) {
+      admin = `<button class="seat-admin" data-act="kick" title="Release this soul so another player can adopt it">✕</button>`;
+    }
     div.innerHTML = `
       <div class="flame" style="background:${p.color}">${(p.name[0] || '?').toUpperCase()}</div>
       <div class="pinfo">
         <div class="pname">${p.name}${isMine(p.seat) ? ' ✦' : ''}${turnChip}</div>
         <div class="pstat">${status} · resolve <span class="resolve-pips">${'◆'.repeat(p.resolve)}${'◇'.repeat(2 - p.resolve)}</span></div>
       </div>
-      ${rune}`;
+      ${admin}${rune}`;
     div.onclick = () => { soulSeat = p.seat; selectTab('soul'); renderSoul(); };
+    const ab = div.querySelector('.seat-admin');
+    if (ab) ab.onclick = (e) => {
+      e.stopPropagation();
+      if (ab.dataset.act === 'adopt') send({ t: 'claim', seat: p.seat });
+      else confirmModal(`Release ${p.name}'s soul so another player can adopt it? Their player can rejoin and re-adopt it too.`, () => send({ t: 'kick', seat: p.seat }));
+    };
     wrap.appendChild(div);
   });
 }
@@ -1271,5 +1343,22 @@ function renderModal() {
 
 // ---------------------------------------------------------------- go
 
-// returning player: rejoin the last saga automatically
-if (lastCode && token) rejoin();
+// invite links: /?room=CODE joins that saga directly (first-time visitors get
+// the code pre-filled so they can pick a name); otherwise a returning player
+// rejoins their last saga
+const urlRoom = new URLSearchParams(location.search).get('room');
+if (urlRoom && /^[a-zA-Z]{4}$/.test(urlRoom)) {
+  const code = urlRoom.toUpperCase();
+  history.replaceState(null, '', location.pathname); // don't refight localStorage on refresh
+  if (myName) {
+    lastCode = code;
+    localStorage.setItem('mk-code', code);
+    rejoin();
+  } else {
+    $('code-input').value = code;
+    $('lobby-error').textContent = 'You were invited to saga ' + code + ' — choose a name and join!';
+    $('name-input').focus();
+  }
+} else if (lastCode && token) {
+  rejoin();
+}

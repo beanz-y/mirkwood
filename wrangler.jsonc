@@ -16,5 +16,10 @@
     // SQLite-backed DO classes work on the Workers Free plan
     { "tag": "v1", "new_sqlite_classes": ["MirkwoodRoom"] }
   ],
+  // Saga telemetry is configured entirely through encrypted secrets — nothing
+  // Firebase-related lives in this repo, so it is safe to publish:
+  //   npx wrangler secret put FIREBASE_PROJECT_ID
+  //   npx wrangler secret put FIREBASE_SERVICE_ACCOUNT   (paste the JSON)
+  // Unset = telemetry disabled. See README "Saga telemetry".
   "observability": { "enabled": true }
 }
