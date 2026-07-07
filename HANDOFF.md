@@ -4,6 +4,15 @@
 sessions. Read this first; then RULES.md for the game rules and README.md for
 run/deploy. Everything below has been built, tested, and browser-verified.*
 
+> **Addendum (2026-07-07, separation & mythos pass):** terminology below is
+> partially stale. Player-facing names are now **Berserk / Ward / Press On**
+> (formerly Charge / Sustain / Move Again — internal payload kinds `charge`,
+> `sustain`, `canMoveAgain` are unchanged); rune sets realigned (Ansuz →
+> Valhalla, Fehu in, Isa out) with **STATE_VERSION = 2**; *draugar* plural,
+> *kindle*, *Ember of Hope*, Sigrun replaced Eira. All near-verbatim TNC
+> rulebook phrasing was rewritten. RULES.md departures #14–15 document it.
+> The repo is on GitHub now; push to main deploys via Workers Builds.
+
 ---
 
 ## What this is

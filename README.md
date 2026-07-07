@@ -1,8 +1,9 @@
 # Mirkwood (Myrkviðr)
 
 A cooperative, online, 4-player tile-placement game of Viking souls lost in the
-mist-forest Myrkviðr, seeking the gates of Valhalla and Fólkvangr. Adapted from
-*The Night Cage* — full rules and design notes in [RULES.md](RULES.md).
+mist-forest Myrkviðr, seeking the gates of Valhalla and Fólkvangr. Inspired by
+*The Night Cage* (Smirk & Dagger) — Mirkwood's own rules text and all design
+departures are in [RULES.md](RULES.md).
 
 Runs on **Cloudflare Workers**: static assets + one Durable Object per game
 room (SQLite-backed, works on the free plan). Games persist in DO storage, so
@@ -179,4 +180,4 @@ convergence timing, or 2-ply lookahead in `tools/policy.js`.
 | `public/shared/engine.js` | Pure rules engine (no I/O). A queue-driven state machine: every player decision is an `awaiting` prompt; `applyAction` validates and advances. Bundled into the Worker *and* served to the browser for constants/tile geometry — one source of truth. |
 | `worker/index.js` | Worker entry (routes `/ws?room=CODE` upgrades to the room's Durable Object) + `MirkwoodRoom` DO: hibernating WebSockets, seats/members, engine state persisted to DO storage on every action. Broadcasts `publicState` (path stack redacted to a count). |
 | `public/` | No-build browser client: procedural Norse-forest SVG tile art (replaceable via the art manifest), placement previews with rotation (press **R**), modals for rune attunement / bracing / endgame, saga log + chat, in-app rules reference, and a per-soul status card (Soul tab / click any player card). The engine emits semantic events per action (`state.events`) and the client choreographs them into a sequence — token slides, fracture collapse, draugr shriek + corridor strike wave, hit shakes, hope dimming, mist fades, rune bursts — with an "Animations" on/off toggle (persisted per browser). |
-| `test/engine.test.js` | 64 assertions across every mechanic plus a 200-game random self-play soak. |
+| `test/engine.test.js` | 104 assertions across every mechanic plus a 200-game random self-play soak. |

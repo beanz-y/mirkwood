@@ -371,7 +371,7 @@ section('rune capacity: held marks reduce the circles needed');
   const s = createGame({ seed: 14, stack: deck(30) });
   doSetup(s);
   // three distinct Valhalla marks held -> only one circle is needed
-  ['thurisaz', 'eihwaz', 'isa'].forEach((k, i) => { s.players[i].rune = { p: 'valhalla', k }; });
+  ['thurisaz', 'eihwaz', 'raido'].forEach((k, i) => { s.players[i].rune = { p: 'valhalla', k }; });
   while (s.stack.filter(t => t.kind === 'rune').length > 1) {
     s.stack.splice(s.stack.findIndex(t => t.kind === 'rune'), 1);
   }
@@ -427,6 +427,12 @@ section('difficulty: tile counts are configurable and clamped');
   check(count(custom, 'draugr') === 0, 'custom: no draugr at all');
   check(count(custom, 'rune') === 12, 'custom: rune count clamped to 12');
   check(count(custom, 'gate') === 1, 'custom: at least one gate is forced');
+
+  // the discard tracker's denominators come from the real stack composition
+  const hardPub = publicState(hard);
+  check(hardPub.tileTotals && hardPub.tileTotals.rune === 5 && hardPub.tileTotals.draugr === 15,
+    'publicState exposes the true tile totals (hard: 5 circles, 15 draugar)');
+  check(publicState(custom).tileTotals.draugr === 0, 'tile totals track custom counts too');
 }
 
 // ---------------------------------------------------------------- last-turn replay events

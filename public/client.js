@@ -528,8 +528,8 @@ function bannerText() {
     'fall-landing': `${who} tumbles through the void${mine}`,
     'place-landing': `${who} reaches for footing${mine}`,
     'place-blind': `${who} feels through the mist${mine}`,
-    'place-scramble': `${who} scrambles for footing${mine}`,
-    'scramble': `${who} scrambles away${mine}`,
+    'place-scramble': `${who} claws for footing${mine}`,
+    'scramble': `${who} staggers clear${mine}`,
     'niflheim': `Niflheim demands a tile of ${who}${mine}`,
   };
   return texts[aw.type] || `${who} decides${mine}`;
@@ -594,7 +594,7 @@ function renderSoul() {
   const sub = p.falling
     ? 'Tumbling through the void between the worlds.'
     : p.hopeful
-      ? 'A flicker of hope lights the paths around you.'
+      ? 'The ember of your hope lights the paths around you.'
       : 'The mist has swallowed your light.';
   const can = [], cant = [];
   if (p.falling) {
@@ -604,9 +604,9 @@ function renderSoul() {
   } else if (p.hopeful) {
     can.push('You light every connected path one space around you (no diagonals).');
     can.push('Move along connected paths — new tiles are revealed at your open passages.');
-    can.push('Stay to steel your Resolve (+1 ◆, max 2 — but standing still burns a tile).');
+    can.push('Stay to steel your Resolve (+1 ◆, max 2 — but hope gutters while you linger: a tile burns from the stack).');
     cant.push('Two souls never share a tile (Gates excepted).');
-    cant.push('You cannot step onto a Draugr unless you Charge (1 ◆).');
+    cant.push('You cannot step onto a Draugr unless you go Berserk (1 ◆).');
   } else {
     can.push('You see only the tile you stand on.');
     can.push('You <b>must move</b> every turn — staying costs 1 ◆ (Endure).');
@@ -616,12 +616,12 @@ function renderSoul() {
     cant.push('Step carefully — a Draugr drawn beneath your feet strikes at once.');
   }
   const acts = [
-    ['Move again', 'after your move, move once more (max twice a turn)', !p.falling],
+    ['Press on', 'after your move, take another step (max twice a turn)', !p.falling],
     ['Rekindle', 'regain hope at the start of your turn', !p.hopeful],
     ['Endure', 'stay put while hopeless', !p.hopeful && !p.falling],
     ['Brace', 'lose 2 tiles instead of 3 when a Draugr strikes', true],
-    ['Charge', 'take a Draugr’s strike head-on to banish it from the forest', p.hopeful],
-    ['Sustain', 'skip Niflheim’s toll at the end of your turn', !!state.niflheim],
+    ['Berserk', 'take a Draugr’s strike head-on to banish it from the forest', p.hopeful],
+    ['Ward', 'skip Niflheim’s toll at the end of your turn', !!state.niflheim],
   ];
   const actHtml = acts.map(([name, desc, relevant]) => `
     <div class="soul-act ${p.resolve > 0 && relevant ? '' : 'unavailable'}">
@@ -668,10 +668,12 @@ function renderDiscard() {
   const d = state.discard;
   const count = kind => d.filter(t => t.kind === kind).length;
   const gates = d.filter(t => t.kind === 'gate').map(t => GATE_NAMES[t.gate]);
+  const tot = state.tileTotals || {};
+  const den = k => tot[k] !== undefined ? `/${tot[k]}` : '';
   $('discard-counts').innerHTML = `
     <span class="d-item">paths <b>${count('straight') + count('tee') + count('cross') + count('start')}</b></span>
-    <span class="d-item ${count('rune') ? 'bad' : ''}">rune circles <b>${count('rune')}</b>/6</span>
-    <span class="d-item">draugr <b>${count('draugr')}</b>/12</span>
+    <span class="d-item ${count('rune') ? 'bad' : ''}">rune circles <b>${count('rune')}</b>${den('rune')}</span>
+    <span class="d-item">draugar <b>${count('draugr')}</b>${den('draugr')}</span>
     <span class="d-item ${gates.length ? 'bad' : ''}">gates <b>${gates.length ? gates.join(', ') : 'none'}</b></span>`;
 }
 
@@ -916,7 +918,7 @@ function addInteractions(parts, aw) {
       aw.moves.forEach(m => {
         clickRect(parts, m.r, m.c, m.kind, () => {
           if (m.kind === 'charge') {
-            confirmModal('Charge the Draugr? Its strike WILL land on you — but with its spite spent, it is banished from the forest. (1 Resolve)', () => act({ kind: 'move', d: m.d }));
+            confirmModal('Go berserk and rush the Draugr? Its strike WILL land on you — but with its spite spent, it is banished from the forest. (1 Resolve)', () => act({ kind: 'move', d: m.d }));
           } else if (m.kind === 'jump') {
             confirmModal('Leap into the Void Rift? You will fall, and land hopeless.', () => act({ kind: 'move', d: m.d }));
           } else {
@@ -931,7 +933,7 @@ function addInteractions(parts, aw) {
         aw.moves.forEach(m => {
           clickRect(parts, m.r, m.c, m.kind, () => {
             if (m.kind === 'charge') {
-              confirmModal('Charge the Draugr? Its strike WILL land on you, then it is banished. (2 Resolve in total)', () => act({ kind: 'move', d: m.d }));
+              confirmModal('Go berserk and rush the Draugr? Its strike WILL land on you, then it is banished. (2 Resolve in total)', () => act({ kind: 'move', d: m.d }));
             } else if (m.kind === 'jump') {
               confirmModal('Leap into the Void Rift?', () => act({ kind: 'move', d: m.d }));
             } else {
@@ -1148,7 +1150,7 @@ function renderActionBar() {
     case 'place-tile': note('Place the revealed tile on a glowing space'); break;
     case 'place-blind': note('Orient the tile you feel beneath your hands, then click it'); break;
     case 'place-landing': note('Choose how you land — rotate, then click'); break;
-    case 'place-scramble': note('Orient your footing, then click'); break;
+    case 'place-scramble': note('Orient the tile you clutch at, then click'); break;
     case 'action': {
       const p = state.players[aw.seat];
       if (aw.rekindle) btn('Rekindle hope <small>(1 ◆)</small>', () => act({ kind: 'rekindle' }));
@@ -1163,7 +1165,7 @@ function renderActionBar() {
     case 'post-move': {
       btn('End turn', () => act({ kind: 'end' }), 'primary');
       if (aw.canMoveAgain) {
-        btn(moveAgainArmed ? 'Cancel move' : 'Move again <small>(1 ◆)</small>', () => {
+        btn(moveAgainArmed ? 'Cancel move' : 'Press on <small>(1 ◆)</small>', () => {
           moveAgainArmed = !moveAgainArmed;
           render();
         });
@@ -1173,9 +1175,9 @@ function renderActionBar() {
     }
     case 'swap-draugr': note('The Draugr must take a connected path — choose which'); break;
     case 'fall-landing': note('Choose where to fall back into Myrkviðr (along the rift’s row or column)'); break;
-    case 'scramble': note('Scramble to an adjacent space'); break;
+    case 'scramble': note('Find your footing — choose an adjacent space'); break;
     case 'niflheim': {
-      if (aw.canSustain) btn('Sustain <small>(1 ◆)</small>', () => act({ sustain: true }));
+      if (aw.canSustain) btn('Ward <small>(1 ◆)</small>', () => act({ sustain: true }));
       note('Niflheim claims a tile — click one to surrender it');
       break;
     }

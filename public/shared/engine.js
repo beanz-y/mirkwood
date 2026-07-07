@@ -9,30 +9,32 @@
 
 // Bump when the state shape changes incompatibly: rooms persisted with an
 // older version are gracefully reset by the worker instead of crashing.
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2; // v2: rune realignment (ansuz→valhalla, fehu in, isa out)
 
 export const SIZE = 6;
 export const DIRS = [[-1, 0], [0, 1], [1, 0], [0, -1]];
 export const DIRNAMES = ['north', 'east', 'south', 'west'];
 export const OPP = d => (d + 2) % 4;
 
+// Odin's gate bears Odin's rune (Ansuz); Freyja's gate bears the Vanir's
+// wealth-rune (Fehu). Isa is retired — ice belongs to Niflheim, not paradise.
 export const RUNES = {
   valhalla: [
     { k: 'thurisaz', g: 'ᚦ', name: 'Thurisaz', gloss: 'Thorn — strength and defense' },
     { k: 'eihwaz',   g: 'ᛇ', name: 'Eihwaz',   gloss: 'Yew — endurance beyond death' },
-    { k: 'isa',      g: 'ᛁ', name: 'Isa',      gloss: 'Ice — willpower and sacrifice' },
     { k: 'raido',    g: 'ᚱ', name: 'Raido',    gloss: 'Ride — the righteous path' },
+    { k: 'ansuz',    g: 'ᚨ', name: 'Ansuz',    gloss: "God — wisdom and Odin's insight" },
   ],
   folkvangr: [
     { k: 'berkano', g: 'ᛒ', name: 'Berkano', gloss: 'Birch — nurture and protection' },
     { k: 'uruz',    g: 'ᚢ', name: 'Uruz',    gloss: 'Aurochs — vitality and growth' },
-    { k: 'ansuz',   g: 'ᚨ', name: 'Ansuz',   gloss: 'God — wisdom and inspiration' },
     { k: 'wunjo',   g: 'ᚹ', name: 'Wunjo',   gloss: 'Joy — harmony and fulfilment' },
+    { k: 'fehu',    g: 'ᚠ', name: 'Fehu',    gloss: "Cattle — wealth, Freyja's plenty" },
   ],
 };
 export const GATE_NAMES = { valhalla: 'Valhalla', folkvangr: 'Fólkvangr' };
 export const PLAYER_COLORS = ['#e8b23c', '#d05e5e', '#4fb8a8', '#a678d8'];
-export const DEFAULT_NAMES = ['Astrid', 'Bjorn', 'Eira', 'Torvald'];
+export const DEFAULT_NAMES = ['Astrid', 'Bjorn', 'Sigrun', 'Torvald'];
 
 // Difficulty presets and tile-count sanitizer. The host may start from a
 // preset or edit every count; ranges are clamped so a game is always playable.
@@ -186,6 +188,10 @@ export function createGame(opts = {}) {
     });
   }
   s.stack = opts.stack ? opts.stack.map(t => makeTileDef(s, t.kind, t)) : buildStack(s, normTiles(opts.tiles));
+  // stack composition at the start of the saga — drives the discard tracker's
+  // "lost X of Y" denominators whatever the difficulty or custom tile counts
+  s.tileTotals = { rune: 0, draugr: 0, gate: 0 };
+  for (const t of s.stack) if (t.kind in s.tileTotals) s.tileTotals[t.kind]++;
   const label = typeof opts.label === 'string' ? opts.label.slice(0, 12) : '';
   log(s, `The souls awaken beneath the boughs of Myrkviðr${label && label !== 'Normal' ? ` — a ${label} telling` : ''}.`, 'turn');
   s.queue.push({ t: 'setup', seat: 0 });
@@ -372,7 +378,7 @@ function startHitWave(s, trig, ctx) {
     ev(s, 'attack', { m: [mr, mc], rays, victims });
   }
   log(s, monsters.length > 1
-    ? `${monsters.length} Draugr shriek in a chain of spite!`
+    ? `${monsters.length} draugar shriek in a chain of spite!`
     : 'A Draugr shrieks and strikes!', 'danger');
   s.queue.unshift(...hits, { t: 'after-hits' });
 }
@@ -769,7 +775,7 @@ STEPS['end-turn'] = (s) => {
   if (s.phase !== 'play') return;
   if (!s.stack.length && !s.niflheim) {
     s.niflheim = true;
-    log(s, 'The last flicker of the path stack dies. NIFLHEIM’S EMBRACE begins.', 'danger');
+    log(s, 'The path stack is spent — the last ember of shared hope goes dark. NIFLHEIM’S EMBRACE begins.', 'danger');
   }
   if (s.niflheim) {
     const removable = [];
@@ -821,7 +827,7 @@ STEPS['scramble'] = (s, { seat, from, free, banish, then }) => {
     p.placed = false; p.r = null; p.c = null;
     p.falling = { r: fr, c: fc };
     ev(s, 'fall', { seat: p.seat, from: [fr, fc], r: fr, c: fc });
-    log(s, `${p.name} has nowhere to scramble — they tumble into the dark!`, 'danger');
+    log(s, `${p.name} finds no footing — they tumble into the dark!`, 'danger');
     sweep(s);
     s.queue.unshift({ t: 'end-turn' });
     return;
@@ -968,7 +974,7 @@ function doStay(s, p, aw) {
       ev(s, 'burn', { n: 1 });
       if (t.kind === 'gate') log(s, `The Gate of ${GATE_NAMES[t.gate]} is lost to the mist!`, 'danger');
       else if (t.kind === 'rune') log(s, 'A Rune Circle is lost from the path stack.', 'danger');
-      else log(s, 'Standing still burns hope — a path tile is lost.', 'info');
+      else log(s, 'Hope gutters in the stillness — a path tile is lost.', 'info');
     }
   }
   s.queue.unshift({ t: 'stay-fracture' });
@@ -1007,9 +1013,9 @@ function doMove(s, p, mv, then) {
   }
 
   if (kind === 'charge') {
-    if (p.resolve < 1) err('No Resolve to charge.');
+    if (p.resolve < 1) err('No Resolve to go berserk.');
     p.resolve--;
-    log(s, `${p.name} charges the Draugr!`, 'danger');
+    log(s, `${p.name} rushes the Draugr in a berserk fury!`, 'danger');
     const trig = triggeredBy(s, [originKey, destKey]);
     p.r = nr; p.c = nc;
     ev(s, 'move', { seat: p.seat, from: [or_, oc], to: [nr, nc] });
@@ -1172,7 +1178,7 @@ ACTIONS['scramble'] = (s, p, { r, c }, aw) => {
   if (!opt.draw) {
     ev(s, 'move', { seat: p.seat, from: [aw.from.r, aw.from.c], to: [r, c] });
     p.r = r; p.c = c; p.placed = true; p.falling = null;
-    log(s, `${p.name} scrambles away.`, 'info');
+    log(s, `${p.name} staggers clear.`, 'info');
     if (aw.banish) banishCell(s, aw.from.r, aw.from.c);
     s.queue.unshift({ t: 'arrive', seat: p.seat, then });
     return;
@@ -1190,7 +1196,7 @@ ACTIONS['scramble'] = (s, p, { r, c }, aw) => {
     ev(s, 'move', { seat: p.seat, from: [aw.from.r, aw.from.c], to: [r, c] });
     p.r = r; p.c = c; p.placed = true; p.falling = null;
     if (aw.banish) banishCell(s, aw.from.r, aw.from.c);
-    log(s, `${p.name} scrambles straight onto another Draugr!`, 'danger');
+    log(s, `${p.name} staggers straight onto another Draugr!`, 'danger');
     // the newly stumbled-onto draugr follows stumble rules: it is not banished
     s.queue.unshift({ t: 'scramble', seat: p.seat, from: [r, c], free: false, then });
     startHitWave(s, [[r, c]], { mover: p.seat, lateral: false });
@@ -1213,7 +1219,7 @@ ACTIONS['place-scramble'] = (s, p, { rot }, aw) => {
   if (from) ev(s, 'move', { seat: p.seat, from, to: [aw.r, aw.c] });
   p.r = aw.r; p.c = aw.c; p.placed = true; p.falling = null;
   if (banish && from) banishCell(s, from[0], from[1]);
-  log(s, `${p.name} scrambles onto ${describeTile(aw.tile)}.`, 'info');
+  log(s, `${p.name} claws their way onto ${describeTile(aw.tile)}.`, 'info');
   s.queue.unshift({ t: 'arrive', seat: p.seat, then });
 };
 
@@ -1224,14 +1230,14 @@ ACTIONS['post-move'] = (s, p, payload, aw) => {
     return;
   }
   if (payload.kind === 'move') {
-    if (!aw.canMoveAgain) err('Cannot move again.');
+    if (!aw.canMoveAgain) err('Cannot press on.');
     const mv = aw.moves.find(m => m.d === payload.d);
     if (!mv) err('Not a legal move.');
     if (p.resolve < 1) err('No Resolve.');
     s.awaiting = null;
     p.resolve--;
     s.movesThisTurn = (s.movesThisTurn || 0) + 1;
-    log(s, `${p.name} pushes on, spending Resolve to move again.`, 'info');
+    log(s, `${p.name} presses on, spending Resolve for another step.`, 'info');
     doMove(s, p, mv, 'post-move');
     return;
   }
@@ -1240,10 +1246,10 @@ ACTIONS['post-move'] = (s, p, payload, aw) => {
 
 ACTIONS['niflheim'] = (s, p, payload, aw) => {
   if (payload.sustain) {
-    if (!aw.canSustain || p.resolve < 1) err('Cannot sustain.');
+    if (!aw.canSustain || p.resolve < 1) err('Cannot ward the forest.');
     s.awaiting = null;
     p.resolve--;
-    log(s, `${p.name} spends Resolve to sustain the paths against Niflheim.`, 'good');
+    log(s, `${p.name} spends Resolve to ward the forest against Niflheim.`, 'good');
     return;
   }
   const opt = aw.options.find(o => o.r === payload.r && o.c === payload.c);
@@ -1286,6 +1292,7 @@ export function publicState(s) {
     events: s.events,
     lastTurn: s.lastTurn || null,
     randomRunes: !!s.randomRunes,
+    tileTotals: s.tileTotals || null,
     turnsTaken: s.turnsTaken || 0,
     lit: [...litSet(s)],
   };
