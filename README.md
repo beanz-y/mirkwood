@@ -124,12 +124,31 @@ npm run selfplay -- --games 500 --preset hard --randomRunes --seed 7
 ```
 
 [tools/selfplay.js](tools/selfplay.js) plays full games headlessly against the
-real engine with a greedy heuristic policy (~0.5 ms/game) and prints win rate,
-loss-reason histogram, average turns/stack/matching-marks. **This is the tool
-for balance questions** — refine the `policy()` function, re-run thousands of
-games, compare. Current v1 policy result: 0% wins with ~80% of losses being
-rune-circle starvation — the rune economy is the first thing to investigate
-(policy weakness and/or tuning knob).
+real engine (~1 ms/game): win rate, loss-reason histogram, circle-economy
+diagnostics, `--json` export, and `--tiles '{"rune":7}'` overrides for balance
+experiments. The party's brain lives in [tools/policy.js](tools/policy.js)
+(cooperative v2: shared pantheon plan, draugr-lane-aware placement, trigger
+simulation so no move ever strikes a teammate, circle guarding, gateward
+marching); [tools/trace.js](tools/trace.js) replays one seed with an annotated
+log for debugging.
+
+**State of play (v3, ~10k games):** the party completes real games —
+**0.1% wins on Normal (1/1000), 0.2% on Hard, 5% on the no-draugr control**.
+~24% of Normal games gather all four matching marks; remaining deaths are
+Niflheim stalemates (network fragmentation — fractured bridges crumble behind
+the first crosser) and late falls. The v3 breakthroughs, each found by tracing
+real lost games with `tools/trace.js`: target the gate's **doorway cell**, not
+the gate (souls literally camped against its back wall); treat **Void Rifts as
+teleports** (jump, land in the rift's row/column near the doorway — the only
+way home for a severed soul); anchor late-game movement to the **gate-connected
+component** (pairs otherwise strand 2+2); never jump without a ~7-tile stack
+margin (landing happens a full round later); and a gate-stander never leaves
+(their light holds the doorway tile alive).
+
+Calibration: experienced humans win TNC ~2%, so the greedy bot at 0.1% is
+plausibly ~20× weaker than practiced play — **still no license to retune tile
+counts**. Next levers: planned crossing order for fractured bridges, smarter
+convergence timing, or 2-ply lookahead in `tools/policy.js`.
 
 ## Room quality-of-life
 

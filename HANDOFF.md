@@ -143,21 +143,47 @@ toggle, Leave buttons everywhere (lobby/in-game/endgame), mobile layout
 - **Soft turn timer** (host option, 60s–3min, in room.config): per-decision
   countdown in the topbar; social pressure only, no auto-action.
 - **Self-play harness**: `npm run selfplay -- --games 500 --preset hard
-  --randomRunes`. Greedy policy in `tools/selfplay.js` (~0.5ms/game,
-  seeded, zero cost). **Baseline result: 0% wins; ~80% of losses are
-  "Too many Rune Circles are lost" (avg 2.1 matching marks at end).**
-  The rune-circle economy is the primary suspect — first improve `policy()`
-  (protect circles, coordinate pantheons, use linger) to separate policy
-  weakness from genuine imbalance, THEN tune tile counts. Stalemates
-  (cut off in Niflheim) are auto-conceded by the harness after 600 stagnant
-  steps and counted as losses.
+  --randomRunes --tiles '{"rune":7}' --json out.json`. Runner in
+  `tools/selfplay.js`; the party's brain in **`tools/policy.js`** (v2
+  cooperative: shared pantheon plan with on-board-gate pivoting, draugr-lane
+  placement risk weighted by live draw probability, trigger simulation so no
+  move strikes a teammate, damage-minimizing forced-draugr placement, circle
+  guarding + guarded-circle treks, locality-aware movement — paths evaporate,
+  distant goals are illusions — gateward marching with sideways-draw
+  suppression, no-suicide cornered-stay rule); `tools/trace.js SEED` replays
+  one game with an annotated log.
+
+  **Findings after ~10k games (v3): THE BOT WINS REAL GAMES** — Normal 0.1%
+  (1/1000), Hard 0.2%, no-draugr control 5%. ~24% of Normal games gather all
+  4 marks; the rest of the losses are Niflheim stalemates (network
+  fragmentation) and late falls. Every breakthrough came from TRACING a lost
+  seed (`node tools/trace.js SEED --tiles '{...}'` prints the board when the
+  stack died + at the end), never from weight-tweaking blind. v3 principles
+  now encoded in policy.js, in discovery order:
+  - locality: paths evaporate; only chase goals with a lit road (≤2) or a
+    teammate-guarded circle (≤5); otherwise fish fresh mist near yourself
+  - plan pivots decisively to an ON-BOARD gate (permanent = safe to swear to)
+  - the cornered-stay rule: never leap into a rift merely because it is the
+    only move (this suicided fully-marked parties one tile from home)
+  - **target the gate's DOORWAY cell, not the gate** (souls literally lined
+    up against its back wall and sustained forever)
+  - **Void Rifts are teleports**: jump and land in the rift's row/column near
+    the doorway — the only rescue for a soul severed from the gate network —
+    but never without ~7 tiles of stack margin (landing is a round away)
+  - late-game anchor = the GATE-CONNECTED component, not "near a teammate"
+    (pairs strand 2+2 otherwise); gate-standers never leave (beachhead light
+    holds the doorway tile alive); Niflheim removals spare shortest-road cells
+  Human benchmark: Dan+wife ~2% at TNC → greedy bot at 0.1% ≈ 20× weaker than
+  practiced humans, plausible. **Still no license to retune tile counts.**
 
 ## Recommended next steps (not started)
 
-1. **Balance pass using the harness** — refine `policy()` in tools/selfplay.js
-   until it plays credibly, then measure win rates across presets and tune
-   (rune circle count is knob #1). This is a script job, NOT Claude playing
-   games — thousands of games cost nothing.
+1. **Push the bot toward ~1-3%** (the human-calibrated band) before judging
+   balance: remaining known weaknesses are fractured-bridge crossing order
+   (bridges crumble behind the first crosser → plan single-file order or
+   route redundancy), convergence timing (finish marks with stack ≥ 20), and
+   possibly 2-ply lookahead. Trace stalemate seeds first; the boards tell you
+   the story. Script work — never have Claude play games manually.
 2. Sound manifest mirroring the art manifest, hooked into the event timeline
    (shriek/fracture/rune/banish), with a mute toggle.
 3. End-of-game "Saga Chronicle" shareable summary screen.
