@@ -7,7 +7,7 @@
  * hibernation. WebSockets use the hibernation API, so idle rooms cost nothing.
  */
 import { createGame, applyAction, publicState, concede, normTiles, STATE_VERSION } from '../public/shared/engine.js';
-import { logSaga } from './firestore.js';
+import { logSaga, telemetryConfigured } from './firestore.js';
 
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const makeCode = () =>
@@ -16,6 +16,39 @@ const makeCode = () =>
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    // telemetry self-test: open /telemetry-test in a browser to verify the
+    // whole chain (secrets -> token -> Firestore write). Writes one document
+    // of type "test" to the sagas collection. Harmless diagnostic.
+    if (url.pathname === '/telemetry-test') {
+      const headers = { 'Content-Type': 'application/json' };
+      if (!telemetryConfigured(env)) {
+        return new Response(JSON.stringify({
+          ok: false,
+          configured: false,
+          hint: 'Set BOTH secrets on this Worker (dashboard: Settings → Variables and Secrets, type Secret): FIREBASE_PROJECT_ID and FIREBASE_SERVICE_ACCOUNT (the full service-account JSON). Then deploy.',
+        }, null, 2), { status: 200, headers });
+      }
+      try {
+        await logSaga(env, { type: 'test', note: 'telemetry self-test', endedAt: new Date() });
+        return new Response(JSON.stringify({
+          ok: true,
+          configured: true,
+          wrote: 'one test document to the "sagas" collection — check the Firestore console',
+        }, null, 2), { status: 200, headers });
+      } catch (e) {
+        return new Response(JSON.stringify({
+          ok: false,
+          configured: true,
+          error: String(e.message || e).slice(0, 500),
+          hints: [
+            '403/PERMISSION_DENIED: the service account lacks Firestore access — grant it the "Cloud Datastore User" role in Google Cloud IAM (or use the Firebase console Admin SDK key)',
+            '404/NOT_FOUND: no Firestore database exists yet — Firebase console → Build → Firestore Database → Create database',
+            'FAILED_PRECONDITION mentioning Datastore Mode: recreate the database in NATIVE mode (the documents API requires it)',
+            'invalid_grant / DECODER errors: the FIREBASE_SERVICE_ACCOUNT secret is not the complete, unmodified JSON file',
+          ],
+        }, null, 2), { status: 200, headers });
+      }
+    }
     if (url.pathname === '/ws') {
       if ((req.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') {
         return new Response('Expected a WebSocket', { status: 426 });
@@ -146,6 +179,11 @@ export class MirkwoodRoom {
     const r = this.room;
     const st = r && r.state;
     if (!st || (st.phase !== 'won' && st.phase !== 'lost') || st.telemetryLogged) return;
+    if (!telemetryConfigured(this.env)) {
+      // visible in the dashboard's Logs view so a missing config isn't silent
+      console.log(`saga ${r.code} ended (${st.phase}) — telemetry not configured, skipping`);
+      return;
+    }
     st.telemetryLogged = true;
     await this.save();
     try {

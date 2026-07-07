@@ -72,8 +72,12 @@ function toFields(obj) {
   return fields;
 }
 
+export function telemetryConfigured(env) {
+  return !!(env.FIREBASE_PROJECT_ID && env.FIREBASE_SERVICE_ACCOUNT);
+}
+
 export async function logSaga(env, doc) {
-  if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_SERVICE_ACCOUNT) return; // telemetry not configured
+  if (!telemetryConfigured(env)) return; // telemetry not configured
   const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
   const token = await getAccessToken(sa);
   const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/sagas`;

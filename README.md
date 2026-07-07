@@ -117,6 +117,13 @@ from `maybeLogEnd()` in [worker/index.js](worker/index.js); the worker mints
 short-lived (1 h) OAuth tokens from the key at runtime. Telemetry failures
 are logged and never affect gameplay.
 
+**Verifying**: open `https://<your-worker>/telemetry-test` in a browser. It
+reports whether the secrets are configured, attempts one real test write to
+the `sagas` collection, and on failure returns the exact error with hints
+(missing database, Datastore-mode database, missing IAM role, malformed
+secret). Games that ended *before* telemetry was configured are not
+retro-logged — only sagas finishing afterward produce documents.
+
 ## Balance harness (self-play)
 
 ```
