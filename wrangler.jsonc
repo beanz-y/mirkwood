@@ -17,9 +17,12 @@
     { "tag": "v1", "new_sqlite_classes": ["MirkwoodRoom"] }
   ],
   // Saga telemetry is configured entirely through encrypted secrets — nothing
-  // Firebase-related lives in this repo, so it is safe to publish:
-  //   npx wrangler secret put FIREBASE_PROJECT_ID
-  //   npx wrangler secret put FIREBASE_SERVICE_ACCOUNT   (paste the JSON)
-  // Unset = telemetry disabled. See README "Saga telemetry".
-  "observability": { "enabled": true }
+  // Firebase-related lives in this repo, so it is safe to publish. Add BOTH
+  // in the dashboard under Settings → Variables and Secrets (type Secret):
+  //   FIREBASE_PROJECT_ID, FIREBASE_SERVICE_ACCOUNT (the full JSON)
+  // Unset = telemetry disabled. Verify at /telemetry-test.
+  "observability": { "enabled": true },
+  // dashboard-managed variables survive git deploys (otherwise wrangler
+  // deletes any plaintext var it doesn't find in this file on every push)
+  "keep_vars": true
 }

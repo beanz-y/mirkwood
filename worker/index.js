@@ -21,11 +21,25 @@ export default {
     // of type "test" to the sagas collection. Harmless diagnostic.
     if (url.pathname === '/telemetry-test') {
       const headers = { 'Content-Type': 'application/json' };
+      // what the RUNTIME actually sees (names only — never values)
+      const present = {
+        FIREBASE_PROJECT_ID: !!env.FIREBASE_PROJECT_ID,
+        FIREBASE_SERVICE_ACCOUNT: !!env.FIREBASE_SERVICE_ACCOUNT,
+      };
+      const runtimeVarNames = Object.keys(env)
+        .filter(k => typeof env[k] === 'string');
       if (!telemetryConfigured(env)) {
         return new Response(JSON.stringify({
           ok: false,
           configured: false,
-          hint: 'Set BOTH secrets on this Worker (dashboard: Settings → Variables and Secrets, type Secret): FIREBASE_PROJECT_ID and FIREBASE_SERVICE_ACCOUNT (the full service-account JSON). Then deploy.',
+          present,
+          runtimeVarNames,
+          hints: [
+            'The values must live under the WORKER runtime: Workers & Pages → mirkwood → Settings → "Variables and Secrets" — NOT under the Build configuration\'s "Build variables" (those only exist during the git build and never reach the running Worker).',
+            'Use type "Secret", not "Text": plaintext vars set in the dashboard are DELETED by every git deploy unless keep_vars is set; secrets persist across deploys.',
+            'After adding, confirm the dashboard\'s deploy/save prompt so a new version ships — then re-open this URL (no git push needed).',
+            'Verify you are editing the exact Worker that serves this URL (Settings → Domains & Routes).',
+          ],
         }, null, 2), { status: 200, headers });
       }
       try {
