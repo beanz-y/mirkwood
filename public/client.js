@@ -1,5 +1,5 @@
 /* Mirkwood client — lobby, board rendering, decisions. */
-import { RUNES, GATE_NAMES, exitsFor, SIZE, key, DIRNAMES } from '/shared/engine.js';
+import { RUNES, GATE_NAMES, exitsFor, SIZE, key, DIRNAMES, TILE_PRESETS } from '/shared/engine.js';
 
 const $ = id => document.getElementById(id);
 const CS = 90, PAD = 6; // cell size / board padding (viewBox 552)
@@ -20,7 +20,6 @@ let awaitingSig = '';
 let moveAgainArmed = false;
 let clickMap = new Map(); // "r,c" -> handler
 let transientFx = null;   // choreographed one-shot animation timeline
-let replayEvents = null;  // last non-empty event list, for the Replay button
 let soulSeat = null;      // which soul the status card shows (null = auto)
 let anims = localStorage.getItem('mk-anims') !== 'off';
 const sm = s => (anims ? s : ''); // gate SMIL snippets on the animations setting
@@ -28,21 +27,24 @@ const sm = s => (anims ? s : ''); // gate SMIL snippets on the animations settin
 // Choreographed one-shot animations: the engine emits semantic events in
 // resolution order; each event is assigned a start time so a single action
 // (move -> path crumbles -> draugr strikes -> tiles fade) plays as a sequence.
-function buildTimeline(events) {
+function buildTimeline(events, cap = 2.8) {
   if (!anims || !events || !events.length) return null;
   const T = {
-    moves: {}, drops: {}, dims: {}, brights: {}, shakes: {},
+    moves: {}, dims: {}, brights: {}, shakes: {},
     falls: [], collapses: [], fades: [], reveals: {}, attacks: [],
     banishes: [], runes: [], blooms: [], stays: [], burn: false, total: 0,
   };
   let t = 0;
+  // token movement is kept as ordered segments per soul so a whole replayed
+  // turn (move -> move again, or land -> move) chains smoothly
+  const seg = (seat, s) => { (T.moves[seat] = T.moves[seat] || []).push(s); };
   for (const e of events) {
     switch (e.e) {
       case 'move':
-        T.moves[e.seat] = { from: e.from, at: t };
+        seg(e.seat, { from: e.from, to: e.to, drop: false, at: t });
         t += 0.32; break;
       case 'land':
-        T.drops[e.seat] = { at: t };
+        seg(e.seat, { from: null, to: [e.r, e.c], drop: true, at: t });
         t += 0.4; break;
       case 'fall':
         T.falls.push({ seat: e.seat, from: e.from, r: e.r, c: e.c, at: t });
@@ -82,19 +84,18 @@ function buildTimeline(events) {
         T.burn = true; break;
     }
   }
-  // long chains stay snappy: compress the whole sequence into ~2.8s
-  if (t > 2.8) {
-    const k = 2.8 / t;
+  // long chains stay snappy: compress the whole sequence into the cap
+  if (t > cap) {
+    const k = cap / t;
     const sc = o => { if (o && typeof o.at === 'number') o.at *= k; };
-    Object.values(T.moves).forEach(sc);
-    Object.values(T.drops).forEach(sc);
+    Object.values(T.moves).forEach(arr => arr.forEach(sc));
     Object.values(T.shakes).forEach(sc);
     Object.values(T.reveals).forEach(sc);
     for (const s of Object.keys(T.dims)) T.dims[s] *= k;
     for (const s of Object.keys(T.brights)) T.brights[s] *= k;
     [T.falls, T.collapses, T.fades, T.attacks, T.banishes, T.runes, T.blooms, T.stays]
       .forEach(arr => arr.forEach(sc));
-    t = 2.8;
+    t = cap;
   }
   T.total = t;
   return T;
@@ -125,7 +126,7 @@ function leaveRoom(message) {
   lastCode = '';
   localStorage.removeItem('mk-code');
   room = null; state = null;
-  soulSeat = null; transientFx = null; replayEvents = null; moveAgainArmed = false; modalLock = null;
+  soulSeat = null; transientFx = null; moveAgainArmed = false; modalLock = null;
   clearTimeout(reconnectTimer);
   if (ws) { ws.onclose = null; try { ws.close(); } catch { /* gone */ } }
   $('lobby').classList.remove('hidden');
@@ -197,7 +198,6 @@ function handle(msg) {
     case 'state': {
       state = msg.state;
       transientFx = buildTimeline(state.events);
-      if (state.events && state.events.length) replayEvents = state.events;
       render();
       break;
     }
@@ -242,6 +242,26 @@ $('claim-all-btn').onclick = () => send({ t: 'claimAll' });
 $('start-btn').onclick = () => send({ t: 'start' });
 $('name-input').value = myName;
 
+// ------- difficulty (host) -------
+const CFG_KEYS = ['straight', 'tee', 'teeFractured', 'cross', 'rune', 'draugr'];
+function pushConfig(label) {
+  const cfg = { label };
+  for (const k of CFG_KEYS) cfg[k] = +$('cfg-' + k).value;
+  cfg.gateValhalla = $('cfg-gateValhalla').checked ? 1 : 0;
+  cfg.gateFolkvangr = $('cfg-gateFolkvangr').checked ? 1 : 0;
+  cfg.randomRunes = $('cfg-randomRunes').checked ? 1 : 0;
+  send({ t: 'config', config: cfg });
+}
+const randomRunesOn = () => ($('cfg-randomRunes').checked ? 1 : 0);
+$('preset-normal').onclick = () => send({ t: 'config', config: { ...TILE_PRESETS.normal, randomRunes: randomRunesOn(), label: 'Normal' } });
+$('preset-hard').onclick = () => send({ t: 'config', config: { ...TILE_PRESETS.hard, randomRunes: randomRunesOn(), label: 'Hard' } });
+$('custom-toggle').onclick = () => $('custom-tiles').classList.toggle('hidden');
+for (const k of CFG_KEYS) $('cfg-' + k).onchange = () => pushConfig('Custom');
+$('cfg-gateValhalla').onchange = () => pushConfig('Custom');
+$('cfg-gateFolkvangr').onchange = () => pushConfig('Custom');
+// the variant is orthogonal to difficulty: toggling it keeps the preset label
+$('cfg-randomRunes').onchange = () => pushConfig((room && room.config && room.config.label) || 'Normal');
+
 $('chat-form').onsubmit = (e) => {
   e.preventDefault();
   const text = $('chat-input').value.trim();
@@ -256,10 +276,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.onclick = () => selectTab(btn.dataset.tab);
 });
 
-// replay the last move for anyone who looked away
+// replay the previous player's entire turn — available to every player and
+// spectator (the server keeps the last completed turn's events in the state)
 $('replay-btn').onclick = () => {
-  if (!state || !replayEvents || !anims) return;
-  transientFx = buildTimeline(replayEvents);
+  if (!state || !state.lastTurn || !state.lastTurn.events.length || !anims) return;
+  transientFx = buildTimeline(state.lastTurn.events, 5);
   render();
 };
 
@@ -390,6 +411,24 @@ function renderLobby() {
   $('start-hint').textContent = allClaimed
     ? (room.youAreHost ? 'All souls claimed. The forest waits.' : 'Waiting for the host to begin...')
     : 'All four souls must be claimed. One player may claim several.';
+
+  // difficulty: host edits, everyone sees the summary
+  const cfg = room.config || { ...TILE_PRESETS.normal, label: 'Normal' };
+  $('diff-host').classList.toggle('hidden', !room.youAreHost);
+  $('preset-normal').classList.toggle('active', cfg.label === 'Normal');
+  $('preset-hard').classList.toggle('active', cfg.label === 'Hard');
+  $('custom-toggle').classList.toggle('active', cfg.label === 'Custom');
+  if (room.youAreHost && !$('custom-tiles').contains(document.activeElement)) {
+    for (const k of CFG_KEYS) $('cfg-' + k).value = cfg[k];
+    $('cfg-gateValhalla').checked = !!cfg.gateValhalla;
+    $('cfg-gateFolkvangr').checked = !!cfg.gateFolkvangr;
+    $('cfg-randomRunes').checked = !!cfg.randomRunes;
+  }
+  const total = CFG_KEYS.reduce((n, k) => n + cfg[k], 0) + cfg.gateValhalla + cfg.gateFolkvangr;
+  const gates = cfg.gateValhalla + cfg.gateFolkvangr;
+  $('diff-summary').textContent =
+    `${cfg.label || 'Custom'} — ${total} tiles · ${cfg.rune} rune circles · ${cfg.draugr} draugr · ${gates} gate${gates === 1 ? '' : 's'}`
+    + (cfg.randomRunes ? ' · random runes' : '');
 }
 
 function renderTopbar() {
@@ -403,7 +442,9 @@ function renderTopbar() {
     void m.offsetWidth; // restart the flash animation
     m.classList.add('burnflash');
   }
-  $('replay-btn').classList.toggle('hidden', !anims || !replayEvents);
+  const lt = state.lastTurn;
+  $('replay-btn').classList.toggle('hidden', !anims || !lt || !lt.events.length);
+  if (lt) $('replay-btn').title = `Replay ${seatName(lt.seat)}'s last turn`;
   const banner = $('turn-banner');
   banner.innerHTML = bannerText();
   const aw = state.awaiting;
@@ -514,7 +555,9 @@ function renderSoul() {
     <div class="soul-act ${p.resolve > 0 && relevant ? '' : 'unavailable'}">
       <span class="cost">1◆</span><span><b>${name}</b> — <small>${desc}</small></span>
     </div>`).join('');
-  let runeLine = 'Bears no rune mark yet — find a Rune Circle.';
+  let runeLine = state.randomRunes
+    ? 'Bears no rune mark yet — find a Rune Circle and let the stones choose.'
+    : 'Bears no rune mark yet — find a Rune Circle.';
   if (p.rune) {
     const i = runeInfo(p.rune);
     const col = p.rune.p === 'valhalla' ? 'var(--gold)' : 'var(--good)';
@@ -682,15 +725,26 @@ function renderBoard() {
       let slide = '', hold = '', opacityAttr = p.hopeful ? '' : 'opacity="0.55"', opacityAnim = '';
       let shakeOpen = '<g>', shakeClose = '</g>';
       if (transientFx) {
-        const mv = transientFx.moves[p.seat];
-        const drop = transientFx.drops[p.seat];
-        if (mv && Math.abs(mv.from[0] - r) <= 1 && Math.abs(mv.from[1] - c) <= 1) {
-          const dx = (mv.from[1] - c) * CS, dy = (mv.from[0] - r) * CS;
-          hold = `transform="translate(${dx} ${dy})"`;
-          slide = `<animateTransform attributeName="transform" type="translate" from="${dx} ${dy}" to="0 0" dur="0.32s" calcMode="spline" keySplines="0.25 0.1 0.25 1" keyTimes="0;1" fill="freeze" begin="indefinite" data-mk-delay="${mv.at}"/>`;
-        } else if (drop) {
-          hold = `transform="translate(0 -70)"`;
-          slide = `<animateTransform attributeName="transform" type="translate" from="0 -70" to="0 0" dur="0.45s" calcMode="spline" keySplines="0.3 0 0.6 1" keyTimes="0;1" fill="freeze" begin="indefinite" data-mk-delay="${drop.at}"/>`;
+        // ordered movement segments, in coordinates relative to the FINAL cell
+        // so consecutive slides chain (each freezes where the next begins)
+        const segs = transientFx.moves[p.seat];
+        if (segs && segs.length) {
+          const rel = cell => [(cell[1] - c) * CS, (cell[0] - r) * CS];
+          const pieces = [];
+          let first = true;
+          for (const sg of segs) {
+            const [tx, ty] = rel(sg.to);
+            let fx, fy, dur;
+            if (sg.drop) { fx = tx; fy = ty - 70; dur = 0.45; }
+            else {
+              [fx, fy] = rel(sg.from);
+              const wrapSeg = Math.abs(sg.from[0] - sg.to[0]) > 1 || Math.abs(sg.from[1] - sg.to[1]) > 1;
+              dur = wrapSeg ? 0.02 : 0.32; // wrap moves snap across the looping edge
+            }
+            if (first) { hold = `transform="translate(${fx} ${fy})"`; first = false; }
+            pieces.push(`<animateTransform attributeName="transform" type="translate" from="${fx} ${fy}" to="${tx} ${ty}" dur="${dur}s" calcMode="spline" keySplines="0.25 0.1 0.25 1" keyTimes="0;1" fill="freeze" begin="indefinite" data-mk-delay="${sg.at}"/>`);
+          }
+          slide = pieces.join('');
         }
         const dimAt = transientFx.dims[p.seat];
         const brightAt = transientFx.brights[p.seat];
@@ -1155,6 +1209,29 @@ function renderModal() {
     take.className = 'btn danger'; take.innerHTML = 'Endure it <small>(lose 3 tiles)</small>';
     take.onclick = () => act({ block: false });
     row.append(brace, take); card.appendChild(row);
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  // attune decision — Random Runes variant: accept fate or walk away
+  if (aw && aw.type === 'attune' && aw.random && isMine(aw.seat)) {
+    const p = state.players[aw.seat];
+    const held = aw.taken.map(t => {
+      const info = RUNES[t.p].find(rn => rn.k === t.k);
+      return `<span class="prune ${t.p}" style="display:inline-block;margin:0 3px" title="${escapeHtml(seatName(t.seat))}">${info.g}</span>`;
+    }).join('');
+    card.innerHTML = `<h2>The Rune Circle</h2>
+      <p>The stones do not ask — they <b>choose</b>. ${escapeHtml(p.name)} may accept a random
+      unclaimed mark (it replaces any they bear), or leave fate untested.</p>
+      ${held ? `<p class="hint">Marks already borne: ${held}</p>` : ''}`;
+    const row = document.createElement('div'); row.className = 'row';
+    const draw = document.createElement('button');
+    draw.className = 'btn primary'; draw.textContent = 'Let the stones choose';
+    draw.onclick = () => act({ draw: true });
+    const skip = document.createElement('button');
+    skip.className = 'btn'; skip.textContent = 'Leave untouched';
+    skip.onclick = () => act({ skip: true });
+    row.append(draw, skip); card.appendChild(row);
     modal.classList.remove('hidden');
     return;
   }

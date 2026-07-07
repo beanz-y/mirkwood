@@ -6,7 +6,7 @@
  * authoritative engine state in DO storage so games survive disconnects and
  * hibernation. WebSockets use the hibernation API, so idle rooms cost nothing.
  */
-import { createGame, applyAction, publicState, concede } from '../public/shared/engine.js';
+import { createGame, applyAction, publicState, concede, normTiles } from '../public/shared/engine.js';
 
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const makeCode = () =>
@@ -99,6 +99,7 @@ export class MirkwoodRoom {
       code: r.code,
       youAreHost: r.host === token,
       started: !!r.state,
+      config: r.config || null,
       seats: r.seats.map((s, i) => ({
         seat: i,
         name: s ? s.name : null,
@@ -225,7 +226,23 @@ export class MirkwoodRoom {
           const dup = r.seats.filter(x => x.token === s.token).length > 1;
           return dup ? `${s.name} ${['I', 'II', 'III', 'IV'][i]}` : s.name;
         });
-        r.state = createGame({ names });
+        r.state = createGame({
+          names,
+          tiles: r.config || undefined,
+          label: r.config ? r.config.label : '',
+          randomRunes: !!(r.config && r.config.randomRunes),
+        });
+        await this.save();
+        this.broadcast();
+        return;
+      }
+      case 'config': {
+        // host tunes the difficulty before the saga begins
+        if (r.host !== token || r.state) return;
+        const tiles = normTiles(msg.config || {});
+        const label = ['Normal', 'Hard', 'Custom'].includes(msg.config && msg.config.label)
+          ? msg.config.label : 'Custom';
+        r.config = { ...tiles, label, randomRunes: msg.config && msg.config.randomRunes ? 1 : 0 };
         await this.save();
         this.broadcast();
         return;

@@ -1,7 +1,7 @@
 /* Mirkwood engine tests — run: node test/engine.test.js */
 import {
   createGame, applyAction, publicState, exitsFor, litSet, losFor,
-  computeMoves, SIZE, key, RUNES, _test,
+  computeMoves, SIZE, key, RUNES, TILE_PRESETS, _test,
 } from '../public/shared/engine.js';
 
 let passed = 0, failed = 0;
@@ -411,6 +411,109 @@ section('relight: the rekindled soul places their own tiles');
     applyAction(s, s.awaiting.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] });
   }
   check(s.awaiting.type === 'post-move' && s.awaiting.seat === 0, 'turn control returns to the mover');
+}
+
+// ---------------------------------------------------------------- difficulty config
+section('difficulty: tile counts are configurable and clamped');
+{
+  const hard = createGame({ seed: 16, tiles: TILE_PRESETS.hard, label: 'Hard' });
+  const count = (g, kind, fr) => g.stack.filter(t => t.kind === kind && (fr === undefined || t.fractured === fr)).length;
+  check(count(hard, 'draugr') === 15, 'hard: 15 draugr');
+  check(count(hard, 'rune') === 5, 'hard: 5 rune circles');
+  check(count(hard, 'tee', true) === 5, 'hard: 5 fractured forks');
+  check(hard.log[0].m.includes('Hard telling'), 'difficulty named in the saga log');
+
+  const custom = createGame({ seed: 17, tiles: { draugr: 0, rune: 99, gateValhalla: 0, gateFolkvangr: 0 } });
+  check(count(custom, 'draugr') === 0, 'custom: no draugr at all');
+  check(count(custom, 'rune') === 12, 'custom: rune count clamped to 12');
+  check(count(custom, 'gate') === 1, 'custom: at least one gate is forced');
+}
+
+// ---------------------------------------------------------------- last-turn replay events
+section('replay: the whole last turn is kept server-side');
+{
+  const s = createGame({ seed: 18, stack: deck(40) });
+  doSetup(s);
+  // soul 0 takes a full turn: move + reveal placements + end
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  while (s.awaiting && s.awaiting.type === 'place-tile') {
+    const tg = s.awaiting.targets[0];
+    applyAction(s, s.awaiting.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+  }
+  applyAction(s, 0, { kind: 'end' });
+  // soul 1's turn has begun: lastTurn snapshots soul 0's complete turn
+  const ps = publicState(s);
+  check(ps.lastTurn && ps.lastTurn.seat === 0, "lastTurn belongs to the previous player");
+  const kinds = ps.lastTurn.events.map(e => e.e);
+  check(kinds.includes('move'), 'lastTurn contains the move');
+  check(kinds.includes('reveal'), 'lastTurn contains the tile reveals');
+  check(kinds.includes('fracture'), 'lastTurn contains the start tile fracturing');
+  check(ps.lastTurn.events.length > s.events.length, 'lastTurn spans more than the final action');
+}
+
+// ---------------------------------------------------------------- random runes variant
+section('random runes: the stones choose an unclaimed mark');
+{
+  const s = createGame({ seed: 19, stack: deck(60), randomRunes: true });
+  doSetup(s);
+  _test.setTile(s, 1, 2, _test.makeTileDef(s, 'rune', { fractured: true }), 0);
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  check(s.awaiting.type === 'attune' && s.awaiting.random === true, 'random attune prompt on arrival');
+  applyAction(s, 0, { p: 'valhalla', k: 'thurisaz', draw: true }); // explicit picks are ignored
+  const r0 = s.players[0].rune;
+  check(!!r0, 'a rune was assigned');
+  // finish soul 0's turn, then walk soul 1 onto a fresh circle
+  while (s.awaiting && s.awaiting.type === 'place-tile') {
+    const tg = s.awaiting.targets[0];
+    applyAction(s, s.awaiting.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+  }
+  applyAction(s, 0, { kind: 'end' });
+  _test.setTile(s, 1, 3, _test.makeTileDef(s, 'rune', { fractured: true }), 0);
+  s.players[1].r = 1; s.players[1].c = 3;
+  s.awaiting = null; s.queue.length = 0; s.queue.push({ t: 'arrive', seat: 1, then: 'post-move' }); _test.run(s);
+  applyAction(s, 1, { draw: true });
+  const r1 = s.players[1].rune;
+  check(!!r1, 'second soul assigned too');
+  check(!(r0.p === r1.p && r0.k === r1.k), 'assigned runes never duplicate a held mark');
+  // lingering: Stay on the circle -> no crumble, no fall, a fresh draw
+  const sl = createGame({ seed: 21, stack: deck(40), randomRunes: true });
+  doSetup(sl);
+  _test.setTile(sl, 1, 2, _test.makeTileDef(sl, 'rune', { fractured: true }), 0);
+  applyAction(sl, 0, { kind: 'move', d: 1 });
+  applyAction(sl, 0, { draw: true });
+  const first = { ...sl.players[0].rune };
+  while (sl.awaiting && sl.awaiting.type === 'place-tile') {
+    const tg = sl.awaiting.targets[0];
+    applyAction(sl, sl.awaiting.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+  }
+  applyAction(sl, 0, { kind: 'end' });
+  for (let seat = 1; seat <= 3; seat++) {
+    applyAction(sl, seat, { kind: 'move', d: 1 });
+    while (sl.awaiting && sl.awaiting.type === 'place-tile') {
+      const tg = sl.awaiting.targets[0];
+      applyAction(sl, sl.awaiting.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+    }
+    applyAction(sl, seat, { kind: 'end' });
+  }
+  const stackBeforeStay = sl.stack.length;
+  applyAction(sl, 0, { kind: 'stay' }); // lingering on the circle
+  check(sl.awaiting.type === 'attune' && sl.awaiting.random === true, 'lingering re-offers the stones');
+  check(stackBeforeStay - sl.stack.length === 1, 'lingering still burns a tile');
+  const tCircle = _test.tileAt(sl, 1, 2);
+  check(tCircle && tCircle.kind === 'rune', 'the circle does not crumble beneath a lingering soul');
+  check(sl.players[0].falling === null, 'no fall while lingering');
+  applyAction(sl, 0, { draw: true });
+  const second = sl.players[0].rune;
+  check(!(second.p === first.p && second.k === first.k), 'the stones choose a different mark');
+  check(sl.turn === 1, 'lingering ends the turn as any Stay');
+
+  // skipping is still allowed
+  const s2 = createGame({ seed: 20, stack: deck(40), randomRunes: true });
+  doSetup(s2);
+  _test.setTile(s2, 1, 2, _test.makeTileDef(s2, 'rune', { fractured: true }), 0);
+  applyAction(s2, 0, { kind: 'move', d: 1 });
+  applyAction(s2, 0, { skip: true });
+  check(s2.players[0].rune === null, 'declining the stones leaves no mark');
 }
 
 // ---------------------------------------------------------------- full random game smoke test

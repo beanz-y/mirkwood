@@ -30,6 +30,31 @@ export const GATE_NAMES = { valhalla: 'Valhalla', folkvangr: 'Fólkvangr' };
 export const PLAYER_COLORS = ['#e8b23c', '#d05e5e', '#4fb8a8', '#a678d8'];
 export const DEFAULT_NAMES = ['Astrid', 'Bjorn', 'Eira', 'Torvald'];
 
+// Difficulty presets and tile-count sanitizer. The host may start from a
+// preset or edit every count; ranges are clamped so a game is always playable.
+export const TILE_PRESETS = {
+  normal: { straight: 10, tee: 30, teeFractured: 2, cross: 12, rune: 6, draugr: 12, gateValhalla: 1, gateFolkvangr: 1 },
+  hard:   { straight: 10, tee: 26, teeFractured: 5, cross: 10, rune: 5, draugr: 15, gateValhalla: 1, gateFolkvangr: 1 },
+};
+
+export function normTiles(cfg) {
+  const out = { ...TILE_PRESETS.normal };
+  if (cfg) {
+    for (const k of Object.keys(out)) {
+      if (cfg[k] !== undefined && cfg[k] !== null) out[k] = Math.max(0, Math.min(60, cfg[k] | 0));
+    }
+  }
+  out.rune = Math.max(4, Math.min(12, out.rune));     // fewer than 4 circles is instant defeat
+  out.straight = Math.max(2, out.straight);            // opening draw needs plain paths
+  out.tee = Math.max(4, out.tee);
+  out.cross = Math.max(2, out.cross);
+  out.draugr = Math.min(24, out.draugr);
+  out.gateValhalla = out.gateValhalla ? 1 : 0;
+  out.gateFolkvangr = out.gateFolkvangr ? 1 : 0;
+  if (!out.gateValhalla && !out.gateFolkvangr) out.gateValhalla = 1; // at least one way out
+  return out;
+}
+
 // Base exits (before rotation), N,E,S,W
 const BASE_EXITS = {
   start:    [1, 1, 0, 0],
@@ -82,16 +107,16 @@ function makeTileDef(s, kind, opts = {}) {
   };
 }
 
-function buildStack(s) {
+function buildStack(s, C) {
   const pool = [];
-  for (let i = 0; i < 10; i++) pool.push(makeTileDef(s, 'straight', { fractured: true }));
-  for (let i = 0; i < 30; i++) pool.push(makeTileDef(s, 'tee'));
-  for (let i = 0; i < 2; i++) pool.push(makeTileDef(s, 'tee', { fractured: true }));
-  for (let i = 0; i < 12; i++) pool.push(makeTileDef(s, 'cross'));
-  for (let i = 0; i < 6; i++) pool.push(makeTileDef(s, 'rune', { fractured: true }));
-  for (let i = 0; i < 12; i++) pool.push(makeTileDef(s, 'draugr'));
-  pool.push(makeTileDef(s, 'gate', { gate: 'valhalla' }));
-  pool.push(makeTileDef(s, 'gate', { gate: 'folkvangr' }));
+  for (let i = 0; i < C.straight; i++) pool.push(makeTileDef(s, 'straight', { fractured: true }));
+  for (let i = 0; i < C.tee; i++) pool.push(makeTileDef(s, 'tee'));
+  for (let i = 0; i < C.teeFractured; i++) pool.push(makeTileDef(s, 'tee', { fractured: true }));
+  for (let i = 0; i < C.cross; i++) pool.push(makeTileDef(s, 'cross'));
+  for (let i = 0; i < C.rune; i++) pool.push(makeTileDef(s, 'rune', { fractured: true }));
+  for (let i = 0; i < C.draugr; i++) pool.push(makeTileDef(s, 'draugr'));
+  if (C.gateValhalla) pool.push(makeTileDef(s, 'gate', { gate: 'valhalla' }));
+  if (C.gateFolkvangr) pool.push(makeTileDef(s, 'gate', { gate: 'folkvangr' }));
 
   // Opening tiles: 2 straight, 4 plain T, 2 cross go on top so the first
   // reveals of the game are always simple paths (TNC parity).
@@ -127,13 +152,17 @@ export function createGame(opts = {}) {
     winnerGate: null,
     lossReason: null,
     log: [],
-    events: [], // ordered semantic events of the current action, for client animation
+    events: [],     // ordered semantic events of the current action, for live animation
+    turnEvents: [], // events accumulated across the whole current turn
+    lastTurn: null, // { seat, events } of the last completed turn, for Replay
+    turnOwner: null,
     rngState: (opts.seed ?? Math.floor(Math.random() * 2 ** 31)) | 0,
     tileSeq: 0,
     moveCtx: null,
     pendingHit: null,
     blindCtx: null,
     movesThisTurn: 0,
+    randomRunes: !!opts.randomRunes, // host variant: the stones choose your mark
   };
   const names = opts.names || DEFAULT_NAMES;
   for (let i = 0; i < 4; i++) {
@@ -149,8 +178,9 @@ export function createGame(opts = {}) {
       falling: null,   // {r,c} rift fallen through
     });
   }
-  s.stack = opts.stack ? opts.stack.map(t => makeTileDef(s, t.kind, t)) : buildStack(s);
-  log(s, 'The souls awaken beneath the boughs of Myrkviðr.', 'turn');
+  s.stack = opts.stack ? opts.stack.map(t => makeTileDef(s, t.kind, t)) : buildStack(s, normTiles(opts.tiles));
+  const label = typeof opts.label === 'string' ? opts.label.slice(0, 12) : '';
+  log(s, `The souls awaken beneath the boughs of Myrkviðr${label && label !== 'Normal' ? ` — a ${label} telling` : ''}.`, 'turn');
   s.queue.push({ t: 'setup', seat: 0 });
   run(s);
   return s;
@@ -162,10 +192,22 @@ function log(s, m, k = 'info') {
 }
 
 // semantic events in resolution order, consumed by the client's animation
-// timeline; cleared at the start of every applyAction
+// timeline; s.events is per action (cleared each applyAction), s.turnEvents
+// accumulates across the whole turn for the Replay feature
 function ev(s, e, data) {
-  s.events.push({ e, ...data });
+  const entry = { e, ...data };
+  s.events.push(entry);
   if (s.events.length > 80) s.events.splice(0, s.events.length - 80);
+  if (!s.turnEvents) s.turnEvents = [];
+  s.turnEvents.push(entry);
+  if (s.turnEvents.length > 200) s.turnEvents.splice(0, s.turnEvents.length - 200);
+}
+
+function snapshotTurn(s, seat) {
+  if (s.turnEvents && s.turnEvents.length) {
+    s.lastTurn = { seat, events: s.turnEvents };
+    s.turnEvents = [];
+  }
 }
 
 const P = (s, seat) => s.players[seat];
@@ -481,6 +523,7 @@ function run(s) {
 }
 
 STEPS['setup'] = (s, { seat }) => {
+  snapshotTurn(s, Math.min(3, Math.max(0, seat - 1)));
   if (seat >= 4) {
     s.phase = 'play';
     s.turn = 0;
@@ -514,6 +557,8 @@ STEPS['illum'] = (s, { forSeat, chooser }) => {
 
 STEPS['begin-turn'] = (s) => {
   const p = P(s, s.turn);
+  snapshotTurn(s, s.turnOwner ?? s.turn);
+  s.turnOwner = s.turn;
   s.moveCtx = null;
   s.movesThisTurn = 0;
   log(s, `— ${p.name}'s turn —`, 'turn');
@@ -572,6 +617,19 @@ STEPS['stay-fracture'] = (s) => {
   const p = P(s, s.turn);
   const t = tileAt(s, p.r, p.c);
   if (t && t.fractured) {
+    // Random Runes: a soul may linger at a Rune Circle without it crumbling —
+    // each turn spent Staying burns a tile as usual, but the stones choose
+    // again, letting them fish for a mark that matches the party. The circle
+    // still crumbles when they finally leave.
+    if (s.randomRunes && t.kind === 'rune') {
+      log(s, `${p.name} lingers in the Rune Circle — the stones stir again.`, 'info');
+      s.queue.unshift({ t: 'relight', chooser: s.turn }, { t: 'end-turn' });
+      s.awaiting = {
+        type: 'attune', seat: p.seat, random: true,
+        taken: s.players.filter(q => q.rune).map(q => ({ seat: q.seat, ...q.rune })),
+      };
+      return;
+    }
     const cellKey = key(p.r, p.c);
     const trig = triggeredBy(s, [cellKey]); // pre-flip: the draugr saw you drop
     const [r, c] = [p.r, p.c];
@@ -630,7 +688,11 @@ STEPS['arrive'] = (s, { seat, then }) => {
   const t = tileAt(s, p.r, p.c);
   if (t && t.kind === 'rune') {
     s.queue.unshift({ t: 'arrive2', seat, then });
-    s.awaiting = { type: 'attune', seat, taken: s.players.filter(q => q.rune).map(q => ({ seat: q.seat, ...q.rune })) };
+    s.awaiting = {
+      type: 'attune', seat,
+      random: !!s.randomRunes,
+      taken: s.players.filter(q => q.rune).map(q => ({ seat: q.seat, ...q.rune })),
+    };
     return;
   }
   STEPS['arrive2'](s, { seat, then });
@@ -793,6 +855,7 @@ export function applyAction(s, seat, payload) {
   const handler = ACTIONS[aw.type];
   if (!handler) err('Unknown decision type.');
   s.events = []; // each action broadcast carries only its own events
+  if (!s.turnEvents) s.turnEvents = []; // states persisted before this field existed
   handler(s, P(s, seat), payload, aw);
   run(s);
   return s;
@@ -1019,13 +1082,28 @@ ACTIONS['attune'] = (s, p, payload) => {
     log(s, `${p.name} leaves the runes untouched.`, 'info');
     return;
   }
-  const { p: pantheon, k } = payload;
-  const set = RUNES[pantheon];
-  if (!set || !set.some(r => r.k === k)) err('No such rune.');
+  let pantheon, k;
+  if (s.randomRunes) {
+    // the stones choose: a random rune not currently borne by any soul
+    // (4 souls hold at most 4 of the 8 runes, so the pool is never empty)
+    const held = new Set();
+    for (const q of s.players) if (q.rune) held.add(q.rune.p + ':' + q.rune.k);
+    const pool = [];
+    for (const pn of ['valhalla', 'folkvangr']) {
+      for (const rn of RUNES[pn]) if (!held.has(pn + ':' + rn.k)) pool.push([pn, rn.k]);
+    }
+    [pantheon, k] = pool[Math.floor(rand(s) * pool.length)];
+  } else {
+    ({ p: pantheon, k } = payload);
+    const set = RUNES[pantheon];
+    if (!set || !set.some(r => r.k === k)) err('No such rune.');
+  }
   p.rune = { p: pantheon, k };
-  const r = set.find(r => r.k === k);
+  const r = RUNES[pantheon].find(rn => rn.k === k);
   ev(s, 'rune', { seat: p.seat });
-  log(s, `${p.name} is marked with ${r.name} ${r.g} (${GATE_NAMES[pantheon]}).`, 'good');
+  log(s, s.randomRunes
+    ? `The stones choose for ${p.name}: ${r.name} ${r.g} (${GATE_NAMES[pantheon]}).`
+    : `${p.name} is marked with ${r.name} ${r.g} (${GATE_NAMES[pantheon]}).`, 'good');
   winCheck(s);
 };
 
@@ -1198,6 +1276,8 @@ export function publicState(s) {
     discard: s.discard,
     stackCount: s.stack.length,
     events: s.events,
+    lastTurn: s.lastTurn || null,
+    randomRunes: !!s.randomRunes,
     lit: [...litSet(s)],
   };
 }

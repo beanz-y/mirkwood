@@ -84,6 +84,17 @@ input:focus { outline: 1px solid var(--gold); }
   text-shadow: 0 0 18px rgba(232,178,60,0.4);
 }
 .seat-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+
+#difficulty { margin: 12px 0 4px; border-top: 1px solid var(--line); padding-top: 10px; }
+#difficulty h4 { margin: 0 0 8px; color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; font-weight: normal; }
+.preset-row .btn.active { border-color: var(--gold); color: var(--gold); background: #3a2f14; }
+#custom-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin-top: 10px; text-align: left; }
+.tile-field { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--text); margin: 0; }
+.tile-field input { width: 60px; margin: 0; padding: 4px 8px; font-size: 14px; }
+.tile-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); margin: 0; }
+.tile-check input { width: auto; margin: 0; }
+.random-row { justify-content: center; margin: 8px 0 2px; }
+#diff-summary { margin-top: 8px; }
 .seat {
   border: 1px solid var(--line); border-radius: 8px; padding: 10px;
   cursor: pointer; background: var(--bg2); font-size: 14px;

@@ -205,6 +205,14 @@ Ancient stone rings where the old marks can still be taken.
   Runes are marks on the soul — **they cannot be passed between players**
   *(replaces TNC key-passing; re-attunement is the safety valve instead)*.
 - Rune Circles are Fractured: they crumble behind the soul who uses them.
+- **Random Runes** (host variant, toggled in the lobby): the stones choose —
+  instead of picking, you receive a random rune **not currently borne by any
+  soul** (you may still decline and leave the circle untouched). Fate decides
+  whether Valhalla or Fólkvangr calls you. To temper fate, a soul may
+  **linger**: Staying on a Rune Circle does *not* crumble it in this variant —
+  the turn passes and a tile burns from the stack as with any Stay, but the
+  stones choose again, letting you fish for a mark that matches the party.
+  The circle still crumbles into a Void Rift when you finally leave it.
 
 ## The Gates
 

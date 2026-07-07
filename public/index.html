@@ -37,6 +37,30 @@
         <button id="claim-all-btn" class="btn small">Claim remaining souls</button>
         <button id="leave-room-btn" class="btn small">Leave</button>
       </div>
+      <div id="difficulty">
+        <h4>Difficulty</h4>
+        <div id="diff-host" class="hidden">
+          <div class="row preset-row">
+            <button id="preset-normal" class="btn small">Normal</button>
+            <button id="preset-hard" class="btn small">Hard</button>
+            <button id="custom-toggle" class="btn small">Customize…</button>
+          </div>
+          <label class="tile-check random-row" title="At a Rune Circle, a random unclaimed rune is assigned instead of choosing">
+            <input type="checkbox" id="cfg-randomRunes"> Random runes — the stones choose your mark
+          </label>
+          <div id="custom-tiles" class="hidden">
+            <label class="tile-field">Straight paths <input type="number" id="cfg-straight" min="2" max="20"></label>
+            <label class="tile-field">Forking paths <input type="number" id="cfg-tee" min="4" max="40"></label>
+            <label class="tile-field">Fractured forks <input type="number" id="cfg-teeFractured" min="0" max="12"></label>
+            <label class="tile-field">Crossroads <input type="number" id="cfg-cross" min="2" max="20"></label>
+            <label class="tile-field">Rune circles <input type="number" id="cfg-rune" min="4" max="12"></label>
+            <label class="tile-field">Draugr <input type="number" id="cfg-draugr" min="0" max="24"></label>
+            <label class="tile-check"><input type="checkbox" id="cfg-gateValhalla"> Gate of Valhalla</label>
+            <label class="tile-check"><input type="checkbox" id="cfg-gateFolkvangr"> Gate of Fólkvangr</label>
+          </div>
+        </div>
+        <p id="diff-summary" class="hint"></p>
+      </div>
       <div class="row">
         <button id="start-btn" class="btn primary hidden">Enter the forest</button>
         <p id="start-hint" class="hint"></p>
@@ -169,8 +193,12 @@
 
     <h3>Runes &amp; Gates</h3>
     <p>Step into a <b>Rune Circle</b> to take one mark (it replaces your old one —
-    marks can never be traded). Gates have <b>one doorway</b>, are permanent once
-    placed, and hold any number of souls.</p>
+    marks can never be traded). With the host's <b>Random Runes</b> option, the
+    stones choose instead: you receive a random rune not currently borne by any
+    soul — and you may <b>linger</b>: Staying on a circle doesn't crumble it, and
+    the stones choose again each turn (a tile still burns from the stack; the
+    circle crumbles when you leave). Gates have <b>one doorway</b>, are permanent
+    once placed, and hold any number of souls.</p>
     <table class="rune-table">
       <tr><th colspan="2">ᚹ Valhalla</th><th colspan="2">ᛒ Fólkvangr</th></tr>
       <tr><td>ᚦ</td><td>Thurisaz — strength</td><td>ᛒ</td><td>Berkano — nurture</td></tr>
