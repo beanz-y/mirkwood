@@ -6,20 +6,46 @@ every mechanical departure is catalogued in the numbered list at the end.*
 
 ---
 
-## The Saga
+## Welcome to Myrkviðr
 
-You died without glory and without peace. No valkyrie came for you; Freyja did
-not call your name. Your soul awoke instead beneath the black boughs of
-**Myrkviðr**, the dark boundary-wood between the worlds, where the paths move
-when no one watches them. Somewhere under the mist stand two ways out:
-**Valgrind**, the corpse-door of Odin's **Valhalla**, where the einherjar feast
-until Ragnarök — and the gate of **Fólkvangr**, Freyja's field, where her hall
-Sessrúmnir stands and she seats the dead she chooses as her own.
+*No skald will sing of how you died. No shield-wall broke around you, no
+valkyrie stooped out of the storm to carry you up to the Allfather's benches.
+Yours was a straw-death — quiet, unwitnessed, unchosen — and what met you on
+the far side of it was not the mead-bright roar of a hall. It was wind moving
+through branches.*
 
-Your only light is the **Ember of Hope** you carry — and the mist devours every
-path the moment no soul's hope shines on it. Worse: the **draugar** walk here,
-the restless dead who failed this same road. They will see to it that you fail
-as well.
+*You stand beneath the black boughs of **Myrkviðr**, the dark wood that has
+marked the border between the worlds since the first days. Swan-maids have
+flown through it; gods and heroes have ridden its edges; the sons of Muspell
+will cross it burning when the world ends. Nothing in it keeps its shape. The
+mist of Niflheim breathes between the trunks, and wherever it settles, the
+forest forgets its own paths — a road walked once is not there when you turn
+around.*
+
+*Yet the dead here whisper of two doors. Somewhere under the boughs stands
+**Valgrind**, the corpse-gate of Valhalla, behind which the einherjar feast
+and fight until Ragnarök calls them out. And somewhere stands the gate of
+**Fólkvangr**, Freyja's field, where her hall Sessrúmnir rises and she seats
+those dead she chooses as her own. Odin did not choose you; Freyja did not
+call your name. So you will make the gates take you: find the standing stones
+where the old rune-rings wait, cut their marks into your soul, and come before
+a gate that cannot refuse four souls bearing its four runes.*
+
+*You carry no candle or torch — such fires died with your body. What you carry
+is an **Ember of Hope**, and it is enough: where your hope shines, the paths
+hold. Where it moves on, the mist devours what it leaves behind. And you are
+not alone beneath the boughs. The **draugar** walk here — the restless dead
+who sought the gates before you and failed, and rose again with nothing left
+in them but spite for every soul that still dares to hope.*
+
+Mirkwood (Myrkviðr) is a cooperative game of paths and dwindling light: four
+souls, played by one to four players, who escape together or not at all. Each
+turn your hope kindles fresh paths at the edge of the light, while the mist
+devours everything left unlit — the forest is never the same shape twice. The
+shared path stack is the party's hope made visible; every tile drawn, burned,
+or lost to the dark brings Niflheim's Embrace a step closer. Gather four
+different runes of one gate, bring all four souls to stand on it together,
+and walk out of Myrkviðr — or let the mist take everything.
 
 ## Object
 

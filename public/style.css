@@ -424,6 +424,8 @@ body.no-anims *, body.no-anims *::before, body.no-anims *::after {
 .rules-card h2 { color: var(--gold); text-align: center; }
 .rules-card h3 { color: var(--gold); font-size: 15px; margin: 18px 0 4px; border-bottom: 1px solid var(--line); padding-bottom: 3px; }
 .rules-card p, .rules-card li { color: var(--text); font-size: 13.5px; line-height: 1.5; }
+.rules-card p.lore { font-style: italic; color: #c9d6cc; }
+.rules-card p.lore b { font-style: normal; }
 .rules-card ul { margin: 4px 0; padding-left: 20px; }
 .rules-card b { color: var(--gold); }
 .rune-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
