@@ -20,6 +20,7 @@ let awaitingSig = '';
 let moveAgainArmed = false;
 let clickMap = new Map(); // "r,c" -> handler
 let transientFx = null;   // choreographed one-shot animation timeline
+let replayEvents = null;  // last non-empty event list, for the Replay button
 let soulSeat = null;      // which soul the status card shows (null = auto)
 let anims = localStorage.getItem('mk-anims') !== 'off';
 const sm = s => (anims ? s : ''); // gate SMIL snippets on the animations setting
@@ -124,7 +125,7 @@ function leaveRoom(message) {
   lastCode = '';
   localStorage.removeItem('mk-code');
   room = null; state = null;
-  soulSeat = null; transientFx = null; moveAgainArmed = false; modalLock = null;
+  soulSeat = null; transientFx = null; replayEvents = null; moveAgainArmed = false; modalLock = null;
   clearTimeout(reconnectTimer);
   if (ws) { ws.onclose = null; try { ws.close(); } catch { /* gone */ } }
   $('lobby').classList.remove('hidden');
@@ -196,6 +197,7 @@ function handle(msg) {
     case 'state': {
       state = msg.state;
       transientFx = buildTimeline(state.events);
+      if (state.events && state.events.length) replayEvents = state.events;
       render();
       break;
     }
@@ -253,6 +255,13 @@ function selectTab(name) {
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.onclick = () => selectTab(btn.dataset.tab);
 });
+
+// replay the last move for anyone who looked away
+$('replay-btn').onclick = () => {
+  if (!state || !replayEvents || !anims) return;
+  transientFx = buildTimeline(replayEvents);
+  render();
+};
 
 // rules overlay
 function openRules() { $('rules').classList.remove('hidden'); }
@@ -394,6 +403,7 @@ function renderTopbar() {
     void m.offsetWidth; // restart the flash animation
     m.classList.add('burnflash');
   }
+  $('replay-btn').classList.toggle('hidden', !anims || !replayEvents);
   const banner = $('turn-banner');
   banner.innerHTML = bannerText();
   const aw = state.awaiting;

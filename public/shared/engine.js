@@ -450,9 +450,20 @@ function lossCheck(s) {
     lose(s, 'Both gates are lost. Niflheim claims the souls forever.');
     return;
   }
-  if (runeCirclesLeft(s) === 0) {
-    const possible = [...new Set(gates)].some(g => runesValidFor(s, g));
-    if (!possible) lose(s, 'The last Rune Circle is gone, and the marks the souls bear cannot open a gate.');
+  // enough Rune Circles must remain for the souls to finish a matching set:
+  // for the best available gate, every soul not yet holding a distinct rune
+  // of that gate needs one circle visit
+  const circles = runeCirclesLeft(s);
+  let needed = Infinity;
+  for (const g of new Set(gates)) {
+    const held = new Set();
+    for (const p of s.players) {
+      if (p.rune && p.rune.p === g) held.add(p.rune.k);
+    }
+    needed = Math.min(needed, 4 - held.size);
+  }
+  if (circles < needed) {
+    lose(s, 'Too many Rune Circles are lost to the mist — the souls can never bear the four marks a gate demands.');
   }
 }
 
@@ -629,6 +640,10 @@ STEPS['arrive2'] = (s, { seat, then }) => {
   const p = P(s, seat);
   winCheck(s);
   if (s.phase !== 'play') return;
+  // the mist claims whatever no soul lights BEFORE hope can spread again —
+  // a monster scrambled off in hopelessness fades even if the scrambler is
+  // rekindled a heartbeat later
+  sweep(s);
   const steps = [];
   if (p.placed && p.hopeful) steps.push({ t: 'illum', forSeat: seat, chooser: s.turn });
   steps.push({ t: 'relight', chooser: s.turn });
@@ -663,7 +678,9 @@ STEPS['relight'] = (s) => {
     }
   }
   if (rekindled.length) {
-    const steps = rekindled.map(seat => ({ t: 'illum', forSeat: seat, chooser: s.turn }));
+    // each rekindled soul reveals their own newly lit paths (playtest rule:
+    // a player always places their own tiles, even mid another's turn)
+    const steps = rekindled.map(seat => ({ t: 'illum', forSeat: seat, chooser: seat }));
     steps.push({ t: 'relight', chooser: s.turn }); // new tiles may connect more souls
     s.queue.unshift(...steps);
   }
@@ -708,7 +725,7 @@ STEPS['end-turn2'] = (s) => {
   s.queue.unshift({ t: 'begin-turn' });
 };
 
-STEPS['scramble'] = (s, { seat, from, free, then }) => {
+STEPS['scramble'] = (s, { seat, from, free, banish, then }) => {
   const p = P(s, seat);
   const [fr, fc] = from;
   const srcTile = tileAt(s, fr, fc); // may be null if it became a rift
@@ -730,6 +747,7 @@ STEPS['scramble'] = (s, { seat, from, free, then }) => {
   }
   if (!options.length) {
     // nowhere to scramble: the soul drops into the dark
+    if (banish) banishCell(s, fr, fc);
     p.placed = false; p.r = null; p.c = null;
     p.falling = { r: fr, c: fc };
     ev(s, 'fall', { seat: p.seat, from: [fr, fc], r: fr, c: fc });
@@ -738,13 +756,12 @@ STEPS['scramble'] = (s, { seat, from, free, then }) => {
     s.queue.unshift({ t: 'end-turn' });
     return;
   }
-  s.awaiting = { type: 'scramble', seat, from: { r: fr, c: fc }, free: !!free, then, options };
+  s.awaiting = { type: 'scramble', seat, from: { r: fr, c: fc }, free: !!free, banish: !!banish, then, options };
 };
 
-STEPS['charge-banish'] = (s, { seat, cell, then }) => {
-  // a charged draugr spends its spite on the attack and dissolves — its tile
-  // leaves the forest entirely, and the charger scrambles off the bare ground
-  const [r, c] = cell;
+function banishCell(s, r, c) {
+  // a charged draugr spends its spite on the attack; once the charger has
+  // scrambled off it, it dissolves — its tile leaves the forest entirely
   const t = tileAt(s, r, c);
   if (t && t.kind === 'draugr') {
     s.discard.push(t);
@@ -752,8 +769,7 @@ STEPS['charge-banish'] = (s, { seat, cell, then }) => {
     ev(s, 'banish', { r, c, tile: t });
     log(s, 'Its spite spent, the Draugr dissolves — banished from the forest.', 'good');
   }
-  s.queue.unshift({ t: 'scramble', seat, from: cell, free: true, then });
-};
+}
 
 STEPS['landing-monster-after'] = (s, { seat, cell, then }) => {
   // the draugr that was landed on collapses into a rift, then the soul scrambles
@@ -928,8 +944,9 @@ function doMove(s, p, mv, then) {
     ev(s, 'move', { seat: p.seat, from: [or_, oc], to: [nr, nc] });
     if (originFractured) fractureCell(s, or_, oc);
     // the charger always stands in the draugr's sight, so its strike always
-    // lands on them; once the attack concludes, the draugr is banished
-    s.queue.unshift({ t: 'charge-banish', seat: p.seat, cell: [nr, nc], then });
+    // lands on them; once the attack concludes and they scramble off it,
+    // the draugr is banished (banish flag on the scramble)
+    s.queue.unshift({ t: 'scramble', seat: p.seat, from: [nr, nc], free: false, banish: true, then });
     startHitWave(s, trig, { mover: p.seat, lateral: false });
     return;
   }
@@ -1070,6 +1087,7 @@ ACTIONS['scramble'] = (s, p, { r, c }, aw) => {
     ev(s, 'move', { seat: p.seat, from: [aw.from.r, aw.from.c], to: [r, c] });
     p.r = r; p.c = c; p.placed = true; p.falling = null;
     log(s, `${p.name} scrambles away.`, 'info');
+    if (aw.banish) banishCell(s, aw.from.r, aw.from.c);
     s.queue.unshift({ t: 'arrive', seat: p.seat, then });
     return;
   }
@@ -1085,7 +1103,9 @@ ACTIONS['scramble'] = (s, p, { r, c }, aw) => {
     ev(s, 'reveal', { r, c });
     ev(s, 'move', { seat: p.seat, from: [aw.from.r, aw.from.c], to: [r, c] });
     p.r = r; p.c = c; p.placed = true; p.falling = null;
+    if (aw.banish) banishCell(s, aw.from.r, aw.from.c);
     log(s, `${p.name} scrambles straight onto another Draugr!`, 'danger');
+    // the newly stumbled-onto draugr follows stumble rules: it is not banished
     s.queue.unshift({ t: 'scramble', seat: p.seat, from: [r, c], free: false, then });
     startHitWave(s, [[r, c]], { mover: p.seat, lateral: false });
     return;
@@ -1093,19 +1113,20 @@ ACTIONS['scramble'] = (s, p, { r, c }, aw) => {
   const rots = aw.free
     ? [0, 1, 2, 3]
     : [0, 1, 2, 3].filter(rot => exitsFor(tile.kind, rot)[OPP(opt.d)]);
-  s.blindCtx = { scramble: true, then, from: [aw.from.r, aw.from.c] };
+  s.blindCtx = { scramble: true, then, from: [aw.from.r, aw.from.c], banish: !!aw.banish };
   s.awaiting = { type: 'place-scramble', seat: p.seat, tile, r, c, rots };
 };
 
 ACTIONS['place-scramble'] = (s, p, { rot }, aw) => {
   if (!aw.rots.includes(rot)) err('Bad rotation.');
   s.awaiting = null;
-  const { then, from } = s.blindCtx;
+  const { then, from, banish } = s.blindCtx;
   s.blindCtx = null;
   setTile(s, aw.r, aw.c, aw.tile, rot);
   ev(s, 'reveal', { r: aw.r, c: aw.c });
   if (from) ev(s, 'move', { seat: p.seat, from, to: [aw.r, aw.c] });
   p.r = aw.r; p.c = aw.c; p.placed = true; p.falling = null;
+  if (banish && from) banishCell(s, from[0], from[1]);
   log(s, `${p.name} scrambles onto ${describeTile(aw.tile)}.`, 'info');
   s.queue.unshift({ t: 'arrive', seat: p.seat, then });
 };

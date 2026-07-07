@@ -13,11 +13,15 @@ function section(name) { console.log('\n== ' + name); }
 
 // helper: a stack of n plain crosses (bottom-first array; pop draws from end)
 const crosses = n => Array.from({ length: n }, () => ({ kind: 'cross' }));
-// a playable deck: gates + a rune circle buried at the bottom (never drawn in
-// short tests) so the instant-loss checks ("no gates left") stay quiet.
+// a playable deck: gates + four rune circles buried at the bottom (never
+// drawn in short tests) so the auto-loss checks (no gates / not enough
+// circles for the four marks) stay quiet.
 const deck = n => [
   { kind: 'gate', gate: 'valhalla' },
   { kind: 'gate', gate: 'folkvangr' },
+  { kind: 'rune', fractured: true },
+  { kind: 'rune', fractured: true },
+  { kind: 'rune', fractured: true },
   { kind: 'rune', fractured: true },
   ...crosses(n),
 ];
@@ -53,8 +57,8 @@ section('setup & illumination');
   check(s.awaiting.type === 'place-start' && s.awaiting.seat === 0, 'awaits seat 0 start');
   doSetup(s);
   check(s.phase === 'play', 'play begins after setup');
-  // each start has 2 exits into empty mist => 8 tiles drawn (deck(30) = 33)
-  check(publicState(s).stackCount === 25, '8 tiles drawn during setup');
+  // each start has 2 exits into empty mist => 8 tiles drawn (deck(30) = 36)
+  check(publicState(s).stackCount === 28, '8 tiles drawn during setup');
   const p0 = s.players[0];
   check(p0.placed && p0.r === 1 && p0.c === 1, 'soul 0 on start');
   check(s.awaiting.type === 'action' && s.awaiting.seat === 0, 'soul 0 to act');
@@ -274,6 +278,9 @@ section('loss: both gates lost');
   ];
   const s = createGame({ seed: 9, stack: stack2 });
   doSetup(s);
+  // marks already held keep the rune-capacity loss check quiet — this test
+  // is about losing the gates
+  RUNES.valhalla.forEach((r, i) => { s.players[i].rune = { p: 'valhalla', k: r.k }; });
   // cheat: drop all but [rune, gate, gate] from the stack, then stay twice
   s.stack.splice(3);
   applyAction(s, 0, { kind: 'stay' }); // burns folkvangr gate (top of remaining)
@@ -333,15 +340,77 @@ section('charge: strike lands on the charger, then the draugr is banished');
   check(p0.resolve === 0, 'resolve spent on the charge');
   check(p0.hopeful === false, 'the strike landed — charger hopeless');
   check(stackBefore - s.stack.length === 3, 'full 3 tiles burned by the strike');
-  check(s.events.some(e => e.e === 'banish'), 'banish event emitted');
-  const cell12 = s.grid[key(1, 2)];
-  check(cell12 === null, 'the draugr is gone from the forest (bare ground, no rift)');
-  check(s.discard.some(t => t.kind === 'draugr'), 'the banished draugr lies in the discard');
-  check(s.awaiting.type === 'scramble' && s.awaiting.seat === 0, 'charger scrambles off the bare ground');
+  check(s.awaiting.type === 'scramble' && s.awaiting.seat === 0, 'charger scrambles while still on the draugr');
+  const t12 = _test.tileAt(s, 1, 2);
+  check(t12 && t12.kind === 'draugr', 'the draugr stands until the charger scrambles off');
   const opt = s.awaiting.options.find(o => !o.draw) || s.awaiting.options[0];
   applyAction(s, 0, { r: opt.r, c: opt.c });
   if (s.awaiting && (s.awaiting.type === 'place-scramble')) applyAction(s, 0, { rot: s.awaiting.rots[0] });
   check(s.players[0].placed, 'charger scrambled to footing');
+  // ...and only now, with the attack resolved and the soul off its tile,
+  // is the draugr banished — even before any rekindling could see it
+  check(s.events.some(e => e.e === 'banish'), 'banish event emitted with the scramble');
+  check(s.grid[key(1, 2)] === null, 'the draugr is gone from the forest (bare ground, no rift)');
+  check(s.discard.some(t => t.kind === 'draugr'), 'the banished draugr lies in the discard');
+}
+
+// ---------------------------------------------------------------- rune capacity loss
+section('loss: not enough rune circles left for the missing marks');
+{
+  const s = createGame({ seed: 13, stack: deck(30) });
+  doSetup(s);
+  // nobody is marked (4 circles needed) — remove one circle, leaving 3
+  s.stack.splice(s.stack.findIndex(t => t.kind === 'rune'), 1);
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  check(s.phase === 'lost', 'game auto-ends when circles < missing marks');
+  check(/Rune Circles/.test(s.lossReason || ''), 'loss reason names the rune circles');
+}
+
+section('rune capacity: held marks reduce the circles needed');
+{
+  const s = createGame({ seed: 14, stack: deck(30) });
+  doSetup(s);
+  // three distinct Valhalla marks held -> only one circle is needed
+  ['thurisaz', 'eihwaz', 'isa'].forEach((k, i) => { s.players[i].rune = { p: 'valhalla', k }; });
+  while (s.stack.filter(t => t.kind === 'rune').length > 1) {
+    s.stack.splice(s.stack.findIndex(t => t.kind === 'rune'), 1);
+  }
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  check(s.phase === 'play', 'one circle for one missing mark — the saga continues');
+  // a duplicate mark does not count toward the set
+  s.players[3].rune = { p: 'valhalla', k: 'thurisaz' };
+  s.stack.splice(s.stack.findIndex(t => t.kind === 'rune'), 1); // now 0 circles
+  while (s.awaiting && s.awaiting.type === 'place-tile') {
+    const tg = s.awaiting.targets[0];
+    applyAction(s, 0, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+  }
+  applyAction(s, 0, { kind: 'end' }); // end-turn loss check fires
+  check(s.phase === 'lost', 'duplicate marks cannot finish the set — game ends');
+}
+
+// ---------------------------------------------------------------- relight ownership
+section('relight: the rekindled soul places their own tiles');
+{
+  const s = createGame({ seed: 15, stack: deck(40) });
+  doSetup(s);
+  // hopeless soul 1 waits at (1,3), connected to the cross soul 0 will reach
+  _test.setTile(s, 1, 3, _test.makeTileDef(s, 'cross'), 0);
+  s.players[1].r = 1; s.players[1].c = 3; s.players[1].hopeful = false;
+  s.awaiting = null; s.queue.length = 0; s.queue.push({ t: 'action' }); _test.run(s);
+  applyAction(s, 0, { kind: 'move', d: 1 }); // soul 0 -> (1,2), adjacent + connected
+  // the mover fills their own passages first...
+  while (s.awaiting && s.awaiting.type === 'place-tile' && s.awaiting.seat === 0) {
+    const tg = s.awaiting.targets[0];
+    applyAction(s, 0, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+  }
+  check(s.players[1].hopeful, 'soul 1 rekindled by adjacency');
+  check(s.awaiting && s.awaiting.type === 'place-tile' && s.awaiting.seat === 1 && s.awaiting.forSeat === 1,
+    'the rekindled soul reveals their own paths — never another player');
+  while (s.awaiting && s.awaiting.type === 'place-tile') {
+    const tg = s.awaiting.targets[0];
+    applyAction(s, s.awaiting.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+  }
+  check(s.awaiting.type === 'post-move' && s.awaiting.seat === 0, 'turn control returns to the mover');
 }
 
 // ---------------------------------------------------------------- full random game smoke test

@@ -26,7 +26,9 @@ all four Fólkvangr runes, spread across the four souls).
 The souls **lose together** if:
 
 - Both Gates are swallowed by the mist before being placed.
-- The rune circles are all destroyed before the souls can bear a valid set of runes.
+- Too few Rune Circles remain for the souls to complete the four marks a gate
+  demands (checked automatically: each soul not yet holding a distinct rune of
+  the best available gate needs one remaining circle).
 - A falling soul has no tile left to land on (they fall through the void forever).
 - The group concedes to Niflheim.
 
@@ -184,11 +186,13 @@ Lost souls who sought Valhalla and failed. They despise your hope.
 - Falling breaks line of sight: a soul that falls triggers watching Draugr
   but drops away before the strike lands.
 - **Charging** (1 Resolve) destroys a Draugr outright: its strike lands on
-  you, and then its spite is spent — the Draugr vanishes from the forest,
-  leaving bare ground. But it is not the only way past one: evade its line,
-  or simply walk away — a Draugr no soul lights any longer fades back into
-  the mist like any tile. (One *fallen onto* from the void collapses into a
-  Rift; one merely stumbled onto in the dark remains.)
+  you, you scramble onto an adjacent space — and then its spite is spent and
+  the Draugr dissolves behind you, leaving bare ground. But it is not the
+  only way past one: evade its line, or simply walk away — a Draugr no soul
+  lights any longer fades back into the mist like any tile. (One *fallen
+  onto* from the void collapses into a Rift; one merely stumbled onto in the
+  dark remains — though the mist claims it before any rekindled hope can
+  light it again.)
 
 ## Rune Circles
 
@@ -252,5 +256,12 @@ When the last tile leaves the stack, the primordial cold closes in:
 10. **Scrambling off a Draugr never re-triggers it** (it's part of the attack's
     resolution), and you may never deliberately scramble onto another visible Draugr.
 11. **Charge banishes** (departure from TNC, where monsters persist): the
-    charged Draugr disappears after its attack resolves, making Charge a true
-    monster-removal tool — a Resolve plus a guaranteed hit buys a cleared corridor.
+    charged Draugr disappears once its attack resolves and the charger
+    scrambles off it, making Charge a true monster-removal tool — a Resolve
+    plus a guaranteed hit buys a cleared corridor.
+12. **Rekindled souls reveal their own paths** (departure from TNC, where the
+    current player draws relit tiles) — playtest rule: a player always places
+    their own tiles, even mid another player's turn.
+13. **The mist sweeps before hope spreads**: after every arrival, unlit tiles
+    are removed *before* the rekindle check — a monster (or path) abandoned in
+    hopelessness cannot be saved by being rekindled a moment later.

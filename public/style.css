@@ -436,5 +436,14 @@ body.no-anims *, body.no-anims *::before, body.no-anims *::after {
   #board { height: auto; width: 96vw; max-height: none; }
   #game { overflow-y: auto; }
   body { overflow: auto; }
-  #preview { right: 10px; bottom: 10px; }
+  /* tab panes collapse to zero height inside the unconstrained column flex —
+     give them a real height so Saga/Soul/Whispers are usable on phones */
+  #tabs { flex: none; }
+  .tab-pane { height: 45vh; min-height: 240px; }
+  #players { grid-template-columns: 1fr 1fr; }
+  .pcard { font-size: 12px; }
+  #topbar { flex-wrap: wrap; gap: 6px 12px; }
+  #turn-banner { order: 5; flex-basis: 100%; text-align: left; }
+  /* keep the tile preview floating over the board while the page scrolls */
+  #preview { position: fixed; right: 10px; bottom: 10px; z-index: 40; }
 }
