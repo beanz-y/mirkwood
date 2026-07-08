@@ -42,14 +42,22 @@ export const PLAYER_COLOR_NAMES = ['Gold', 'Ember', 'Teal', 'Violet', 'Ice', 'Mo
 // eight Norse sigils a soul may bear as its token, authored in a 24×24 box;
 // "CUR" is replaced with the drawing color at render time
 export const TOKEN_ICONS = {
-  helm: { name: 'Helm', art: '<path d="M4 14 C4 6.5 8 3 12 3 C16 3 20 6.5 20 14 L20 15.5 L14.6 15.5 L14.6 21 L9.4 21 L9.4 15.5 L4 15.5 Z" fill="CUR"/>' },
-  shield: { name: 'Shield', art: '<circle cx="12" cy="12" r="8.6" fill="none" stroke="CUR" stroke-width="2.4"/><circle cx="12" cy="12" r="3" fill="CUR"/><path d="M12 3.4 V8 M12 16 V20.6 M3.4 12 H8 M16 12 H20.6" stroke="CUR" stroke-width="1.6"/>' },
-  axe: { name: 'Axe', art: '<path d="M7.2 21.5 L14.6 5.2" stroke="CUR" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M13.2 2.6 C17.6 3.4 20.8 6.8 21 11.2 C17.8 9.9 14.9 9.9 12.4 11 L10.6 7 C11.2 5.2 12 3.7 13.2 2.6 Z" fill="CUR"/>' },
-  hammer: { name: 'Mjölnir', art: '<path d="M9.6 2.8 H14.4 V12.2 H19.4 V18.6 H4.6 V12.2 H9.6 Z" fill="CUR"/>' },
-  ship: { name: 'Longship', art: '<path d="M2.4 13 C5.2 18.6 18.8 18.6 21.6 13 C17.8 15.8 6.2 15.8 2.4 13 Z" fill="CUR"/><path d="M3.4 13.6 C2.6 9.6 3.8 6.8 6.4 5.2 M20.6 13.6 C21.4 9.6 20.2 6.8 17.6 5.2" stroke="CUR" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M12 14.6 V3.4" stroke="CUR" stroke-width="2" fill="none"/>' },
-  raven: { name: 'Raven', art: '<path d="M3.6 13.2 C6.2 9.4 9.6 8 12.8 8.4 C13.6 6.4 15.4 5.4 17.2 5.8 L20.8 7.6 L17.6 8.9 C17.9 12.4 15.8 15.6 12.2 17 L13.8 20.6 L10 17.8 C7.2 17.7 4.8 16 3.6 13.2 Z" fill="CUR"/>' },
-  horn: { name: 'Horn', art: '<path d="M4 5.2 C6.2 13.4 11.8 18.4 19.8 19.6 C20.8 18.2 20.6 16.8 19.4 16.2 C13.6 14.4 9.8 10.6 8.2 4.6 C6.6 3.6 4.6 3.8 4 5.2 Z" fill="CUR"/><path d="M3.6 4.4 L8.6 3.6" stroke="CUR" stroke-width="2" stroke-linecap="round" fill="none"/>' },
-  valknut: { name: 'Valknut', art: '<g fill="none" stroke="CUR" stroke-width="1.9" stroke-linejoin="round"><path d="M12 2.6 L16.7 11 L7.3 11 Z"/><path d="M7.4 12.6 L12.1 21 L2.7 21 Z"/><path d="M16.6 12.6 L21.3 21 L11.9 21 Z"/></g>' },
+  // nasal helm: domed cap on a brow band with a nose guard hanging down
+  helm: { name: 'Helm', art: '<path d="M5 12 C5 6.5 8 3 12 3 C16 3 19 6.5 19 12 Z" fill="CUR"/><path d="M3.8 11.8 H20.2 V14 H3.8 Z" fill="CUR"/><path d="M10.7 14 H13.3 V18.6 L12 19.6 L10.7 18.6 Z" fill="CUR"/>' },
+  // round shield: rim, central boss, radial planks
+  shield: { name: 'Shield', art: '<circle cx="12" cy="12" r="9.2" fill="none" stroke="CUR" stroke-width="1.9"/><circle cx="12" cy="12" r="2.5" fill="CUR"/><path d="M12 3.2 V20.8 M3.2 12 H20.8 M5.8 5.8 L18.2 18.2 M18.2 5.8 L5.8 18.2" stroke="CUR" stroke-width="1.1" fill="none"/>' },
+  // sword point-down: round pommel, grip, crossguard, tapering blade
+  sword: { name: 'Sword', art: '<circle cx="12" cy="3.3" r="1.8" fill="CUR"/><rect x="11.1" y="4.7" width="1.8" height="3" fill="CUR"/><rect x="6" y="7.5" width="12" height="2.2" rx="1.1" fill="CUR"/><path d="M10.2 10 H13.8 L12.9 20 L12 21.8 L11.1 20 Z" fill="CUR"/>' },
+  // Mjölnir hung as a pendant: ring, short haft, blocky head with a flared skirt
+  hammer: { name: 'Mjölnir', art: '<circle cx="12" cy="3.2" r="1.7" fill="none" stroke="CUR" stroke-width="1.4"/><path d="M10.5 4.8 H13.5 V11.5 H10.5 Z" fill="CUR"/><path d="M5 11.5 H19 V15.5 L20.5 20 H3.5 L5 15.5 Z" fill="CUR"/>' },
+  // longship: bold crescent hull, up-swept dragon posts, mast, billowing sail
+  ship: { name: 'Longship', art: '<path d="M2.2 11.4 C5.5 17 18.5 17 21.8 11.4 C17 13.6 7 13.6 2.2 11.4 Z" fill="CUR"/><path d="M3.4 11.8 C1.9 7.8 2.3 4.8 4.2 3.4 M20.6 11.8 C22.1 7.8 21.7 4.8 19.8 3.4" stroke="CUR" stroke-width="2.1" fill="none" stroke-linecap="round"/><path d="M12 11.8 V4.4" stroke="CUR" stroke-width="2" fill="none"/><path d="M7 4.8 H17 V9.2 C13 11.4 11 11.4 7 9.2 Z" fill="CUR"/>' },
+  // raven perched in profile, facing right — stout beak, long tail, gripping feet
+  raven: { name: 'Raven', art: '<path d="M21 6.2 C19 5.4 16 3.8 13.5 4.3 C10.5 5 8.5 6.5 7 8.5 C5 11 3.5 13.5 2 18.5 L3.8 19 C6 16.5 9 15.2 11.5 14.8 C14 14.6 16.5 13.8 17.8 11.8 C18.6 10.3 18.4 8.5 18.8 7.3 C19.4 6.9 20.2 6.5 21 6.2 Z" fill="CUR"/><path d="M11.4 15 L11 19.8 M11 19.8 L9.6 20.8 M11 19.8 L12.3 20.8 M14.3 14.7 L14.3 19.8 M14.3 19.8 L12.9 20.8 M14.3 19.8 L15.6 20.8" stroke="CUR" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' },
+  // drinking horn: wide rim at the mouth tapering to a point
+  horn: { name: 'Horn', art: '<path d="M4.2 4.2 C7 3 9.2 4 9.8 6.4 C12 13 16 18 20.6 20 L19.8 21.4 C14.5 18.6 9.4 13.4 6.3 8 C5 5.9 3.5 5 4.2 4.2 Z" fill="CUR"/><ellipse cx="6.3" cy="4.9" rx="3.1" ry="1.8" fill="CUR" transform="rotate(30 6.3 4.9)"/>' },
+  // valknut: three thin heavily-overlapping triangles — inner triangles show through
+  valknut: { name: 'Valknut', art: '<g fill="none" stroke="CUR" stroke-width="1.5" stroke-linejoin="round"><path d="M9 2.5 L16 16 L2 16 Z"/><path d="M15 2.5 L22 16 L8 16 Z"/><path d="M12 7 L18.5 20 L5.5 20 Z"/></g>' },
 };
 export const TOKEN_ICON_KEYS = Object.keys(TOKEN_ICONS);
 

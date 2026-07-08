@@ -438,7 +438,7 @@ const TUT_PAGES = [
       + tutCell(tutTile('cross'), 2, 0)
       + tutTok(1, 0, 0, 'helm', { small: true, dx: -13, dy: -13 })
       + tutTok(1, 0, 1, 'shield', { small: true, dx: 13, dy: -13 })
-      + tutTok(1, 0, 2, 'axe', { small: true, dx: -13, dy: 13 })
+      + tutTok(1, 0, 2, 'sword', { small: true, dx: -13, dy: 13 })
       + tutTok(1, 0, 3, 'raven', { small: true, dx: 13, dy: 13 })),
     x: `You died without glory, and the dark wood between the worlds has you. There is one road out: find a <b>Gate</b>, gather its <b>four runes</b> — one different mark on each soul — and stand upon it <b>together</b>. All four of you win, or none. Everything else in Myrkviðr stands between you and that door.`,
   },
