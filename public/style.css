@@ -513,8 +513,8 @@ body.no-anims *, body.no-anims *::before, body.no-anims *::after {
   #turn-banner { order: 5; flex-basis: 100%; text-align: left; }
   /* keep the tile preview floating over the board while the page scrolls —
      compact, so it never hides the action bar's Rotate / ✓ Place buttons */
-  #preview { position: fixed; right: 8px; bottom: 8px; z-index: 40; width: 118px; padding: 8px; }
-  #preview-svg { width: 64px; height: 64px; }
+  #preview { position: fixed; right: 8px; bottom: 8px; z-index: 40; width: 128px; padding: 8px; }
+  #preview-svg { width: 84px; height: 84px; }
 }
 
 /* narrow phones: the rune picker's two columns become one */

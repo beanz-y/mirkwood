@@ -186,7 +186,7 @@ function leaveSaga() {
 // board and the tile-preview panel can reference them
 document.body.insertAdjacentHTML('beforeend', `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
   <radialGradient id="mk-ground" cx="50%" cy="40%" r="85%">
-    <stop offset="0%" stop-color="#10150f"/><stop offset="70%" stop-color="#0c110c"/><stop offset="100%" stop-color="#090d09"/>
+    <stop offset="0%" stop-color="#151c13"/><stop offset="70%" stop-color="#10150e"/><stop offset="100%" stop-color="#0b100b"/>
   </radialGradient>
   <linearGradient id="mk-stone" x1="0" y1="0" x2="1" y2="1">
     <stop offset="0%" stop-color="#333c33"/><stop offset="100%" stop-color="#232b23"/>
@@ -974,7 +974,9 @@ function updateGhost() {
   const [r, c] = cell.split(',').map(Number);
   const rot = rots.includes(previewRot) ? previewRot : rots[0];
   const x = PAD + c * CS, y = PAD + r * CS;
-  layer.innerHTML = tileSVG({ ...tile, rot, exits: exitsFor(tile.kind, rot) }, x, y)
+  const ex = exitsFor(tile.kind, rot);
+  layer.innerHTML = tileSVG({ ...tile, rot, exits: ex }, x, y)
+    + exitMarkers(ex, x, y)
     + `<rect x="${x + 3}" y="${y + 3}" width="${CS - 6}" height="${CS - 6}" rx="8" class="ghost-outline"/>`;
 }
 
@@ -1092,6 +1094,21 @@ function cairn(px, py) {
     <path d="M ${px + 1} ${py + 2} l 4 -2 l 1 4 l -5 1 z" fill="#283028" stroke="#0d120d" stroke-width="0.8"/>`;
 }
 
+// bright chevrons at each open passage — near-black woodcut tiles are hard
+// to read at phone sizes, so pending tiles (preview panel + board ghost)
+// wear their openings on their sleeve
+function exitMarkers(exits, x, y) {
+  const cx = x + CS / 2, cy = y + CS / 2;
+  const pts = [[cx, y + 9, 0], [x + CS - 9, cy, 90], [cx, y + CS - 9, 180], [x + 9, cy, 270]];
+  let out = '';
+  for (let d = 0; d < 4; d++) {
+    if (!exits[d]) continue;
+    const [mx, my, rot] = pts[d];
+    out += `<path d="M ${mx - 5.5} ${my + 3} L ${mx} ${my - 3.5} L ${mx + 5.5} ${my + 3}" fill="none" stroke="#e8b23c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" transform="rotate(${rot} ${mx} ${my})" opacity="0.95"/>`;
+  }
+  return out;
+}
+
 function tileSVG(tile, x, y) {
   const cx = x + CS / 2, cy = y + CS / 2;
   const exits = tile.exits || exitsFor(tile.kind, tile.rot || 0);
@@ -1109,7 +1126,7 @@ function tileSVG(tile, x, y) {
   const seed = (x * 31 + y * 17) | 0;
   const parts = [];
   // ink-black ground with sparse woodcut hatching
-  parts.push(`<rect x="${x + 2.5}" y="${y + 2.5}" width="${CS - 5}" height="${CS - 5}" rx="7" fill="url(#mk-ground)" stroke="#39443a" stroke-width="1"/>`);
+  parts.push(`<rect x="${x + 2.5}" y="${y + 2.5}" width="${CS - 5}" height="${CS - 5}" rx="7" fill="url(#mk-ground)" stroke="#465046" stroke-width="1"/>`);
   parts.push(`<g stroke="#131a12" stroke-width="1" fill="none">
     <path d="M ${x + 9 + (seed % 8)} ${y + 20 + (seed % 6)} h11 M ${x + 7 + (seed % 8)} ${y + 24 + (seed % 6)} h7
       M ${x + 58 - (seed % 7)} ${y + 62 + (seed % 6)} h10 M ${x + 62 - (seed % 7)} ${y + 66 + (seed % 6)} h8"/></g>`);
@@ -1123,13 +1140,19 @@ function tileSVG(tile, x, y) {
   const ends = [[cx, y + 2.5], [x + CS - 2.5, cy], [cx, y + CS - 2.5], [x + 2.5, cy]];
   for (let d = 0; d < 4; d++) {
     if (!exits[d]) continue;
-    parts.push(`<line x1="${cx}" y1="${cy}" x2="${ends[d][0]}" y2="${ends[d][1]}" stroke="#1e1912" stroke-width="24"/>`);
+    parts.push(`<line x1="${cx}" y1="${cy}" x2="${ends[d][0]}" y2="${ends[d][1]}" stroke="#262019" stroke-width="24"/>`);
   }
-  if (exits.some(Boolean)) parts.push(`<circle cx="${cx}" cy="${cy}" r="12.5" fill="#211c14"/>`);
+  if (exits.some(Boolean)) parts.push(`<circle cx="${cx}" cy="${cy}" r="12.5" fill="#29231a"/>`);
   for (let d = 0; d < 4; d++) {
     if (!exits[d]) continue;
     const [ex, ey] = ends[d];
     const vert = d % 2 === 0;
+    // pale ink verge lines: they run WITH the track, so open mouths stay
+    // visibly open and the road reads even at phone sizes
+    for (const off of [-12, 12]) {
+      const px2 = vert ? off : 0, py2 = vert ? 0 : off;
+      parts.push(`<line x1="${cx + (ex - cx) * 0.24 + px2}" y1="${cy + (ey - cy) * 0.24 + py2}" x2="${ex + px2}" y2="${ey + py2}" stroke="#59644f" stroke-width="1.1" opacity="0.9"/>`);
+    }
     for (const off of [-4, 4]) {
       const gx = vert ? off : 0, gy = vert ? 0 : off;
       parts.push(`<line x1="${cx + gx}" y1="${cy + gy}" x2="${ex + gx}" y2="${ey + gy}" stroke="#120e09" stroke-width="1.6"/>`);
@@ -1147,11 +1170,11 @@ function tileSVG(tile, x, y) {
   if (tile.kind === 'start') {
     // a broad cleared opening in the wood — the wide chamber where the soul
     // awoke, its two ways out cut through the treeline
-    parts.push(`<path d="M ${cx + 32} ${cy - 5} C ${cx + 35} ${cy + 12} ${cx + 22} ${cy + 30} ${cx + 3} ${cy + 32} C ${cx - 15} ${cy + 34} ${cx - 31} ${cy + 22} ${cx - 33} ${cy + 4} C ${cx - 35} ${cy - 13} ${cx - 24} ${cy - 29} ${cx - 5} ${cy - 32} C ${cx + 13} ${cy - 35} ${cx + 30} ${cy - 22} ${cx + 32} ${cy - 5} Z" fill="#1e1912" stroke="#0d0a06" stroke-width="1.2"/>`);
+    parts.push(`<path d="M ${cx + 32} ${cy - 5} C ${cx + 35} ${cy + 12} ${cx + 22} ${cy + 30} ${cx + 3} ${cy + 32} C ${cx - 15} ${cy + 34} ${cx - 31} ${cy + 22} ${cx - 33} ${cy + 4} C ${cx - 35} ${cy - 13} ${cx - 24} ${cy - 29} ${cx - 5} ${cy - 32} C ${cx + 13} ${cy - 35} ${cx + 30} ${cy - 22} ${cx + 32} ${cy - 5} Z" fill="#262019" stroke="#59644f" stroke-width="1"/>`);
     for (let d = 0; d < 4; d++) {
       if (!exits[d]) continue;
       const [ex, ey] = ends[d];
-      parts.push(`<line x1="${cx + (ex - cx) * 0.68}" y1="${cy + (ey - cy) * 0.68}" x2="${ex}" y2="${ey}" stroke="#1e1912" stroke-width="24"/>`);
+      parts.push(`<line x1="${cx + (ex - cx) * 0.68}" y1="${cy + (ey - cy) * 0.68}" x2="${ex}" y2="${ey}" stroke="#262019" stroke-width="24"/>`);
       for (const off of [-4, 4]) {
         const gx = d % 2 === 0 ? off : 0, gy = d % 2 === 0 ? 0 : off;
         parts.push(`<line x1="${cx + (ex - cx) * 0.8 + gx}" y1="${cy + (ey - cy) * 0.8 + gy}" x2="${ex + gx}" y2="${ey + gy}" stroke="#120e09" stroke-width="1.6"/>`);
@@ -1370,7 +1393,7 @@ function renderPreviewPanel() {
   tile.exits = exitsFor(tile.kind, previewRot);
   $('preview-title').textContent = tileName(tile);
   const svg = $('preview-svg');
-  svg.innerHTML = tileSVG(tile, 1, 1).replaceAll(`${CS}`, `${CS}`); // draws at 90 within 92 viewbox
+  svg.innerHTML = tileSVG(tile, 1, 1) + exitMarkers(tile.exits, 1, 1); // draws at 90 within 92 viewbox
   const rots = activeCellRots(aw);
   $('rotate-btn').style.display = rots.length > 1 ? '' : 'none';
   $('rotate-btn').innerHTML = IS_COARSE ? '⟳ Rotate' : '⟳ Rotate <small>(R)</small>';
