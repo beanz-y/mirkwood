@@ -550,6 +550,15 @@ section("renaming: an adopted soul takes its keeper's name");
   check(s.players[0].name === 'Astrid', 'a blank name keeps the old one');
 }
 
+// ---------------------------------------------------------------- action counter
+section('action counter: every action bumps publicState.seq');
+{
+  const s = createGame({ seed: 32, stack: deck(10) });
+  const before = publicState(s).seq;
+  applyAction(s, 0, { r: 1, c: 1, rot: 0 });
+  check(publicState(s).seq === before + 1, 'seq increments once per action (clients animate each action once)');
+}
+
 // ---------------------------------------------------------------- end conditions
 section('end conditions: an incompatible rune at the last circle loses at once');
 {

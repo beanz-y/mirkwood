@@ -26,6 +26,8 @@ let transientFx = null;   // choreographed one-shot animation timeline
 let decisionDeadline = null; // soft turn-timer deadline for the current decision
 let soulSeat = null;      // which soul the status card shows (null = auto)
 let lookSeat = null;      // seat whose look picker is open in the lobby
+let lastAnimatedSeq = null; // engine action counter: animate each action ONCE
+let hiddenAtSeq = null;     // action counter when the tab went to sleep
 
 // a soul's sigil as inline HTML (board tokens use iconSVG into the board svg)
 function sigilHTML(iconKey, color, size = 16) {
@@ -153,6 +155,7 @@ function setConn(st) {
 function openSocket(query, onReady) {
   clearTimeout(reconnectTimer);
   if (ws) { ws.onclose = null; ws.onmessage = null; try { ws.close(); } catch { /* gone */ } }
+  lastAnimatedSeq = null; // a fresh connection gets the catch-up treatment
   setConn('wait');
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}/ws?${query}`);
@@ -243,7 +246,19 @@ function handle(msg) {
       break;
     case 'state': {
       state = msg.state;
-      transientFx = buildTimeline(state.events);
+      const seq = state.seq || 0;
+      if (lastAnimatedSeq === null) {
+        // just (re)joined: don't replay a single stale action out of context —
+        // play the previous turn once instead, as a catch-up highlight
+        transientFx = (anims && state.phase === 'play' && state.lastTurn && state.lastTurn.events.length)
+          ? buildTimeline(state.lastTurn.events, 5)
+          : null;
+      } else if (seq !== lastAnimatedSeq) {
+        transientFx = buildTimeline(state.events); // a fresh action: animate it live
+      } else {
+        transientFx = null; // a room-change rebroadcast: nothing new to show
+      }
+      lastAnimatedSeq = seq;
       render();
       break;
     }
@@ -365,6 +380,18 @@ $('replay-btn').onclick = () => {
   transientFx = buildTimeline(state.lastTurn.events, 5);
   render();
 };
+
+// coming back to a tab left sleeping: if turns passed while away, replay the
+// previous turn once — a catch-up highlight instead of a silently-changed board
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { hiddenAtSeq = state ? (state.seq || 0) : null; return; }
+  const missed = hiddenAtSeq !== null && state && (state.seq || 0) > hiddenAtSeq;
+  hiddenAtSeq = null;
+  if (missed && anims && state.phase === 'play' && state.lastTurn && state.lastTurn.events.length) {
+    transientFx = buildTimeline(state.lastTurn.events, 5);
+    render();
+  }
+});
 
 // rules overlay
 function openRules() { $('rules').classList.remove('hidden'); }

@@ -1013,6 +1013,7 @@ export function applyAction(s, seat, payload) {
   if (aw.seat !== seat) err('It is not this soul’s decision.');
   const handler = ACTIONS[aw.type];
   if (!handler) err('Unknown decision type.');
+  s.seq = (s.seq || 0) + 1; // action counter: clients animate each action once
   s.events = []; // each action broadcast carries only its own events
   if (!s.turnEvents) s.turnEvents = []; // states persisted before this field existed
   handler(s, P(s, seat), payload, aw);
@@ -1464,6 +1465,7 @@ export function publicState(s) {
     randomRunes: !!s.randomRunes,
     tileTotals: s.tileTotals || null,
     turnsTaken: s.turnsTaken || 0,
+    seq: s.seq || 0,
     lit: [...litSet(s)],
   };
 }
