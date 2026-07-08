@@ -10,7 +10,7 @@
   --gold: #e8b23c;
   --danger: #d05e5e;
   --good: #6fce9a;
-  --mist: #101a15;
+  --mist: #0a0e0a;
   --tile: #23372b;
   --tile-edge: #33503f;
   --path: #57806b;
@@ -223,7 +223,7 @@ input:focus { outline: 1px solid var(--gold); }
 
 /* ---------------- board svg ---------------- */
 .cell-mist { fill: var(--mist); }
-.cell-empty-lit { fill: #16231b; }
+.cell-empty-lit { fill: #121712; }
 .cell-hit { animation: hitflash 1.2s ease-out; }
 @keyframes hitflash { 0% { fill: #7a2e2e; } 100% { fill: var(--mist); } }
 

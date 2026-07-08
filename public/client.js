@@ -186,10 +186,10 @@ function leaveSaga() {
 // board and the tile-preview panel can reference them
 document.body.insertAdjacentHTML('beforeend', `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
   <radialGradient id="mk-ground" cx="50%" cy="40%" r="85%">
-    <stop offset="0%" stop-color="#2e4837"/><stop offset="70%" stop-color="#20362a"/><stop offset="100%" stop-color="#152419"/>
+    <stop offset="0%" stop-color="#10150f"/><stop offset="70%" stop-color="#0c110c"/><stop offset="100%" stop-color="#090d09"/>
   </radialGradient>
   <linearGradient id="mk-stone" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0%" stop-color="#54634f"/><stop offset="100%" stop-color="#39443c"/>
+    <stop offset="0%" stop-color="#333c33"/><stop offset="100%" stop-color="#232b23"/>
   </linearGradient>
   <radialGradient id="mk-void" cx="50%" cy="50%" r="62%">
     <stop offset="0%" stop-color="#1c0e33"/><stop offset="55%" stop-color="#0c0618"/><stop offset="100%" stop-color="#050309"/>
@@ -203,9 +203,6 @@ document.body.insertAdjacentHTML('beforeend', `<svg width="0" height="0" style="
   <radialGradient id="mk-ember" cx="50%" cy="50%" r="50%">
     <stop offset="0%" stop-color="#ffb45e" stop-opacity="0.85"/><stop offset="60%" stop-color="#d96f35" stop-opacity="0.45"/><stop offset="100%" stop-color="#d96f35" stop-opacity="0"/>
   </radialGradient>
-  <linearGradient id="mk-spectre" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0%" stop-color="#dbe8f7"/><stop offset="100%" stop-color="#8ba3c4"/>
-  </linearGradient>
 </defs></svg>`);
 
 // custom art: public/art/manifest.json maps art keys to image URLs
@@ -1081,11 +1078,18 @@ function addInteractions(parts, aw) {
 
 // ---------------------------------------------------------------- tile art
 
-// a two-tier pine silhouette, base centered at (px, py)
+// a jagged woodcut pine: tall ink spike with a skirt tier and one pale
+// rim-light stroke, base tier centered at (px, py)
 function pine(px, py, s, fill) {
-  return `<path d="M ${px - s * 0.5} ${py} l ${s * 0.5} ${-s * 0.95} l ${s * 0.5} ${s * 0.95} z
-    M ${px - s * 0.36} ${py - s * 0.55} l ${s * 0.36} ${-s * 0.7} l ${s * 0.36} ${s * 0.7} z
-    M ${px - s * 0.08} ${py} h ${s * 0.16} v ${s * 0.18} h ${-s * 0.16} z" fill="${fill}"/>`;
+  return `<path d="M ${px - s * 0.62} ${py} L ${px} ${py - s * 2} L ${px + s * 0.62} ${py}
+    L ${px + s * 0.38} ${py} L ${px + s * 0.7} ${py + s * 0.9} L ${px - s * 0.7} ${py + s * 0.9} L ${px - s * 0.38} ${py} Z" fill="${fill}"/>
+    <path d="M ${px} ${py - s * 2} L ${px + s * 0.62} ${py}" stroke="#3f4c3c" stroke-width="0.9" opacity="0.55" fill="none"/>`;
+}
+
+// a pair of small cairn stones, ink-edged
+function cairn(px, py) {
+  return `<path d="M ${px - 5} ${py} l 5 -3 l 2 5 l -6 2 z" fill="#2e372e" stroke="#0d120d" stroke-width="0.8"/>
+    <path d="M ${px + 1} ${py + 2} l 4 -2 l 1 4 l -5 1 z" fill="#283028" stroke="#0d120d" stroke-width="0.8"/>`;
 }
 
 function tileSVG(tile, x, y) {
@@ -1104,45 +1108,63 @@ function tileSVG(tile, x, y) {
 
   const seed = (x * 31 + y * 17) | 0;
   const parts = [];
-  // forest floor
-  parts.push(`<rect x="${x + 2.5}" y="${y + 2.5}" width="${CS - 5}" height="${CS - 5}" rx="9" fill="url(#mk-ground)" stroke="#33503f" stroke-width="1.5"/>`);
-  // seeded corner growth: pines or moss clumps
-  const corners = [[x + 13, y + 21], [x + CS - 13, y + 22], [x + 14, y + CS - 9], [x + CS - 14, y + CS - 10]];
+  // ink-black ground with sparse woodcut hatching
+  parts.push(`<rect x="${x + 2.5}" y="${y + 2.5}" width="${CS - 5}" height="${CS - 5}" rx="7" fill="url(#mk-ground)" stroke="#39443a" stroke-width="1"/>`);
+  parts.push(`<g stroke="#131a12" stroke-width="1" fill="none">
+    <path d="M ${x + 9 + (seed % 8)} ${y + 20 + (seed % 6)} h11 M ${x + 7 + (seed % 8)} ${y + 24 + (seed % 6)} h7
+      M ${x + 58 - (seed % 7)} ${y + 62 + (seed % 6)} h10 M ${x + 62 - (seed % 7)} ${y + 66 + (seed % 6)} h8"/></g>`);
+  // seeded corner growth: jagged pines or cairn stones
+  const corners = [[x + 14, y + 24], [x + CS - 14, y + 25], [x + 14, y + CS - 16], [x + CS - 14, y + CS - 15]];
   corners.forEach(([px, py], i) => {
-    if ((seed >> i) & 1) parts.push(pine(px, py, 13, '#1b2f22'));
-    else parts.push(`<circle cx="${px}" cy="${py - 5}" r="4.5" fill="#24402f"/><circle cx="${px + 5}" cy="${py - 2}" r="3" fill="#1e3627"/>`);
+    if ((seed >> i) & 1) parts.push(pine(px, py, 8.5, '#060a06'));
+    else parts.push(cairn(px, py));
   });
-  // stone passages: dark earth edging under a stone causeway, flagstones on top
+  // packed-earth tracks: cart-grooved, lined with cairn stones on the verges
   const ends = [[cx, y + 2.5], [x + CS - 2.5, cy], [cx, y + CS - 2.5], [x + 2.5, cy]];
   for (let d = 0; d < 4; d++) {
     if (!exits[d]) continue;
-    parts.push(`<line x1="${cx}" y1="${cy}" x2="${ends[d][0]}" y2="${ends[d][1]}" stroke="#37452f" stroke-width="30"/>`);
+    parts.push(`<line x1="${cx}" y1="${cy}" x2="${ends[d][0]}" y2="${ends[d][1]}" stroke="#1e1912" stroke-width="24"/>`);
   }
+  if (exits.some(Boolean)) parts.push(`<circle cx="${cx}" cy="${cy}" r="12.5" fill="#211c14"/>`);
   for (let d = 0; d < 4; d++) {
     if (!exits[d]) continue;
     const [ex, ey] = ends[d];
-    parts.push(`<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" stroke="url(#mk-stone)" stroke-width="25"/>`);
-    for (let f = 1; f <= 2; f++) {
-      const vert = d % 2 === 0;
-      const jit = ((seed >> (d + f)) & 1) ? 3 : -3;
-      const fx = cx + (ex - cx) * (f * 0.34) + (vert ? jit : 0);
-      const fy = cy + (ey - cy) * (f * 0.34) + (vert ? 0 : jit);
-      parts.push(`<ellipse cx="${fx}" cy="${fy}" rx="${vert ? 7 : 5}" ry="${vert ? 5 : 7}" fill="#49574a" stroke="#303c31" stroke-width="1.2"/>`);
+    const vert = d % 2 === 0;
+    for (const off of [-4, 4]) {
+      const gx = vert ? off : 0, gy = vert ? 0 : off;
+      parts.push(`<line x1="${cx + gx}" y1="${cy + gy}" x2="${ex + gx}" y2="${ey + gy}" stroke="#120e09" stroke-width="1.6"/>`);
     }
-  }
-  if (exits.some(Boolean)) {
-    parts.push(`<circle cx="${cx}" cy="${cy}" r="14" fill="url(#mk-stone)" stroke="#303c31" stroke-width="1.2"/>`);
+    for (const side of [-1, 1]) {
+      const f = 0.55 + (((seed >> (d + (side > 0 ? 2 : 0))) & 3) * 0.09);
+      const sx = cx + (ex - cx) * f + (vert ? side * 15 : 0);
+      const sy = cy + (ey - cy) * f + (vert ? 0 : side * 15);
+      const tone = ((seed >> d) & 1) ? '#2e372e' : '#283028';
+      parts.push(`<path d="M ${sx - 3} ${sy + 2} l 5 -4 l 2.5 4.5 l -6 2.5 z" fill="${tone}" stroke="#0d120d" stroke-width="0.8"/>`);
+    }
   }
 
   // kind decorations
   if (tile.kind === 'start') {
-    // a cold campfire in the clearing where the soul awoke
+    // a broad cleared opening in the wood — the wide chamber where the soul
+    // awoke, its two ways out cut through the treeline
+    parts.push(`<path d="M ${cx + 32} ${cy - 5} C ${cx + 35} ${cy + 12} ${cx + 22} ${cy + 30} ${cx + 3} ${cy + 32} C ${cx - 15} ${cy + 34} ${cx - 31} ${cy + 22} ${cx - 33} ${cy + 4} C ${cx - 35} ${cy - 13} ${cx - 24} ${cy - 29} ${cx - 5} ${cy - 32} C ${cx + 13} ${cy - 35} ${cx + 30} ${cy - 22} ${cx + 32} ${cy - 5} Z" fill="#1e1912" stroke="#0d0a06" stroke-width="1.2"/>`);
+    for (let d = 0; d < 4; d++) {
+      if (!exits[d]) continue;
+      const [ex, ey] = ends[d];
+      parts.push(`<line x1="${cx + (ex - cx) * 0.68}" y1="${cy + (ey - cy) * 0.68}" x2="${ex}" y2="${ey}" stroke="#1e1912" stroke-width="24"/>`);
+      for (const off of [-4, 4]) {
+        const gx = d % 2 === 0 ? off : 0, gy = d % 2 === 0 ? 0 : off;
+        parts.push(`<line x1="${cx + (ex - cx) * 0.8 + gx}" y1="${cy + (ey - cy) * 0.8 + gy}" x2="${ex + gx}" y2="${ey + gy}" stroke="#120e09" stroke-width="1.6"/>`);
+      }
+    }
+    parts.push(`<path d="M ${x + 18} ${y + 58} h 8 M ${x + 62} ${y + 26} h 7" stroke="#171209" stroke-width="1" fill="none"/>`);
+    // a cold campfire at the heart of the clearing
     parts.push(`<circle cx="${cx}" cy="${cy}" r="13" fill="url(#mk-ember)"/>`);
     parts.push(`<rect x="${cx - 7.5}" y="${cy - 1.6}" width="15" height="3.2" rx="1.6" fill="#4a3a28" transform="rotate(28 ${cx} ${cy})"/>`);
     parts.push(`<rect x="${cx - 7.5}" y="${cy - 1.6}" width="15" height="3.2" rx="1.6" fill="#57432c" transform="rotate(-38 ${cx} ${cy})"/>`);
     for (let i = 0; i < 7; i++) {
       const a = (i / 7) * Math.PI * 2 + (seed % 7) * 0.3;
-      parts.push(`<circle cx="${cx + Math.cos(a) * 11.5}" cy="${cy + Math.sin(a) * 11.5}" r="2.5" fill="#6d7a64" stroke="#414d40" stroke-width="0.8"/>`);
+      parts.push(`<circle cx="${cx + Math.cos(a) * 11.5}" cy="${cy + Math.sin(a) * 11.5}" r="2.5" fill="#39443a" stroke="#10150f" stroke-width="0.8"/>`);
     }
   } else if (tile.kind === 'rune') {
     // standing stones at the diagonals around a ritual ring
@@ -1151,7 +1173,7 @@ function tileSVG(tile, x, y) {
     const stones = [[-18, -18], [18, -18], [-18, 18], [18, 18]];
     const glyphs = ['ᚠ', 'ᚢ', 'ᛃ', 'ᛜ'];
     stones.forEach(([sx, sy], i) => {
-      parts.push(`<path d="M ${cx + sx - 5.5} ${cy + sy + 8} l 1.6 -13.5 q 4 -4.5 7.8 0 l 1.6 13.5 z" fill="url(#mk-stone)" stroke="#39463a" stroke-width="1"/>`);
+      parts.push(`<path d="M ${cx + sx - 5.5} ${cy + sy + 8} l 1.6 -13.5 q 4 -4.5 7.8 0 l 1.6 13.5 z" fill="url(#mk-stone)" stroke="#10150f" stroke-width="1"/>`);
       parts.push(`<text x="${cx + sx}" y="${cy + sy + 4}" text-anchor="middle" font-size="7.5" fill="#e8d9a0" font-family="Georgia" opacity="0.95">${glyphs[i]}</text>`);
     });
     parts.push(`<text x="${cx}" y="${cy + 6}" text-anchor="middle" font-size="17" fill="#efe0a8" font-family="Georgia">ᚱ</text>`);
@@ -1167,10 +1189,10 @@ function tileSVG(tile, x, y) {
       <rect x="${cx - 13}" y="${y + 5}" width="26" height="5" rx="1.5" fill="#4a4438"/>
       <rect x="${cx - 16}" y="${y + 10}" width="32" height="4" rx="1.5" fill="#3c372e"/>
       <ellipse cx="${cx}" cy="${cy - 3}" rx="11" ry="15" fill="url(#${glowId})"/>
-      <rect x="${cx - 21}" y="${cy - 12}" width="8" height="28" rx="2" fill="url(#mk-stone)" stroke="#39463a" stroke-width="1"/>
-      <rect x="${cx + 13}" y="${cy - 12}" width="8" height="28" rx="2" fill="url(#mk-stone)" stroke="#39463a" stroke-width="1"/>
-      <rect x="${cx - 23}" y="${cy - 16}" width="12" height="5" rx="1.5" fill="#5d6b58" stroke="#39463a" stroke-width="0.8"/>
-      <rect x="${cx + 11}" y="${cy - 16}" width="12" height="5" rx="1.5" fill="#5d6b58" stroke="#39463a" stroke-width="0.8"/>
+      <rect x="${cx - 21}" y="${cy - 12}" width="8" height="28" rx="2" fill="url(#mk-stone)" stroke="#10150f" stroke-width="1"/>
+      <rect x="${cx + 13}" y="${cy - 12}" width="8" height="28" rx="2" fill="url(#mk-stone)" stroke="#10150f" stroke-width="1"/>
+      <rect x="${cx - 23}" y="${cy - 16}" width="12" height="5" rx="1.5" fill="#39443a" stroke="#10150f" stroke-width="0.8"/>
+      <rect x="${cx + 11}" y="${cy - 16}" width="12" height="5" rx="1.5" fill="#39443a" stroke="#10150f" stroke-width="0.8"/>
       <path d="M ${cx - 22} ${cy - 13} Q ${cx} ${cy - 37} ${cx + 22} ${cy - 13}" fill="none" stroke="${col}" stroke-width="5.5"/>
       <path d="M ${cx - 4} ${cy - 28} l 4 -5.5 l 4 5.5 l -4 5.5 z" fill="${col}"/>
       <text x="${cx - 17}" y="${cy + 2}" text-anchor="middle" font-size="7" fill="#1c2a22" font-family="Georgia">${g1}</text>
@@ -1178,20 +1200,16 @@ function tileSVG(tile, x, y) {
     </g>`);
     parts.push(`<text x="${cx}" y="${y + CS - 8}" text-anchor="middle" font-size="9.5" fill="${col}" font-family="Georgia" letter-spacing="1.5">${tile.gate === 'valhalla' ? 'VALHALLA' : 'FÓLKVANGR'}</text>`);
   } else if (tile.kind === 'draugr') {
-    // a hooded specter with cold-burning eyes, wreathed in grave-mist
-    const body = `M ${cx - 15} ${cy + 15} C ${cx - 18} ${cy - 4} ${cx - 13} ${cy - 18} ${cx} ${cy - 18} C ${cx + 13} ${cy - 18} ${cx + 18} ${cy - 4} ${cx + 15} ${cy + 15} L ${cx + 10} ${cy + 9} L ${cx + 5} ${cy + 16} L ${cx} ${cy + 10} L ${cx - 5} ${cy + 16} L ${cx - 10} ${cy + 9} Z`;
+    // a gaunt ink silhouette in a broken crown — one pale gleam where a face
+    // should be, frost creeping out from under its feet
     parts.push(`<g>
-      <ellipse cx="${cx}" cy="${cy + 17}" rx="15" ry="4.5" fill="#0a1410" opacity="0.65"/>
-      <path d="${body}" fill="url(#mk-spectre)" opacity="0.25" transform="translate(${cx} ${cy}) scale(1.18) translate(${-cx} ${-cy})"/>
-      <path d="${body}" fill="url(#mk-spectre)" opacity="0.95"/>
-      <path d="M ${cx - 11} ${cy - 9} q 11 -7 22 0 l -2 6 q -9 -5 -18 0 z" fill="#5a7091" opacity="0.85"/>
-      <circle cx="${cx - 5.5}" cy="${cy - 4}" r="2.7" fill="#101820"/>
-      <circle cx="${cx + 5.5}" cy="${cy - 4}" r="2.7" fill="#101820"/>
-      <circle cx="${cx - 5.5}" cy="${cy - 4}" r="1.1" fill="#8fd8ff"/>
-      <circle cx="${cx + 5.5}" cy="${cy - 4}" r="1.1" fill="#8fd8ff"/>
-      <path d="M ${cx - 3.5} ${cy + 3.5} q 3.5 3 7 0" stroke="#2c3a4d" stroke-width="1.6" fill="none"/>
-      <path d="M ${cx - 19} ${cy + 8} q -5 -3 -4 -9 M ${cx + 19} ${cy + 8} q 5 -3 4 -9" stroke="#b9cce4" stroke-width="1.5" fill="none" opacity="0.5"/>
-      <circle cx="${cx}" cy="${cy}" r="23" fill="none" stroke="#aebfd6" stroke-opacity="0.3">${sm('<animate attributeName="stroke-opacity" values="0.3;0.08;0.3" dur="2.6s" repeatCount="indefinite"/>')}</circle>
+      <g stroke="#a9b295" opacity="0.3" stroke-width="1" fill="none">
+        <path d="M ${cx} ${cy + 21} l -9 6 M ${cx} ${cy + 21} l 9 6 M ${cx} ${cy + 21} l -3 9 M ${cx} ${cy + 21} l 3 9"/>
+      </g>
+      <path d="M ${cx} ${cy - 29} C ${cx - 4} ${cy - 29} ${cx - 6} ${cy - 25} ${cx - 6} ${cy - 21} C ${cx - 6} ${cy - 18} ${cx - 5} ${cy - 16} ${cx - 3} ${cy - 15} C ${cx - 9} ${cy - 12} ${cx - 11} ${cy - 4} ${cx - 11} ${cy + 5} L ${cx - 13} ${cy + 21} L ${cx - 7} ${cy + 15} L ${cx - 4} ${cy + 22} L ${cx} ${cy + 16} L ${cx + 4} ${cy + 22} L ${cx + 7} ${cy + 15} L ${cx + 13} ${cy + 21} L ${cx + 11} ${cy + 5} C ${cx + 11} ${cy - 4} ${cx + 9} ${cy - 12} ${cx + 3} ${cy - 15} C ${cx + 5} ${cy - 16} ${cx + 6} ${cy - 18} ${cx + 6} ${cy - 21} C ${cx + 6} ${cy - 25} ${cx + 4} ${cy - 29} ${cx} ${cy - 29} Z" fill="#050705"/>
+      <path d="M ${cx - 5} ${cy - 28} l -2 -6 l 4 3 l 3 -7 l 3 7 l 4 -3 l -2 6" fill="none" stroke="#050705" stroke-width="2.2"/>
+      <path d="M ${cx - 4} ${cy - 5} l -2 12 M ${cx + 4} ${cy - 3} l 2 10" stroke="#10150f" stroke-width="1"/>
+      <path d="M ${cx - 3.5} ${cy - 20.5} l 7 -1.5" stroke="#cbd0b4" stroke-width="1.6">${sm('<animate attributeName="opacity" values="1;0.3;1" dur="3.2s" repeatCount="indefinite"/>')}</path>
     </g>`);
   }
 
@@ -1201,9 +1219,21 @@ function tileSVG(tile, x, y) {
 }
 
 function crackSVG(x, y) {
+  // the tile is breaking apart: a long branching fissure with the Void's
+  // violet light seeping through, chipped edges, loose shards
+  const main = `M ${x + 14} ${y + 8} l 8 9 l -4 7 l 11 8 l -3 8 l 11 7 l -2 10 l 8 6`;
+  const branches = `M ${x + 22} ${y + 17} l 8 -4 M ${x + 29} ${y + 32} l -9 4 M ${x + 37} ${y + 47} l 10 -5 M ${x + 45} ${y + 63} l -8 4`;
+  const second = `M ${x + CS - 10} ${y + CS - 30} l -9 6 l 2 7 l -8 5`;
   return `<g>
-    <path d="M ${x + 16} ${y + 18} l 9 7 l -5 9 l 11 8 l -4 9" stroke="#43306b" stroke-width="4.5" fill="none" opacity="0.4" stroke-linecap="round"/>
-    <path d="M ${x + 16} ${y + 18} l 9 7 l -5 9 l 11 8 l -4 9 M ${x + CS - 17} ${y + CS - 21} l -8 -6 l 4 -8 l -10 -7" stroke="#101812" stroke-width="2.2" fill="none" opacity="0.95"/>
+    <g stroke="#584086" fill="none" stroke-linecap="round" opacity="0.5">
+      <path d="${main}" stroke-width="5"/><path d="${second}" stroke-width="4"/>
+      ${sm('<animate attributeName="opacity" values="0.5;0.2;0.5" dur="3.6s" repeatCount="indefinite"/>')}
+    </g>
+    <path d="${main}" stroke="#050308" stroke-width="2.4" fill="none"/>
+    <path d="${second}" stroke="#050308" stroke-width="2" fill="none"/>
+    <path d="${branches}" stroke="#050308" stroke-width="1.2" fill="none"/>
+    <path d="M ${x + 30} ${y + 26} l 5 2 l -4 3 z M ${x + 41} ${y + 55} l 5 1 l -3 4 z" fill="#0a0d09" stroke="#3f4c3c" stroke-width="0.5"/>
+    <path d="M ${x + 36} ${y + 2} l 7 0 l -3.5 4.5 z M ${x + CS - 2} ${y + 30} l 0 7 l -4.5 -3.5 z M ${x + 20} ${y + CS - 2} l 7 0 l -3.5 -4.5 z" fill="#050705"/>
   </g>`;
 }
 
@@ -1230,15 +1260,15 @@ function mistCellSVG(x, y, seed, isLit) {
   if (isLit) {
     // an empty clearing your hope can reach — faintly visible ground
     return `<rect x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" rx="6" class="cell-empty-lit"/>`
-      + pine(x + 16 + (seed % 9), y + CS - 12, 10, '#101c14');
+      + pine(x + 16 + (seed % 9), y + CS - 14, 9, '#0e130e');
   }
   // deep mist: barely-there trees swallowed by fog
   return `<rect x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" rx="6" class="cell-mist"/>`
-    + pine(x + 18 + (seed % 14), y + 34, 14, '#0d1811')
-    + pine(x + CS - 24 - (seed % 10), y + CS - 12, 17, '#0b150f')
+    + pine(x + 18 + (seed % 14), y + 34, 13, '#0a0f0a')
+    + pine(x + CS - 24 - (seed % 10), y + CS - 13, 12, '#080c08')
     + `<g opacity="0.5">
-        <ellipse cx="${x + 30 + (seed % 20)}" cy="${y + 38}" rx="26" ry="9" fill="#2a3d34" opacity="0.09"/>
-        <ellipse cx="${x + 56 - (seed % 16)}" cy="${y + 64}" rx="24" ry="8" fill="#2a3d34" opacity="0.11"/>
+        <ellipse cx="${x + 30 + (seed % 20)}" cy="${y + 38}" rx="26" ry="9" fill="#222b22" opacity="0.12"/>
+        <ellipse cx="${x + 56 - (seed % 16)}" cy="${y + 64}" rx="24" ry="8" fill="#222b22" opacity="0.14"/>
       </g>`;
 }
 
