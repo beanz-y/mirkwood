@@ -1420,6 +1420,23 @@ export function concede(s) {
   return s;
 }
 
+// an adopted soul takes its new keeper's name, so a mid-game rescue doesn't
+// leave the table talking to a departed player's ghost
+export function renameSoul(s, seat, rawName) {
+  const p = s.players[seat];
+  if (!p) return s;
+  const old = p.name;
+  let name = String(rawName || '').trim().slice(0, 20) || old;
+  if (s.players.some(q => q.seat !== seat && q.name === name)) {
+    name += ' ' + ['I', 'II', 'III', 'IV'][seat];
+  }
+  if (name !== old) {
+    p.name = name;
+    log(s, `The soul of ${old} passes to ${name}.`, 'info');
+  }
+  return s;
+}
+
 function validCell(r, c) {
   if (!Number.isInteger(r) || !Number.isInteger(c) || r < 0 || r >= SIZE || c < 0 || c >= SIZE) err('Bad cell.');
 }

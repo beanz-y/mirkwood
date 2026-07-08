@@ -6,7 +6,7 @@
  * authoritative engine state in DO storage so games survive disconnects and
  * hibernation. WebSockets use the hibernation API, so idle rooms cost nothing.
  */
-import { createGame, applyAction, publicState, concede, normTiles, STATE_VERSION, PLAYER_COLORS, TOKEN_ICON_KEYS } from '../public/shared/engine.js';
+import { createGame, applyAction, publicState, concede, renameSoul, normTiles, STATE_VERSION, PLAYER_COLORS, TOKEN_ICON_KEYS } from '../public/shared/engine.js';
 import { logSaga, telemetryConfigured } from './firestore.js';
 
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -164,6 +164,10 @@ export class MirkwoodRoom {
         icon: (s && s.icon) || TOKEN_ICON_KEYS[i],
       })),
       members: Object.values(r.members).map(m => m.name),
+      // live, registered connections holding no seat — the watchers in the mist
+      watchers: [...new Set(this.ctx.getWebSockets().map(w => this.tokenOf(w))
+        .filter(t => t && !r.seats.some(s => s && s.token === t)))]
+        .map(t => this.nameOf(t)),
     };
   }
 
@@ -320,10 +324,12 @@ export class MirkwoodRoom {
         if (i < 0 || i > 3) return;
         if (r.state) {
           // mid-game: only a vacant soul (kicked or abandoned) may be adopted —
-          // it keeps the look it already wears on the board
+          // it keeps the look it wears on the board but takes its new keeper's
+          // name, so nobody is talking to a departed player's ghost
           if (r.seats[i]) { this.send(ws, { t: 'error', msg: 'That soul is already claimed.' }); return; }
           const soul = r.state.players[i];
           r.seats[i] = { token, name: this.nameOf(token), color: soul.color, icon: soul.icon };
+          renameSoul(r.state, i, this.nameOf(token));
         } else {
           if (r.seats[i] && r.seats[i].token !== token) {
             this.send(ws, { t: 'error', msg: 'That soul is already claimed.' }); return;
@@ -335,12 +341,14 @@ export class MirkwoodRoom {
         return;
       }
       case 'kick': {
-        // the host may release any other player's soul (e.g. someone who
-        // vanished mid-game) so another player can adopt it
-        if (r.host !== token) return;
+        // release a soul so another player can adopt it: the host may release
+        // anyone's; any player may set free a soul of their own (e.g. to hand
+        // one of several seats to a latecomer)
         const i = msg.seat | 0;
         if (i < 0 || i > 3) return;
-        if (!r.seats[i] || r.seats[i].token === token) return;
+        const seat = r.seats[i];
+        if (!seat) return;
+        if (seat.token !== token && r.host !== token) return;
         r.seats[i] = null;
         await this.save();
         this.broadcast();

@@ -34,6 +34,7 @@
       <div class="room-code" id="room-code" title="Click to copy an invite link">----</div>
       <div id="seat-list" class="seat-list"></div>
       <div id="look-picker" class="hidden"></div>
+      <p id="lobby-watchers" class="hint hidden"></p>
       <div class="row">
         <button id="claim-all-btn" class="btn small">Claim remaining souls</button>
         <button id="leave-room-btn" class="btn small">Leave</button>
@@ -79,6 +80,7 @@
     </div>
     <div class="row">
       <button id="rules-btn-lobby" class="btn tiny">Runes &amp; rules</button>
+      <button id="tut-btn-lobby" class="btn tiny">Walkthrough</button>
     </div>
   </div>
 </div>
@@ -104,6 +106,7 @@
 
     <aside id="side">
       <div id="players"></div>
+      <div id="watchers" class="hidden"></div>
       <div id="discard-panel">
         <h3>Lost to the mist</h3>
         <div id="discard-counts"></div>
@@ -271,7 +274,25 @@
     end of <b>every</b> turn the group must surrender one tile from the board
     (1 ◆ to Ward). Reach a gate before the forest is gone.</p>
 
-    <div class="row"><button id="rules-close" class="btn primary">Back to the forest</button></div>
+    <div class="row">
+      <button id="rules-close" class="btn primary">Back to the forest</button>
+      <button id="tut-btn-rules" class="btn small">Open the walkthrough</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= WALKTHROUGH ======================= -->
+<div id="tutorial" class="overlay hidden">
+  <div class="modal-card tut-card">
+    <h2 id="tut-title"></h2>
+    <div id="tut-diagram"></div>
+    <div id="tut-text"></div>
+    <div class="row tut-nav">
+      <button id="tut-prev" class="btn small">‹ Back</button>
+      <span id="tut-step" class="hint"></span>
+      <button id="tut-next" class="btn primary small">Next ›</button>
+    </div>
+    <div class="row"><button id="tut-close" class="btn tiny">Close the walkthrough</button></div>
   </div>
 </div>
 

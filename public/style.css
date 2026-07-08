@@ -347,6 +347,24 @@ body.niflheim #topbar { border-bottom-color: #3a5a8c; }
 .nifl-card .btn.primary:hover { background: #1b3450; }
 #stack-meter.embrace, #stack-meter.embrace b { color: #9fd4ff; }
 
+/* watchers in the mist */
+#watchers { padding: 0 12px 8px; color: var(--dim); font-size: 12px; font-style: italic; }
+#lobby-watchers { font-style: italic; }
+
+/* walkthrough */
+.tut-card { width: min(560px, 94vw); text-align: left; }
+.tut-card h2 { color: var(--gold); text-align: center; margin-top: 0; }
+#tut-diagram {
+  display: flex; justify-content: center; margin: 10px 0;
+  background: #080c08; border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+}
+#tut-diagram svg { display: block; }
+#tut-text { color: var(--text); font-size: 14px; line-height: 1.55; }
+#tut-text b { color: var(--gold); }
+.tut-nav { justify-content: space-between; align-items: center; margin-top: 12px; }
+.tut-spends { display: grid; gap: 6px; font-size: 13.5px; color: var(--text); text-align: left; }
+.tut-spends b { color: var(--gold); }
+
 /* ---------------- board transition animations ----------------
    All one-shots use fill-mode "both" so a delayed animation holds its 0%
    state until its moment in the turn's choreography arrives. */

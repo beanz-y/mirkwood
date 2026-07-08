@@ -167,9 +167,17 @@ convergence timing, or 2-ply lookahead in `tools/policy.js`.
   `https://…/?room=CODE`; opening it joins directly (first-time visitors get
   the code pre-filled so they can pick a name).
 - **Connection dot** (top bar): green connected / amber reconnecting.
-- **Kick & adopt**: the host can release another player's soul (✕ on seat or
-  player card, lobby or mid-game); anyone can **adopt** an unclaimed soul
-  mid-game — the rescue for a player who vanished.
+- **Release, kick & adopt**: any player can release their own souls (✕ on the
+  player card, e.g. to hand a seat to a latecomer), and the host can release
+  anyone's; anyone can **adopt** an unclaimed soul mid-game — the rescue for a
+  player who vanished. An adopted soul keeps its look but takes its new
+  keeper's name (the handoff is told in the saga log).
+- **Watchers**: joining a full saga makes you a spectator — you see the whole
+  game live, you're listed ("watching from the mist", with an arrival toast),
+  and you can adopt any soul the moment it's released.
+- **Walkthrough**: an optional 8-page illustrated primer (goal, hope, moving &
+  kindling, Resolve, draugar, rifts, runes & gates, the Embrace) drawn with
+  the game's own tile art — from the lobby or the in-game rules screen.
 - **Turn timer** (host option): a soft countdown per decision (60s–3min) in
   the top bar — a nudge, not an enforcer.
 - **State versioning**: rooms persisted by an older engine version are

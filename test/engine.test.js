@@ -1,6 +1,6 @@
 /* Mirkwood engine tests — run: node test/engine.test.js */
 import {
-  createGame, applyAction, publicState, exitsFor, litSet, losFor,
+  createGame, applyAction, publicState, exitsFor, litSet, losFor, renameSoul,
   computeMoves, SIZE, key, RUNES, TILE_PRESETS, PLAYER_COLORS, _test,
 } from '../public/shared/engine.js';
 
@@ -535,6 +535,19 @@ section('appearance: souls wear the looks chosen in the lobby');
   check(s.players[0].color === '#c97ba4' && s.players[0].icon === 'raven', 'chosen look applied');
   check(s.players[1].color === PLAYER_COLORS[1] && s.players[1].icon === 'shield', 'bad look falls back to seat defaults');
   check(s.players[3].icon === 'hammer', 'unset seats take the default sigil order');
+}
+
+// ---------------------------------------------------------------- adoption renames
+section("renaming: an adopted soul takes its keeper's name");
+{
+  const s = createGame({ seed: 31, stack: deck(10) });
+  renameSoul(s, 3, 'Helga');
+  check(s.players[3].name === 'Helga', 'soul renamed');
+  check(s.log.some(l => /soul of Torvald passes to Helga/.test(l.m)), 'the handoff is told in the saga');
+  renameSoul(s, 2, 'Helga'); // collides with seat 3's new name
+  check(s.players[2].name === 'Helga III', 'a name collision takes the seat numeral');
+  renameSoul(s, 0, '   '); // blank names are ignored
+  check(s.players[0].name === 'Astrid', 'a blank name keeps the old one');
 }
 
 // ---------------------------------------------------------------- end conditions

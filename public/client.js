@@ -373,6 +373,138 @@ $('rules-btn-lobby').onclick = openRules;
 $('rules-close').onclick = () => $('rules').classList.add('hidden');
 $('rules').onclick = (e) => { if (e.target === $('rules')) $('rules').classList.add('hidden'); };
 
+// ---------------------------------------------------------------- walkthrough
+// an optional illustrated primer: each page pairs a short passage with a
+// diagram drawn by the same procedural art the board uses
+let tutStep = 0;
+
+const tutTile = (kind, rot = 0, opts = {}) => ({ kind, rot, exits: exitsFor(kind, rot), ...opts });
+const tutCell = (t, c, r) => tileSVG(t, PAD + c * CS, PAD + r * CS);
+const tutMist = (c, r) => {
+  const x = PAD + c * CS, y = PAD + r * CS;
+  return `<rect x="${x + 1}" y="${y + 1}" width="${CS - 2}" height="${CS - 2}" rx="6" class="cell-mist"/>`
+    + pine(x + 26, y + 58, 12, '#0a0f0a');
+};
+const tutTok = (c, r, ci, icon, o = {}) => {
+  const x = PAD + c * CS + CS / 2 + (o.dx || 0), y = PAD + r * CS + CS / 2 + (o.dy || 0);
+  const R = o.small ? 10 : 15, S = o.small ? 13 : 19;
+  return `<g${o.dim ? ' opacity="0.55"' : ''}>
+    ${o.glow ? `<circle cx="${x}" cy="${y}" r="${R + 5}" fill="none" stroke="${PLAYER_COLORS[ci]}" stroke-opacity="0.4"/>` : ''}
+    <circle cx="${x}" cy="${y}" r="${R}" fill="${PLAYER_COLORS[ci]}" stroke="#0a100d" stroke-width="2"/>
+    ${iconSVG(icon, x - S / 2, y - S / 2, S, '#0a100d')}
+  </g>`;
+};
+const tutArrow = (x1, y1, x2, y2, col = '#e8b23c') => {
+  const a = Math.atan2(y2 - y1, x2 - x1);
+  return `<line x1="${x1}" y1="${y1}" x2="${x2 - 10 * Math.cos(a)}" y2="${y2 - 10 * Math.sin(a)}" stroke="${col}" stroke-width="3" stroke-linecap="round"/>
+    <path d="M ${x2} ${y2} L ${x2 - 12 * Math.cos(a - 0.45)} ${y2 - 12 * Math.sin(a - 0.45)} L ${x2 - 12 * Math.cos(a + 0.45)} ${y2 - 12 * Math.sin(a + 0.45)} Z" fill="${col}"/>`;
+};
+const tutSVG = (cols, rows, inner) =>
+  `<svg viewBox="0 0 ${cols * CS + PAD * 2} ${rows * CS + PAD * 2}" style="width:100%;max-width:${cols * 105}px">${inner}</svg>`;
+
+const TUT_PAGES = [
+  {
+    t: 'Welcome to Myrkviðr',
+    d: () => tutSVG(3, 1,
+      tutCell(tutTile('cross'), 0, 0)
+      + tutCell(tutTile('gate', 1, { gate: 'valhalla' }), 1, 0)
+      + tutCell(tutTile('cross'), 2, 0)
+      + tutTok(1, 0, 0, 'helm', { small: true, dx: -13, dy: -13 })
+      + tutTok(1, 0, 1, 'shield', { small: true, dx: 13, dy: -13 })
+      + tutTok(1, 0, 2, 'axe', { small: true, dx: -13, dy: 13 })
+      + tutTok(1, 0, 3, 'raven', { small: true, dx: 13, dy: 13 })),
+    x: `You died without glory, and the dark wood between the worlds has you. There is one road out: find a <b>Gate</b>, gather its <b>four runes</b> — one different mark on each soul — and stand upon it <b>together</b>. All four of you win, or none. Everything else in Myrkviðr stands between you and that door.`,
+  },
+  {
+    t: 'The Ember of Hope',
+    d: () => tutSVG(3, 2,
+      tutCell(tutTile('straight', 1), 0, 0) + tutCell(tutTile('straight', 1), 1, 0) + tutCell(tutTile('straight', 1), 2, 0)
+      + tutTok(1, 0, 0, 'helm', { glow: true })
+      + tutMist(0, 1) + tutCell(tutTile('straight', 1), 1, 1) + tutMist(2, 1)
+      + tutTok(1, 1, 1, 'shield', { dim: true })),
+    x: `<b>Hopeful</b> (above), your ember lights every joined path one space around you — those tiles stay real. <b>Hopeless</b> (below), you see only the tile you stand on: the dark drives you to <b>move every turn</b>, blind. Stand beside a hopeful soul to be rekindled, or spend 1 ◆ at the start of your turn. And whatever <b>no soul's</b> hope lights is devoured by the mist, forever.`,
+  },
+  {
+    t: 'Move, and kindle the way',
+    d: () => tutSVG(3, 1,
+      tutCell(tutTile('cross'), 0, 0) + tutCell(tutTile('cross'), 1, 0)
+      + `<g class="ghost">${tutCell(tutTile('tee', 1), 2, 0)}</g>`
+      + exitMarkers(exitsFor('tee', 1), PAD + 2 * CS, PAD)
+      + `<rect x="${PAD + 2 * CS + 3}" y="${PAD + 3}" width="${CS - 6}" height="${CS - 6}" rx="8" class="ghost-outline"/>`
+      + tutTok(0, 0, 0, 'helm', { glow: true })
+      + tutArrow(PAD + CS * 0.72, PAD + CS / 2, PAD + CS * 1.28, PAD + CS / 2)),
+    x: `On your turn, <b>Move</b> one space along a joined path. Your hope kindles the ways ahead: a fresh tile is drawn for every open passage of your new tile, and you choose where it sits and how it turns. Spend 1 ◆ to <b>press on</b> (up to two more steps). Or <b>Stay</b> instead: steel your Resolve (+1 ◆), though hope gutters while you linger — a tile burns from the stack.`,
+  },
+  {
+    t: 'Resolve — the will to go on',
+    d: () => `<div class="tut-spends">
+      <div>Earn it by <b>standing fast</b> (Stay, +1 ◆) or <b>slipping a Draugr's gaze</b> (+1 ◆). Carry at most two.</div>
+      <div><b>Press on</b> — another step after your move</div>
+      <div><b>Rekindle</b> — relight your own hope at the start of your turn</div>
+      <div><b>Endure</b> — stay put while hopeless</div>
+      <div><b>Brace</b> — lose 2 tiles instead of 3 when struck</div>
+      <div><b>Berserk</b> — rush a Draugr; its strike lands on you, then it is banished</div>
+      <div><b>Ward</b> — during Niflheim's Embrace, spare the forest one tile</div>
+    </div>`,
+    x: `The path stack is the party's shared hope made visible — every tile drawn, burned, or lost brings the end closer. Resolve ◆ is how a single soul bends the rules for a moment. Spend it well.`,
+  },
+  {
+    t: 'The Draugar',
+    d: () => tutSVG(4, 1,
+      tutCell(tutTile('draugr'), 0, 0) + tutCell(tutTile('cross'), 1, 0) + tutCell(tutTile('cross'), 2, 0) + tutCell(tutTile('cross'), 3, 0)
+      + `<line x1="${PAD + CS / 2}" y1="${PAD + CS / 2}" x2="${PAD + CS * 3.5}" y2="${PAD + CS / 2}" stroke="#d05e5e" stroke-width="5" opacity="0.4"/>`
+      + tutTok(2, 0, 0, 'helm')
+      + tutArrow(PAD + CS * 2.5, PAD + CS * 0.34, PAD + CS * 2.5, PAD + CS * 0.1, '#6fce9a')),
+    x: `A Draugr wakes at <b>motion in its corridors</b>: step anywhere along a straight, unbroken run of path joined to it — however far, even across the board's wrapped edge — and it lashes down all four corridors at once. Every soul caught in its gaze: <b>3 tiles burn</b>, hope extinguished. <b>End your move outside the line</b> (green) and the strike misses you — slipping its gaze steels your Resolve. Walls, gaps, and Void Rifts blind it.`,
+  },
+  {
+    t: 'Fractured paths & Void Rifts',
+    d: () => tutSVG(3, 1,
+      tutCell(tutTile('cross', 0, { fractured: true }), 0, 0)
+      + riftSVG(PAD + CS, PAD)
+      + tutCell(tutTile('cross'), 2, 0)
+      + tutArrow(PAD + CS * 0.7, PAD + CS * 0.82, PAD + CS * 1.3, PAD + CS * 0.82, '#a678d8')),
+    x: `Cracked tiles are <b>Fractured</b>: they crumble into a <b>Void Rift</b> the moment you leave them. Falling ends your turn — next turn you land on a drawn tile anywhere in the rift's row or column, <b>hopeless</b>. A rift blinds the draugar, and a desperate soul may even leap in on purpose. But fall when the stack is spent, and the void keeps you.`,
+  },
+  {
+    t: 'Rune Circles & the Gates',
+    d: () => tutSVG(3, 1,
+      tutCell(tutTile('rune', 0, { fractured: true }), 0, 0)
+      + tutCell(tutTile('gate', 1, { gate: 'valhalla' }), 1, 0)
+      + tutCell(tutTile('gate', 1, { gate: 'folkvangr' }), 2, 0)),
+    x: `Step into a <b>Rune Circle</b> to take one mark of either gate — it replaces the mark you bear, and marks are never traded. The stones speak to each soul <b>once</b>: circles crumble behind you. The two Gates — <b>Valgrind</b> of Valhalla, and the gate to Freyja's <b>Fólkvangr</b> — have a single doorway each and are permanent once placed. Four souls, four different runes of one gate, one doorstep: that is the way out.`,
+  },
+  {
+    t: "Niflheim's Embrace",
+    d: () => tutSVG(3, 1,
+      tutCell(tutTile('cross'), 0, 0)
+      + `<g opacity="0.35">${tutCell(tutTile('cross'), 1, 0)}</g>`
+      + tutMist(2, 0)
+      + `<text x="${PAD + CS * 1.5}" y="${PAD + CS * 0.62}" text-anchor="middle" font-size="34" fill="#9fd4ff" opacity="0.9">ᛁ</text>`),
+    x: `When the last tile is drawn, the primordial cold closes in. <b>No new paths can ever be kindled</b>, and at the end of every turn the group surrenders one tile from the board (1 ◆ to <b>Ward</b> it off). The forest dwindles until the souls reach a gate — or nothing remains. The moment no road to a winnable gate survives, the saga ends. Reach the door before the forest is gone.`,
+  },
+];
+
+function renderTutorial() {
+  const pg = TUT_PAGES[tutStep];
+  $('tut-title').textContent = pg.t;
+  $('tut-diagram').innerHTML = pg.d();
+  $('tut-text').innerHTML = pg.x;
+  $('tut-step').textContent = `${tutStep + 1} / ${TUT_PAGES.length}`;
+  $('tut-prev').disabled = tutStep === 0;
+  $('tut-next').textContent = tutStep === TUT_PAGES.length - 1 ? 'Into the forest' : 'Next ›';
+}
+function openTutorial() { tutStep = 0; renderTutorial(); $('tutorial').classList.remove('hidden'); }
+$('tut-btn-lobby').onclick = openTutorial;
+$('tut-btn-rules').onclick = () => { $('rules').classList.add('hidden'); openTutorial(); };
+$('tut-prev').onclick = () => { if (tutStep > 0) { tutStep--; renderTutorial(); } };
+$('tut-next').onclick = () => {
+  if (tutStep < TUT_PAGES.length - 1) { tutStep++; renderTutorial(); }
+  else $('tutorial').classList.add('hidden');
+};
+$('tut-close').onclick = () => $('tutorial').classList.add('hidden');
+$('tutorial').onclick = (e) => { if (e.target === $('tutorial')) $('tutorial').classList.add('hidden'); };
+
 // animations setting
 function applyAnims() {
   document.body.classList.toggle('no-anims', !anims);
@@ -468,8 +600,21 @@ function rotatePreview(dir = 1) {
 
 // ---------------------------------------------------------------- render
 
+let knownWatchers = null; // for "X watches from the mist" arrival toasts
+
+function noteWatchers() {
+  const now = (room && room.watchers) || [];
+  if (knownWatchers !== null && room && room.started) {
+    for (const w of now) {
+      if (!knownWatchers.includes(w)) toast(`${w} watches from the mist.`, true);
+    }
+  }
+  knownWatchers = now;
+}
+
 function render() {
   if (!room) return;
+  noteWatchers();
   const started = room.started && state;
   $('lobby').classList.toggle('hidden', !!started);
   $('game').classList.toggle('hidden', !started);
@@ -530,6 +675,11 @@ function renderLobby() {
     list.appendChild(div);
   });
   renderLookPicker();
+  const lw = $('lobby-watchers');
+  const wnames = room.watchers || [];
+  lw.classList.toggle('hidden', !wnames.length);
+  lw.textContent = wnames.length
+    ? `Watching from the mist: ${wnames.join(', ')} — release a soul and they can claim it.` : '';
   const allClaimed = room.seats.every(s => s.claimed);
   $('start-btn').classList.toggle('hidden', !room.youAreHost);
   $('start-btn').disabled = !allClaimed;
@@ -653,11 +803,14 @@ function renderPlayers() {
       : (p.hopeful ? 'hopeful' : '<span class="hopeless-tag">hopeless</span>');
     const turnChip = state.phase === 'play' && state.turn === p.seat
       ? '<span class="turn-chip">turn</span>' : '';
-    // mid-game seat administration: adopt an abandoned soul; host may release one
+    // mid-game seat administration: adopt an abandoned soul; release your own
+    // (to hand it to a watcher or teammate); the host may release anyone's
     const seatInfo = room.seats[p.seat];
     let admin = '';
     if (seatInfo && !seatInfo.claimed) {
       admin = `<button class="seat-admin" data-act="adopt" title="Take control of this abandoned soul">adopt</button>`;
+    } else if (seatInfo && seatInfo.you) {
+      admin = `<button class="seat-admin" data-act="release" title="Set this soul free for another player to adopt">✕</button>`;
     } else if (room.youAreHost && seatInfo && seatInfo.claimed && !seatInfo.you) {
       admin = `<button class="seat-admin" data-act="kick" title="Release this soul so another player can adopt it">✕</button>`;
     }
@@ -673,10 +826,16 @@ function renderPlayers() {
     if (ab) ab.onclick = (e) => {
       e.stopPropagation();
       if (ab.dataset.act === 'adopt') send({ t: 'claim', seat: p.seat });
+      else if (ab.dataset.act === 'release') confirmModal(`Set ${p.name}'s soul free? Anyone here — including a watcher — can adopt it, and you can take it back if no one does.`, () => send({ t: 'kick', seat: p.seat }));
       else confirmModal(`Release ${p.name}'s soul so another player can adopt it? Their player can rejoin and re-adopt it too.`, () => send({ t: 'kick', seat: p.seat }));
     };
     wrap.appendChild(div);
   });
+  // the watchers in the mist: connected, registered, holding no soul
+  const wl = $('watchers');
+  const wnames = (room && room.watchers) || [];
+  wl.classList.toggle('hidden', !wnames.length);
+  wl.textContent = wnames.length ? `Watching from the mist: ${wnames.join(', ')}` : '';
 }
 
 function renderSoul() {
