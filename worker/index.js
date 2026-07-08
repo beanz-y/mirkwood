@@ -6,7 +6,7 @@
  * authoritative engine state in DO storage so games survive disconnects and
  * hibernation. WebSockets use the hibernation API, so idle rooms cost nothing.
  */
-import { createGame, applyAction, publicState, concede, normTiles, STATE_VERSION } from '../public/shared/engine.js';
+import { createGame, applyAction, publicState, concede, normTiles, STATE_VERSION, PLAYER_COLORS, TOKEN_ICON_KEYS } from '../public/shared/engine.js';
 import { logSaga, telemetryConfigured } from './firestore.js';
 
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -126,7 +126,7 @@ export class MirkwoodRoom {
       this.room = {
         code,
         host: null,
-        seats: [null, null, null, null], // {token, name}
+        seats: [null, null, null, null], // {token, name, color, icon}
         members: {},                     // token -> {name}
         state: null,
       };
@@ -160,6 +160,8 @@ export class MirkwoodRoom {
         name: s ? s.name : null,
         claimed: !!s,
         you: !!s && s.token === token,
+        color: (s && s.color) || PLAYER_COLORS[i],
+        icon: (s && s.icon) || TOKEN_ICON_KEYS[i],
       })),
       members: Object.values(r.members).map(m => m.name),
     };
@@ -184,6 +186,18 @@ export class MirkwoodRoom {
   nameOf(token) {
     const m = this.room && this.room.members[token];
     return (m && m.name) || 'A wanderer';
+  }
+
+  // the first color and sigil no other seat is wearing — a fresh claim never
+  // collides, and the fourth player still has five of each to choose from
+  seatLook(i) {
+    const r = this.room;
+    const used = k => new Set(r.seats.filter((s, j) => s && j !== i).map(s => s[k]).filter(Boolean));
+    const uc = used('color'), ui = used('icon');
+    return {
+      color: PLAYER_COLORS.find(c => !uc.has(c)) || PLAYER_COLORS[i],
+      icon: TOKEN_ICON_KEYS.find(k => !ui.has(k)) || TOKEN_ICON_KEYS[i],
+    };
   }
 
   // one Firestore document per finished saga — silent no-op unless the
@@ -305,14 +319,16 @@ export class MirkwoodRoom {
         const i = msg.seat | 0;
         if (i < 0 || i > 3) return;
         if (r.state) {
-          // mid-game: only a vacant soul (kicked or abandoned) may be adopted
+          // mid-game: only a vacant soul (kicked or abandoned) may be adopted —
+          // it keeps the look it already wears on the board
           if (r.seats[i]) { this.send(ws, { t: 'error', msg: 'That soul is already claimed.' }); return; }
-          r.seats[i] = { token, name: this.nameOf(token) };
+          const soul = r.state.players[i];
+          r.seats[i] = { token, name: this.nameOf(token), color: soul.color, icon: soul.icon };
         } else {
           if (r.seats[i] && r.seats[i].token !== token) {
             this.send(ws, { t: 'error', msg: 'That soul is already claimed.' }); return;
           }
-          r.seats[i] = r.seats[i] ? null : { token, name: this.nameOf(token) };
+          r.seats[i] = r.seats[i] ? null : { token, name: this.nameOf(token), ...this.seatLook(i) };
         }
         await this.save();
         this.broadcast();
@@ -333,7 +349,31 @@ export class MirkwoodRoom {
       case 'claimAll': {
         if (r.state) return;
         for (let i = 0; i < 4; i++) {
-          if (!r.seats[i]) r.seats[i] = { token, name: this.nameOf(token) };
+          if (!r.seats[i]) r.seats[i] = { token, name: this.nameOf(token), ...this.seatLook(i) };
+        }
+        await this.save();
+        this.broadcast();
+        return;
+      }
+      case 'look': {
+        // a player dresses their soul: one of eight colors and eight sigils,
+        // no two seats alike. Lobby (or between sagas) only.
+        const i = msg.seat | 0;
+        if (i < 0 || i > 3) return;
+        if (r.state && r.state.phase !== 'won' && r.state.phase !== 'lost') return;
+        const seat = r.seats[i];
+        if (!seat || seat.token !== token) return;
+        if (PLAYER_COLORS.includes(msg.color)) {
+          if (r.seats.some((s, j) => s && j !== i && s.color === msg.color)) {
+            this.send(ws, { t: 'error', msg: 'Another soul already wears that color.' }); return;
+          }
+          seat.color = msg.color;
+        }
+        if (TOKEN_ICON_KEYS.includes(msg.icon)) {
+          if (r.seats.some((s, j) => s && j !== i && s.icon === msg.icon)) {
+            this.send(ws, { t: 'error', msg: 'Another soul already bears that sigil.' }); return;
+          }
+          seat.icon = msg.icon;
         }
         await this.save();
         this.broadcast();
@@ -349,6 +389,10 @@ export class MirkwoodRoom {
         });
         r.state = createGame({
           names,
+          appearance: r.seats.map((s, i) => ({
+            color: (s && s.color) || PLAYER_COLORS[i],
+            icon: (s && s.icon) || TOKEN_ICON_KEYS[i],
+          })),
           tiles: r.config || undefined,
           label: r.config ? r.config.label : '',
           randomRunes: !!(r.config && r.config.randomRunes),

@@ -33,7 +33,33 @@ export const RUNES = {
   ],
 };
 export const GATE_NAMES = { valhalla: 'Valhalla', folkvangr: 'Fólkvangr' };
-export const PLAYER_COLORS = ['#e8b23c', '#d05e5e', '#4fb8a8', '#a678d8'];
+
+// eight soul colors, tuned to read against the near-black board and against
+// each other (the first four are the original seat defaults)
+export const PLAYER_COLORS = ['#e8b23c', '#d05e5e', '#4fb8a8', '#a678d8', '#7fa8dc', '#a3b555', '#d9d3c0', '#c97ba4'];
+export const PLAYER_COLOR_NAMES = ['Gold', 'Ember', 'Teal', 'Violet', 'Ice', 'Moss', 'Bone', 'Heather'];
+
+// eight Norse sigils a soul may bear as its token, authored in a 24×24 box;
+// "CUR" is replaced with the drawing color at render time
+export const TOKEN_ICONS = {
+  helm: { name: 'Helm', art: '<path d="M4 14 C4 6.5 8 3 12 3 C16 3 20 6.5 20 14 L20 15.5 L14.6 15.5 L14.6 21 L9.4 21 L9.4 15.5 L4 15.5 Z" fill="CUR"/>' },
+  shield: { name: 'Shield', art: '<circle cx="12" cy="12" r="8.6" fill="none" stroke="CUR" stroke-width="2.4"/><circle cx="12" cy="12" r="3" fill="CUR"/><path d="M12 3.4 V8 M12 16 V20.6 M3.4 12 H8 M16 12 H20.6" stroke="CUR" stroke-width="1.6"/>' },
+  axe: { name: 'Axe', art: '<path d="M7.2 21.5 L14.6 5.2" stroke="CUR" stroke-width="2.4" stroke-linecap="round" fill="none"/><path d="M13.2 2.6 C17.6 3.4 20.8 6.8 21 11.2 C17.8 9.9 14.9 9.9 12.4 11 L10.6 7 C11.2 5.2 12 3.7 13.2 2.6 Z" fill="CUR"/>' },
+  hammer: { name: 'Mjölnir', art: '<path d="M9.6 2.8 H14.4 V12.2 H19.4 V18.6 H4.6 V12.2 H9.6 Z" fill="CUR"/>' },
+  ship: { name: 'Longship', art: '<path d="M2.4 13 C5.2 18.6 18.8 18.6 21.6 13 C17.8 15.8 6.2 15.8 2.4 13 Z" fill="CUR"/><path d="M3.4 13.6 C2.6 9.6 3.8 6.8 6.4 5.2 M20.6 13.6 C21.4 9.6 20.2 6.8 17.6 5.2" stroke="CUR" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M12 14.6 V3.4" stroke="CUR" stroke-width="2" fill="none"/>' },
+  raven: { name: 'Raven', art: '<path d="M3.6 13.2 C6.2 9.4 9.6 8 12.8 8.4 C13.6 6.4 15.4 5.4 17.2 5.8 L20.8 7.6 L17.6 8.9 C17.9 12.4 15.8 15.6 12.2 17 L13.8 20.6 L10 17.8 C7.2 17.7 4.8 16 3.6 13.2 Z" fill="CUR"/>' },
+  horn: { name: 'Horn', art: '<path d="M4 5.2 C6.2 13.4 11.8 18.4 19.8 19.6 C20.8 18.2 20.6 16.8 19.4 16.2 C13.6 14.4 9.8 10.6 8.2 4.6 C6.6 3.6 4.6 3.8 4 5.2 Z" fill="CUR"/><path d="M3.6 4.4 L8.6 3.6" stroke="CUR" stroke-width="2" stroke-linecap="round" fill="none"/>' },
+  valknut: { name: 'Valknut', art: '<g fill="none" stroke="CUR" stroke-width="1.9" stroke-linejoin="round"><path d="M12 2.6 L16.7 11 L7.3 11 Z"/><path d="M7.4 12.6 L12.1 21 L2.7 21 Z"/><path d="M16.6 12.6 L21.3 21 L11.9 21 Z"/></g>' },
+};
+export const TOKEN_ICON_KEYS = Object.keys(TOKEN_ICONS);
+
+// a sigil scaled into a box whose top-left corner is (x, y)
+export function iconSVG(key, x, y, size, color) {
+  const ic = TOKEN_ICONS[key];
+  if (!ic) return '';
+  return `<g transform="translate(${x} ${y}) scale(${size / 24})">${ic.art.replaceAll('CUR', color)}</g>`;
+}
+
 export const DEFAULT_NAMES = ['Astrid', 'Bjorn', 'Sigrun', 'Torvald'];
 
 // Difficulty presets and tile-count sanitizer. The host may start from a
@@ -174,11 +200,14 @@ export function createGame(opts = {}) {
     randomRunes: !!opts.randomRunes, // host variant: the stones choose your mark
   };
   const names = opts.names || DEFAULT_NAMES;
+  const looks = opts.appearance || []; // per seat: {color, icon} chosen in the lobby
   for (let i = 0; i < 4; i++) {
+    const look = looks[i] || {};
     s.players.push({
       seat: i,
       name: names[i] || DEFAULT_NAMES[i],
-      color: PLAYER_COLORS[i],
+      color: PLAYER_COLORS.includes(look.color) ? look.color : PLAYER_COLORS[i],
+      icon: TOKEN_ICONS[look.icon] ? look.icon : TOKEN_ICON_KEYS[i],
       r: null, c: null,
       placed: false,
       hopeful: true,

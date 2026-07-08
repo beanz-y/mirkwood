@@ -143,6 +143,39 @@ input:focus { outline: 1px solid var(--gold); }
   cursor: pointer; font-size: 13px; padding: 0 2px;
 }
 .seat .seat-kick:hover { color: var(--danger); }
+.seat-name svg { vertical-align: -2px; margin-right: 3px; }
+.seat-look {
+  border: 1px solid var(--line); background: none; color: var(--dim);
+  border-radius: 6px; font-size: 10px; padding: 2px 7px; cursor: pointer;
+  margin-left: 6px; font-family: inherit;
+}
+.seat-look:hover { color: var(--gold); border-color: var(--gold); }
+
+/* soul look picker: eight sigils, eight colors, no two seats alike */
+#look-picker {
+  margin: 8px 0 2px; padding: 10px 12px; text-align: left;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg2);
+}
+#look-picker h4 {
+  margin: 0 0 6px; color: var(--dim); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 2px; font-weight: normal;
+}
+.look-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 2px; }
+.look-btn {
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.3); border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
+}
+.look-btn:hover { border-color: var(--gold); }
+.look-btn.sel { border-color: var(--gold); box-shadow: 0 0 8px rgba(232,178,60,0.3); }
+.look-btn.taken { opacity: 0.35; cursor: default; }
+.look-btn.taken:hover { border-color: var(--line); }
+.look-swatch {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.5); cursor: pointer;
+}
+.look-swatch.sel { border-color: #f2ecd8; box-shadow: 0 0 0 2px var(--gold); }
+.look-swatch.taken { opacity: 0.3; cursor: default; }
+.pcard .flame svg, .soul-head .flame svg { display: block; }
 
 #layout { flex: 1; display: flex; min-height: 0; }
 #board-wrap {

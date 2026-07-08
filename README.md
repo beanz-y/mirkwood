@@ -68,7 +68,10 @@ Notes:
    get a 4-letter room code.
 2. Friends open the same site, **join** with the code, and click a soul card to
    claim it. One player may claim several souls (so 1–4 humans can play);
-   **Claim remaining souls** grabs all open seats.
+   **Claim remaining souls** grabs all open seats. Each claimed soul wears one
+   of eight colors and bears one of eight Norse sigils (helm, shield, axe,
+   Mjölnir, longship, raven, horn, valknut) — **⚙ look** on your seat opens
+   the picker; no two souls may match.
 3. The host starts the game once all four souls are claimed.
 
 ## Custom art

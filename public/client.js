@@ -1,5 +1,8 @@
 /* Mirkwood client — lobby, board rendering, decisions. */
-import { RUNES, GATE_NAMES, exitsFor, SIZE, key, DIRNAMES, TILE_PRESETS } from '/shared/engine.js';
+import {
+  RUNES, GATE_NAMES, exitsFor, SIZE, key, DIRNAMES, TILE_PRESETS,
+  PLAYER_COLORS, PLAYER_COLOR_NAMES, TOKEN_ICONS, TOKEN_ICON_KEYS, iconSVG,
+} from '/shared/engine.js';
 
 const $ = id => document.getElementById(id);
 const CS = 90, PAD = 6; // cell size / board padding (viewBox 552)
@@ -22,6 +25,14 @@ let clickMap = new Map(); // "r,c" -> handler
 let transientFx = null;   // choreographed one-shot animation timeline
 let decisionDeadline = null; // soft turn-timer deadline for the current decision
 let soulSeat = null;      // which soul the status card shows (null = auto)
+let lookSeat = null;      // seat whose look picker is open in the lobby
+
+// a soul's sigil as inline HTML (board tokens use iconSVG into the board svg)
+function sigilHTML(iconKey, color, size = 16) {
+  const ic = TOKEN_ICONS[iconKey];
+  if (!ic) return '';
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${ic.art.replaceAll('CUR', color)}</svg>`;
+}
 
 // Touch ("coarse pointer") devices get a two-tap place flow: the first tap
 // ghosts the tile on the board, the second tap (or ✓ Place) confirms it.
@@ -502,19 +513,23 @@ function renderLobby() {
   $('room-code').textContent = room.code;
   const list = $('seat-list');
   list.innerHTML = '';
-  const colors = ['#e8b23c', '#d05e5e', '#4fb8a8', '#a678d8'];
   room.seats.forEach(s => {
     const div = document.createElement('div');
     div.className = 'seat' + (s.claimed ? ' claimed' : '') + (s.you ? ' you' : '');
     const kick = room.youAreHost && s.claimed && !s.you
       ? `<button class="seat-kick" title="Release this soul">✕</button>` : '';
-    div.innerHTML = `<div class="seat-name" style="color:${colors[s.seat]}">Soul ${s.seat + 1}${kick}</div>
-      <div class="seat-sub">${s.claimed ? escapeHtml(s.name) + (s.you ? ' (you)' : '') : 'unclaimed — click to take'}</div>`;
+    const look = s.you
+      ? `<button class="seat-look" title="Choose this soul's sigil and color">⚙ look</button>` : '';
+    div.innerHTML = `<div class="seat-name" style="color:${s.color}">${sigilHTML(s.icon, s.color, 15)} Soul ${s.seat + 1}${kick}</div>
+      <div class="seat-sub">${s.claimed ? escapeHtml(s.name) + (s.you ? ' (you)' : '') : 'unclaimed — click to take'}${look}</div>`;
     div.onclick = () => send({ t: 'claim', seat: s.seat });
     const kb = div.querySelector('.seat-kick');
     if (kb) kb.onclick = (e) => { e.stopPropagation(); send({ t: 'kick', seat: s.seat }); };
+    const lb = div.querySelector('.seat-look');
+    if (lb) lb.onclick = (e) => { e.stopPropagation(); lookSeat = lookSeat === s.seat ? null : s.seat; render(); };
     list.appendChild(div);
   });
+  renderLookPicker();
   const allClaimed = room.seats.every(s => s.claimed);
   $('start-btn').classList.toggle('hidden', !room.youAreHost);
   $('start-btn').disabled = !allClaimed;
@@ -541,6 +556,35 @@ function renderLobby() {
     `${cfg.label || 'Custom'} — ${total} tiles · ${cfg.rune} rune circles · ${cfg.draugr} draugr · ${gates} gate${gates === 1 ? '' : 's'}`
     + (cfg.randomRunes ? ' · random runes' : '')
     + (cfg.turnTimer ? ` · ${cfg.turnTimer}s timer` : '');
+}
+
+// the look picker: eight sigils and eight colors, no two souls alike —
+// options another claimed seat wears are shown dimmed and locked
+function renderLookPicker() {
+  const lp = $('look-picker');
+  const seat = lookSeat !== null ? room.seats[lookSeat] : null;
+  if (!seat || !seat.you) {
+    lookSeat = null;
+    lp.classList.add('hidden');
+    lp.innerHTML = '';
+    return;
+  }
+  lp.classList.remove('hidden');
+  const takenI = new Set(room.seats.filter(x => x.claimed && x.seat !== lookSeat).map(x => x.icon));
+  const takenC = new Set(room.seats.filter(x => x.claimed && x.seat !== lookSeat).map(x => x.color));
+  lp.innerHTML = `<h4>Soul ${lookSeat + 1} — bear a sigil, wear a color</h4>
+    <div class="look-row">${TOKEN_ICON_KEYS.map(k =>
+      `<button class="look-btn${k === seat.icon ? ' sel' : ''}${takenI.has(k) ? ' taken' : ''}" data-icon="${k}"
+        title="${TOKEN_ICONS[k].name}${takenI.has(k) ? ' — borne by another soul' : ''}">${sigilHTML(k, takenI.has(k) ? '#4a5548' : seat.color, 20)}</button>`).join('')}</div>
+    <div class="look-row">${PLAYER_COLORS.map((c, i) =>
+      `<button class="look-swatch${c === seat.color ? ' sel' : ''}${takenC.has(c) ? ' taken' : ''}" data-color="${c}"
+        style="background:${c}" title="${PLAYER_COLOR_NAMES[i]}${takenC.has(c) ? ' — worn by another soul' : ''}"></button>`).join('')}</div>`;
+  lp.querySelectorAll('[data-icon]').forEach(b => {
+    b.onclick = () => { if (!b.classList.contains('taken')) send({ t: 'look', seat: lookSeat, icon: b.dataset.icon }); };
+  });
+  lp.querySelectorAll('[data-color]').forEach(b => {
+    b.onclick = () => { if (!b.classList.contains('taken')) send({ t: 'look', seat: lookSeat, color: b.dataset.color }); };
+  });
 }
 
 function renderTopbar() {
@@ -618,7 +662,7 @@ function renderPlayers() {
       admin = `<button class="seat-admin" data-act="kick" title="Release this soul so another player can adopt it">✕</button>`;
     }
     div.innerHTML = `
-      <div class="flame" style="background:${p.color}">${(p.name[0] || '?').toUpperCase()}</div>
+      <div class="flame" style="background:${p.color}">${p.icon && TOKEN_ICONS[p.icon] ? sigilHTML(p.icon, '#0a100d', 16) : (p.name[0] || '?').toUpperCase()}</div>
       <div class="pinfo">
         <div class="pname">${p.name}${isMine(p.seat) ? ' ✦' : ''}${turnChip}</div>
         <div class="pstat">${status} · resolve <span class="resolve-pips">${'◆'.repeat(p.resolve)}${'◇'.repeat(2 - p.resolve)}</span></div>
@@ -695,7 +739,7 @@ function renderSoul() {
   el.innerHTML = `
     <div class="soul-card ${cls}">
       <div class="soul-head">
-        <div class="flame" style="background:${p.color}">${(p.name[0] || '?').toUpperCase()}</div>
+        <div class="flame" style="background:${p.color}">${p.icon && TOKEN_ICONS[p.icon] ? sigilHTML(p.icon, '#0a100d', 16) : (p.name[0] || '?').toUpperCase()}</div>
         <div>
           <div class="soul-name">${escapeHtml(p.name)}${isMine(seat) ? ' ✦' : ''}</div>
           <div class="pstat">resolve <span class="resolve-pips">${'◆'.repeat(p.resolve)}${'◇'.repeat(2 - p.resolve)}</span></div>
@@ -891,11 +935,15 @@ function renderBoard() {
       }
       const tokenArt = art[`token-${p.seat}`];
       const R = ps.length === 1 ? 18 : 13;
+      const sigSize = ps.length === 1 ? 19 : 14;
+      const mark = p.icon && TOKEN_ICONS[p.icon]
+        ? iconSVG(p.icon, cx + ox - sigSize / 2, cy + oy - sigSize / 2, sigSize, '#0a100d')
+        : `<text x="${cx + ox}" y="${cy + oy + 4.5}" text-anchor="middle" font-size="${ps.length === 1 ? 14 : 11}" fill="#0a100d" font-weight="bold" font-family="Georgia">${(p.name[0] || '?').toUpperCase()}</text>`;
       const body = tokenArt
         ? `<image href="${tokenArt}" x="${cx + ox - R}" y="${cy + oy - R}" width="${R * 2}" height="${R * 2}"/>`
         : `<circle cx="${cx + ox}" cy="${cy + oy}" r="${ps.length === 1 ? 15 : 11}" fill="${p.color}" stroke="#0a100d" stroke-width="2"/>
            ${glow}
-           <text x="${cx + ox}" y="${cy + oy + 4.5}" text-anchor="middle" font-size="${ps.length === 1 ? 14 : 11}" fill="#0a100d" font-weight="bold" font-family="Georgia">${(p.name[0] || '?').toUpperCase()}</text>`;
+           ${mark}`;
       parts.push(`<g ${opacityAttr} ${hold}>${slide}${opacityAnim}${shakeOpen}${ring}${tokenArt ? glow : ''}${body}${shakeClose}</g>`);
     });
   }

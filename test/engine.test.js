@@ -1,7 +1,7 @@
 /* Mirkwood engine tests — run: node test/engine.test.js */
 import {
   createGame, applyAction, publicState, exitsFor, litSet, losFor,
-  computeMoves, SIZE, key, RUNES, TILE_PRESETS, _test,
+  computeMoves, SIZE, key, RUNES, TILE_PRESETS, PLAYER_COLORS, _test,
 } from '../public/shared/engine.js';
 
 let passed = 0, failed = 0;
@@ -520,6 +520,21 @@ section('random runes: the stones choose an unclaimed mark');
   applyAction(s2, 0, { kind: 'move', d: 1 });
   applyAction(s2, 0, { skip: true });
   check(s2.players[0].rune === null, 'declining the stones leaves no mark');
+}
+
+// ---------------------------------------------------------------- appearance
+section('appearance: souls wear the looks chosen in the lobby');
+{
+  const s = createGame({
+    seed: 30, stack: deck(10),
+    appearance: [
+      { color: '#c97ba4', icon: 'raven' },
+      { color: 'nope', icon: 'unknown' }, // invalid values fall back to seat defaults
+    ],
+  });
+  check(s.players[0].color === '#c97ba4' && s.players[0].icon === 'raven', 'chosen look applied');
+  check(s.players[1].color === PLAYER_COLORS[1] && s.players[1].icon === 'shield', 'bad look falls back to seat defaults');
+  check(s.players[3].icon === 'hammer', 'unset seats take the default sigil order');
 }
 
 // ---------------------------------------------------------------- end conditions
