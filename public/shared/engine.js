@@ -483,7 +483,12 @@ function runeCirclesLeft(s) {
   let n = 0;
   for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
     const t = tileAt(s, r, c);
-    if (t && t.kind === 'rune') n++;
+    // a spent circle no longer offers a mark: in the base game the stones
+    // speak once — the soul standing there has had their choice, nobody else
+    // can enter, and it crumbles the moment they leave. (Random Runes never
+    // spends a circle: the occupant may linger and let the stones choose
+    // again, so it keeps counting.)
+    if (t && t.kind === 'rune' && !t.spent) n++;
   }
   for (const t of s.stack) if (t.kind === 'rune') n++;
   return n;
@@ -496,6 +501,107 @@ function lose(s, reason) {
   s.awaiting = null;
   s.queue = [];
   log(s, reason, 'danger');
+}
+
+// With the stack spent, a fall is almost always the end: landing on an empty
+// space needs a draw that can never come. Say so the moment the soul falls —
+// not a full round later when their landing turn comes up.
+function fallDoomCheck(s, p) {
+  if (s.stack.length || s.phase !== 'play') return;
+  const lit = litSet(s);
+  const { r: fr, c: fc } = p.falling;
+  for (let i = 0; i < SIZE; i++) {
+    for (const [r, c] of [[fr, i], [i, fc]]) {
+      if (!cellAt(s, r, c) && !lit.has(key(r, c))) {
+        lose(s, `${p.name} falls into the starless void — with the last hope spent, nothing will ever kindle a place to land. The souls are lost.`);
+        return;
+      }
+    }
+  }
+}
+
+// Niflheim's Embrace only ever shrinks the path network — no tile is ever
+// added again. So the moment no gate remains that (a) all four souls can
+// still reach and (b) whose four marks can still be completed at reachable
+// circles, the saga is over. Void crossings are counted generously: a rift
+// (or a fractured tile a soul could drop through) whose row and column hold
+// no empty unlit cell still lets a faller land on an existing tile there.
+function embraceDoomCheck(s) {
+  if (!s.niflheim || s.phase !== 'play') return;
+  if (!s.players.every(p => p.placed)) return; // a faller's own doom resolves first
+  // connected components of the path network
+  const comp = new Array(SIZE * SIZE).fill(-1);
+  let nComp = 0;
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (comp[key(r, c)] !== -1 || !tileAt(s, r, c)) continue;
+    const id = nComp++;
+    const todo = [[r, c]];
+    comp[key(r, c)] = id;
+    while (todo.length) {
+      const [cr, cc] = todo.pop();
+      const t = tileAt(s, cr, cc);
+      for (let d = 0; d < 4; d++) {
+        if (!t.exits[d]) continue;
+        const [nr, nc] = stepDir(cr, cc, d);
+        const nt = tileAt(s, nr, nc);
+        if (!nt || !nt.exits[OPP(d)] || comp[key(nr, nc)] !== -1) continue;
+        comp[key(nr, nc)] = id;
+        todo.push([nr, nc]);
+      }
+    }
+  }
+  const parent = [...Array(nComp).keys()];
+  const find = a => { while (parent[a] !== a) a = parent[a] = parent[parent[a]]; return a; };
+  const union = (a, b) => { parent[find(a)] = find(b); };
+  // survivable void crossings merge components
+  const lit = litSet(s);
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    const cl = cellAt(s, r, c);
+    const src = [];
+    if (cl && cl.rift) {
+      for (let d = 0; d < 4; d++) {
+        const [nr, nc] = stepDir(r, c, d);
+        const nt = tileAt(s, nr, nc);
+        if (nt && nt.exits[OPP(d)]) src.push(comp[key(nr, nc)]);
+      }
+    } else if (cl && cl.tile && cl.tile.fractured) {
+      src.push(comp[key(r, c)]);
+    }
+    if (!src.length) continue;
+    let deadly = false;
+    const targets = new Set();
+    for (let i = 0; i < SIZE; i++) {
+      for (const [lr, lc] of [[r, i], [i, c]]) {
+        if (!cellAt(s, lr, lc) && !lit.has(key(lr, lc))) deadly = true;
+        else if (tileAt(s, lr, lc)) targets.add(comp[key(lr, lc)]);
+      }
+    }
+    if (deadly) continue; // the jump means a draw that can never come
+    for (const a of src) {
+      if (targets.size) for (const b of targets) union(a, b);
+      else for (let b = 0; b < nComp; b++) union(a, b); // desperate: land anywhere
+    }
+  }
+  // some gate must be completable AND reachable by all four souls
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    const t = tileAt(s, r, c);
+    if (!t || t.kind !== 'gate') continue;
+    const g = find(comp[key(r, c)]);
+    if (!s.players.every(p => find(comp[key(p.r, p.c)]) === g)) continue;
+    const held = new Set();
+    for (const p of s.players) if (p.rune && p.rune.p === t.gate) held.add(p.rune.k);
+    const needed = 4 - held.size;
+    if (needed > 0) {
+      let circles = 0;
+      for (let rr = 0; rr < SIZE; rr++) for (let cc = 0; cc < SIZE; cc++) {
+        const ct = tileAt(s, rr, cc);
+        if (ct && ct.kind === 'rune' && !ct.spent && find(comp[key(rr, cc)]) === g) circles++;
+      }
+      if (circles < needed) continue;
+    }
+    return; // this gate can still be won
+  }
+  lose(s, 'The cold has severed every road — no soul may reach a gate whose runes could still be gathered. Niflheim claims them all.');
 }
 
 function lossCheck(s) {
@@ -519,7 +625,9 @@ function lossCheck(s) {
   }
   if (circles < needed) {
     lose(s, 'Too many Rune Circles are lost to the mist — the souls can never bear the four marks a gate demands.');
+    return;
   }
+  embraceDoomCheck(s);
 }
 
 // ---------------------------------------------------------------- steps
@@ -652,6 +760,8 @@ STEPS['stay-fracture'] = (s) => {
     p.falling = { r, c };
     ev(s, 'fall', { seat: p.seat, from: [r, c], r, c });
     log(s, `${p.name} falls as the path crumbles beneath them!`, 'danger');
+    fallDoomCheck(s, p);
+    if (s.phase !== 'play') return;
     s.queue.unshift({ t: 'end-turn' });
     startHitWave(s, trig, { mover: p.seat, lateral: false });
     return;
@@ -720,6 +830,10 @@ STEPS['arrive2'] = (s, { seat, then }) => {
   // a monster scrambled off in hopelessness fades even if the scrambler is
   // rekindled a heartbeat later
   sweep(s);
+  // an incompatible rune taken at the last circle (or a circle lost to the
+  // sweep) can decide the saga right here — say so now, not at end of turn
+  lossCheck(s);
+  if (s.phase !== 'play') return;
   const steps = [];
   if (p.placed && p.hopeful) steps.push({ t: 'illum', forSeat: seat, chooser: s.turn });
   steps.push({ t: 'relight', chooser: s.turn });
@@ -829,6 +943,8 @@ STEPS['scramble'] = (s, { seat, from, free, banish, then }) => {
     ev(s, 'fall', { seat: p.seat, from: [fr, fc], r: fr, c: fc });
     log(s, `${p.name} finds no footing — they tumble into the dark!`, 'danger');
     sweep(s);
+    fallDoomCheck(s, p);
+    if (s.phase !== 'play') return;
     s.queue.unshift({ t: 'end-turn' });
     return;
   }
@@ -1007,6 +1123,8 @@ function doMove(s, p, mv, then) {
     if (originFractured) fractureCell(s, or_, oc);
     p.placed = false; p.r = null; p.c = null;
     p.falling = { r: nr, c: nc };
+    fallDoomCheck(s, p);
+    if (s.phase !== 'play') return;
     s.queue.unshift({ t: 'end-turn' });
     startHitWave(s, trig, { mover: p.seat, lateral: false });
     return;
@@ -1092,6 +1210,12 @@ ACTIONS['block'] = (s, p, { block }) => {
 
 ACTIONS['attune'] = (s, p, payload) => {
   s.awaiting = null;
+  // in the base game the circle is spent either way: the prompt never comes
+  // again (leaving crumbles it, and no one else can enter while they stand)
+  if (!s.randomRunes) {
+    const circle = tileAt(s, p.r, p.c);
+    if (circle && circle.kind === 'rune') circle.spent = true;
+  }
   if (payload.skip) {
     log(s, `${p.name} leaves the runes untouched.`, 'info');
     return;

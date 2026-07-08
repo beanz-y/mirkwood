@@ -58,8 +58,15 @@ The souls **lose together** if:
 - Both Gates are swallowed by the mist before being placed.
 - Too few Rune Circles remain for the souls to complete the four marks a gate
   demands (checked automatically: each soul not yet holding a distinct rune of
-  the best available gate needs one remaining circle).
-- A falling soul has no tile left to land on (they fall through the void forever).
+  the best available gate needs one remaining circle — and a circle a soul is
+  already standing on is spent, for its stones speak to each soul only once).
+- A falling soul has no tile left to land on (they fall through the void
+  forever). With the stack spent this fate is sealed — and announced — the
+  moment they fall.
+- During **Niflheim's Embrace**, no gate remains that all four souls can still
+  reach bearing a completable set of runes (checked automatically after every
+  turn: once the stack is dead the path network only shrinks, so a severed
+  road stays severed).
 - The group concedes to Niflheim.
 
 ---
@@ -332,3 +339,20 @@ When the last tile leaves the stack, the primordial cold of Niflheim closes in:
     attested name Valgrind (Grímnismál 22); the draugar are cast as restless
     dead — corporeal revenants of Norse folklore, not ghosts; default soul
     names are all Old Norse (Sigrun, a valkyrie's name, replaced Eira).
+16. **Hopeless positions end themselves** (2026-07-08, from playtest): three
+    auto-loss refinements so the saga never drags on after it is decided.
+    (a) A Rune Circle a soul stands on counts as *spent* in the base game —
+    its prompt never comes again, nobody else can enter, and it crumbles on
+    leave — so "wrong rune at the last circle" is called immediately.
+    (b) A soul falling with the stack spent is doomed the moment they fall
+    (landing on an empty space needs a draw that can never come); the loss is
+    declared at the fall, not a round later. This deliberately removes an
+    obscure theoretical rescue — teammates lighting *every* empty space in
+    the rift's row and column before the landing turn — which no group has
+    ever used and which read as a stall.
+    (c) During Niflheim's Embrace the engine checks after every turn that some
+    gate is still reachable by all four souls with a completable rune set
+    (counting only circles in that gate's road network, and crediting the
+    rare survivable rift-crossing whose row and column are fully tiled or
+    lit). The board only shrinks once the stack dies, so the first failure
+    of this check is final.

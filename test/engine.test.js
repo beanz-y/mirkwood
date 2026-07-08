@@ -522,6 +522,83 @@ section('random runes: the stones choose an unclaimed mark');
   check(s2.players[0].rune === null, 'declining the stones leaves no mark');
 }
 
+// ---------------------------------------------------------------- end conditions
+section('end conditions: an incompatible rune at the last circle loses at once');
+{
+  const s = createGame({ seed: 21, stack: deck(30) });
+  doSetup(s);
+  // three souls already bear distinct Valhalla marks; no circles wait in the
+  // stack; a single circle stands beside soul 0
+  ['thurisaz', 'eihwaz', 'raido'].forEach((k, i) => { s.players[i + 1].rune = { p: 'valhalla', k }; });
+  while (s.stack.some(t => t.kind === 'rune')) {
+    s.stack.splice(s.stack.findIndex(t => t.kind === 'rune'), 1);
+  }
+  _test.setTile(s, 1, 2, _test.makeTileDef(s, 'rune', { fractured: true }), 0);
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  check(s.awaiting && s.awaiting.type === 'attune', 'the stones offer their marks');
+  check(s.phase === 'play', 'standing on the unspent circle, the saga lives');
+  applyAction(s, 0, { p: 'folkvangr', k: 'berkano' }); // incompatible with the party
+  check(s.phase === 'lost', 'a mismatched mark at the last circle ends the saga immediately');
+  check(/marks a gate demands/.test(s.lossReason), 'rune-scarcity reason reported');
+}
+
+section('end conditions: taking the fitting mark at the last circle is safe');
+{
+  const s = createGame({ seed: 21, stack: deck(30) });
+  doSetup(s);
+  ['thurisaz', 'eihwaz', 'raido'].forEach((k, i) => { s.players[i + 1].rune = { p: 'valhalla', k }; });
+  while (s.stack.some(t => t.kind === 'rune')) {
+    s.stack.splice(s.stack.findIndex(t => t.kind === 'rune'), 1);
+  }
+  _test.setTile(s, 1, 2, _test.makeTileDef(s, 'rune', { fractured: true }), 0);
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  applyAction(s, 0, { p: 'valhalla', k: 'ansuz' }); // completes the set
+  check(s.phase === 'play', 'the fourth Valhalla mark keeps the saga alive');
+  check(s.players[0].rune && s.players[0].rune.k === 'ansuz', 'mark taken');
+}
+
+section('end conditions: a fall with the stack spent ends the saga at once');
+{
+  const s = createGame({ seed: 22, stack: deck(12) });
+  doSetup(s);
+  s.stack = [];
+  s.niflheim = true;
+  // soul 0 stands on their fractured start tile; Staying drops them through
+  applyAction(s, 0, { kind: 'stay' });
+  check(s.phase === 'lost', 'the saga ends the moment the soul falls — not a round later');
+  check(/starless void/.test(s.lossReason), 'immediate fall-doom reason reported');
+}
+
+section('end conditions: the Embrace ends the saga when a soul is severed');
+{
+  const mk = () => {
+    const s = createGame({ seed: 23, stack: deck(20) });
+    doSetup(s);
+    ['thurisaz', 'eihwaz', 'raido', 'ansuz'].forEach((k, i) => { s.players[i].rune = { p: 'valhalla', k }; });
+    s.stack = [];
+    s.niflheim = true;
+    for (let i = 0; i < SIZE * SIZE; i++) s.grid[i] = null;
+    // a gate road along row 1: gate (1,0) opening east, crosses at (1,1)-(1,3)
+    _test.setTile(s, 1, 0, _test.makeTileDef(s, 'gate', { gate: 'valhalla' }), 1);
+    for (const c of [1, 2, 3]) _test.setTile(s, 1, c, _test.makeTileDef(s, 'cross'), 0);
+    [[1, 1], [1, 2], [1, 3]].forEach(([r, c], i) => { s.players[i].r = r; s.players[i].c = c; });
+    return s;
+  };
+  // connected: soul 3 on the same road — the saga lives
+  let s = mk();
+  _test.setTile(s, 1, 4, _test.makeTileDef(s, 'cross'), 0);
+  s.players[3].r = 1; s.players[3].c = 4;
+  s.awaiting = null; s.queue.unshift({ t: 'end-turn2' }); _test.run(s);
+  check(s.phase === 'play', 'all four souls on the gate road: the saga lives');
+  // severed: soul 3 alone on a far island — the saga ends
+  s = mk();
+  _test.setTile(s, 4, 4, _test.makeTileDef(s, 'cross'), 0);
+  s.players[3].r = 4; s.players[3].c = 4;
+  s.awaiting = null; s.queue.unshift({ t: 'end-turn2' }); _test.run(s);
+  check(s.phase === 'lost', 'a soul cut off from every winnable gate ends the saga');
+  check(/severed every road/.test(s.lossReason), 'embrace cutoff reason reported');
+}
+
 // ---------------------------------------------------------------- full random game smoke test
 section('smoke: random self-play (200 games)');
 {
