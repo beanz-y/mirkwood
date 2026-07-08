@@ -493,6 +493,7 @@ function render() {
   renderActionBar();
   renderPreviewPanel();
   renderModal();
+  maybeNiflheimAlert();
   $('concede-btn').classList.toggle('hidden', !room.youAreHost || state.phase !== 'play' && state.phase !== 'setup');
   transientFx = null; // one-shot: replays (rotate, art load) render without them
 }
@@ -548,8 +549,11 @@ function renderLobby() {
 function renderTopbar() {
   $('room-tag').textContent = room.code;
   const n = state.stackCount;
-  $('stack-meter').innerHTML = `Hope remaining: <b>${n}</b> tiles`;
-  $('stack-meter').classList.toggle('low', n <= 10);
+  $('stack-meter').innerHTML = state.niflheim
+    ? `❄ <b>Niflheim’s Embrace</b> — the forest dwindles`
+    : `Hope remaining: <b>${n}</b> tiles`;
+  $('stack-meter').classList.toggle('embrace', !!state.niflheim);
+  $('stack-meter').classList.toggle('low', !state.niflheim && n <= 10);
   if (transientFx && transientFx.burn) {
     const m = $('stack-meter');
     m.classList.remove('burnflash');
@@ -1352,6 +1356,24 @@ function tileName(tile) {
     gate: tile.gate ? `Gate of ${GATE_NAMES[tile.gate]}` : 'Gate',
   }[tile.kind] + (tile.fractured ? ' (fractured)' : '');
 }
+
+// ---------------------------------------------------------------- niflheim alert
+
+// Niflheim's Embrace is the saga's hard turning point — announce it once,
+// full-screen, to every player. Each player dismisses it for themselves;
+// the dismissal is remembered per saga so a mid-embrace reload doesn't nag.
+function maybeNiflheimAlert() {
+  if (!room || !state) return;
+  const k = 'mk-nifl-' + room.code;
+  const active = !!state.niflheim && state.phase === 'play';
+  if (!state.niflheim) localStorage.removeItem(k); // fresh saga: arm the alert again
+  const show = active && localStorage.getItem(k) !== 'seen';
+  $('niflheim-overlay').classList.toggle('hidden', !show);
+}
+$('niflheim-close').onclick = () => {
+  if (room) localStorage.setItem('mk-nifl-' + room.code, 'seen');
+  $('niflheim-overlay').classList.add('hidden');
+};
 
 // ---------------------------------------------------------------- modal
 

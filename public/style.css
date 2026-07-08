@@ -288,6 +288,32 @@ body.niflheim #board-wrap::after {
 }
 body.niflheim #topbar { border-bottom-color: #3a5a8c; }
 
+/* Niflheim's Embrace announcement — every player dismisses their own */
+#niflheim-overlay { background: rgba(4, 8, 14, 0.9); z-index: 60; }
+.nifl-card {
+  max-width: min(480px, 92vw); text-align: center;
+  background: linear-gradient(180deg, #0c1624 0%, #0a111c 100%);
+  border: 1px solid #3a5a8c; border-radius: 12px; padding: 28px 30px;
+  box-shadow: 0 0 60px rgba(90, 140, 210, 0.25), inset 0 0 80px rgba(40, 70, 120, 0.15);
+}
+.nifl-glyph {
+  font-size: 56px; color: #9fd4ff; line-height: 1;
+  text-shadow: 0 0 24px rgba(120, 180, 255, 0.8);
+  animation: niflpulse 2.6s ease-in-out infinite;
+}
+@keyframes niflpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+.nifl-card h1 {
+  color: #cfe9ff; letter-spacing: 5px; font-size: 24px; margin: 10px 0 14px;
+  text-shadow: 0 0 30px rgba(120, 180, 255, 0.4);
+}
+.nifl-card p, .nifl-card li { color: #a9c4e0; font-size: 14px; line-height: 1.55; }
+.nifl-card ul { text-align: left; margin: 10px auto; padding-left: 26px; max-width: 400px; }
+.nifl-card b { color: #cfe9ff; }
+.nifl-charge { font-style: italic; color: #cfe9ff; }
+.nifl-card .btn.primary { background: #14273d; border-color: #6ca6e0; color: #cfe9ff; }
+.nifl-card .btn.primary:hover { background: #1b3450; }
+#stack-meter.embrace, #stack-meter.embrace b { color: #9fd4ff; }
+
 /* ---------------- board transition animations ----------------
    All one-shots use fill-mode "both" so a delayed animation holds its 0%
    state until its moment in the turn's choreography arrives. */
