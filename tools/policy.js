@@ -4,12 +4,50 @@
  * and the strategic commentary; refine THIS file to make the party smarter.
  */
 import {
-  losFor, litSet, RUNES, SIZE, key, OPP, exitsFor, stepDir,
+  losFor, litSet, RUNES, SIZE, key, OPP, exitsFor, stepDir, applyAction,
 } from '../public/shared/engine.js';
 
 const wrapDist = (r1, c1, r2, c2) =>
   Math.min(Math.abs(r1 - r2), SIZE - Math.abs(r1 - r2))
   + Math.min(Math.abs(c1 - c2), SIZE - Math.abs(c1 - c2));
+
+// ---------------------------------------------------------------- tunable weights
+//
+// The hand-tuned magic numbers that drive movement, lifted into one object so the
+// CEM tuner (tools/tune.js) can search over them. Defaults ARE the original
+// literals, so `policy(s, rnd, {})` is byte-for-byte the hand-tuned greedy party;
+// `ctx.params` overrides them per game (falls back here). The tuner only perturbs
+// these — structural constants stay inline. Add a knob here rather than burying a
+// literal below.
+//
+// NB (2026-07-09 tuning session): a CEM search over these weights (~500k games)
+// found NO vector that beats these defaults on win rate — the greedy heuristic is
+// at its representational ceiling; the win-rate lever is game balance, not the
+// weights. A "converge harder on the gate" model was also tried and REVERTED (it
+// hurt the winnable-variant control). See tools/SELFPLAY_NOTES.md. Kept anyway:
+// this parameterization + the tuner are the reusable apparatus for the next
+// balance/ruleset change, where the right weights will differ.
+
+export const DEFAULT_PARAMS = {
+  // --- safety / draugr ---
+  victim: 12,          // penalty per teammate caught in a strike we trigger
+  fractureLate: 6,     // extra dread of fractured ground once the stack is thin
+  // --- mark gathering ---
+  runeReach: 16,       // pull toward a reachable Rune Circle
+  runeUrg: 6,          // ...amplified when circles are scarce (urgency)
+  onRune: 6,           // bonus for actually stepping onto a circle
+  gateFishBase: 1.4,   // once a gate stands, unmarked souls fish toward its doorway...
+  gateFishLate: 1.6,   // ...leaning harder as the stack thins (gather marks near home)
+  // --- gate march / assembly ---
+  march: 3.5,          // march-on-gate pull, marks still outstanding
+  marchAll: 5.5,       // ...once every soul is marked (sprint home)
+  assembly: 20,        // a lit road home when fully marked outranks all else
+  nearGate: 10,        // proximity bonus within 3 of the gate
+  // --- cohesion / formation ---
+  caravan: 2.2,        // tighten formation once the gate stands and marks gather
+  straggler: 9,        // penalty for walking off the gate-connected component late
+  rescueLate: 4.5,     // hopeful souls sprint to relight a stranded teammate late
+};
 
 // ---------------------------------------------------------------- basics
 
@@ -224,7 +262,24 @@ function goalsFor(s, p, plan) {
   return { cells: tilesOf(s, 'gate', plan), kind: 'gate' };
 }
 
+// the party's rune budget: distinct marks still needed for the plan gate vs.
+// circles left anywhere (board + stack). slack is the margin before the game
+// is auto-lost — humans treat a thin slack as an emergency and stop wasting
+// circles (a Stay burns a random stack tile, ~a circle sometimes).
+export function runeEconomy(s, plan) {
+  const held = new Set(s.players.filter(q => q.rune && q.rune.p === plan).map(q => q.rune.k));
+  const marksNeeded = 4 - held.size;
+  let circlesLeft = 0;
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    const t = tileAt(s, r, c);
+    if (t && t.kind === 'rune' && !t.spent) circlesLeft++;
+  }
+  for (const t of s.stack) if (t.kind === 'rune') circlesLeft++;
+  return { marksNeeded, circlesLeft, slack: circlesLeft - marksNeeded };
+}
+
 function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
+  const P = ctx.params || DEFAULT_PARAMS;
   let score = rnd() * 0.2;
   if (mv.kind === 'jump') {
     // A Void Rift is also a DOOR: fall, then land on any empty unlit cell in
@@ -260,7 +315,7 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
       - (p.resolve === 0 ? 3 : 0) + rnd() * 0.3;
   }
   const sim = triggerSim(s, p, mv);
-  score -= 12 * sim.victims;                    // never buy progress with a teammate's hope
+  score -= P.victim * sim.victims;              // never buy progress with a teammate's hope
   score -= 7 * (sim.meHit ? 1 : 0);
   if (sim.triggered && !sim.meHit && sim.victims === 0 && p.resolve < 2) score += 1.1; // clean evade = free resolve
   if (!sim.meHit && standingDanger(s, mv.r, mv.c)) score -= 4; // don't loiter in a lane either
@@ -278,6 +333,8 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
     return n + (cellAt(s, nr, nc) ? 0 : 1);
   }, 0) : 0;
   if (goalKind === 'rune') {
+    // scarcer circles → grab them harder (0 comfortable .. 3 desperate)
+    const urg = Math.max(0, 3 - (ctx.econ ? ctx.econ.slack : 9));
     if (dt && goals.length) {
       const dist = bfs(s, mv.r, mv.c);
       // a circle held in a teammate's light is a stable target worth a trek;
@@ -289,16 +346,18 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
           && Math.abs(q.r - cr) + Math.abs(q.c - cc) <= 1);
         if (d <= (guarded ? 5 : 2)) bestGoal = Math.min(bestGoal, d);
       }
-      if (bestGoal !== Infinity) score += 16 / (1 + bestGoal);
-      if (dt.kind === 'rune') score += 6;
+      if (bestGoal !== Infinity) score += (P.runeReach + P.runeUrg * urg) / (1 + bestGoal);
+      if (dt.kind === 'rune') score += P.onRune + 4 * urg;
     }
-    score += 1.2 * frontier + (mv.kind === 'blind' ? 0.5 : 0); // keep fishing
-    // once a plan gate stands, fish TOWARD its doorway — assembly must not
-    // begin from the far side of the forest with an empty stack
+    score += (1.2 + 0.5 * urg) * frontier + (mv.kind === 'blind' ? 0.5 : 0); // keep fishing (harder when circles run low)
+    // once a plan gate stands, fish TOWARD its doorway — and lean harder as the
+    // stack thins, so marks are gathered NEAR the gate and the party clusters
+    // there instead of stranding itself across a board that won't grow back
     const ga = gateApproach(s, plan);
     if (ga) {
       const [ar, ac] = ga.approach;
-      score += 1.4 * (wrapDist(p.r, p.c, ar, ac) - wrapDist(mv.r, mv.c, ar, ac));
+      const lateness = Math.max(0, (28 - s.stack.length) / 9); // 0 early → ~2.5 as the stack empties
+      score += (P.gateFishBase + P.gateFishLate * lateness) * (wrapDist(p.r, p.c, ar, ac) - wrapDist(mv.r, mv.c, ar, ac));
     }
   } else {
     if (dt && dt.kind === 'rune') score -= 6; // a marked soul crumbles it for nothing
@@ -309,12 +368,12 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
       const [gr, gc] = ga ? ga.approach : goals[0];
       const d0 = wrapDist(p.r, p.c, gr, gc);
       const d1 = wrapDist(mv.r, mv.c, gr, gc);
-      score += (allMarked ? 5.5 : 3.5) * (d0 - d1); // march on the gate; sprint when the set is complete
+      score += (allMarked ? P.marchAll : P.march) * (d0 - d1); // march on the gate; sprint when the set is complete
       const dmin = dt ? nearest(bfs(s, mv.r, mv.c), goals) : Infinity;
-      if (dmin <= 3) score += 10 / (1 + dmin);
+      if (dmin <= 3) score += P.nearGate / (1 + dmin);
       // ASSEMBLY: with all four marks sworn and the gate standing, a lit road
       // home outranks every other consideration — follow it and do not let go
-      if (allMarked && dmin !== Infinity) score += 20 / (1 + dmin);
+      if (allMarked && dmin !== Infinity) score += P.assembly / (1 + dmin);
       if (dt && dt.kind === 'gate' && dt.gate === plan) score += 8;
       // every open passage at the destination forces a draw: during the march
       // each sideways opening burns stack for nothing — only openings that
@@ -344,7 +403,7 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
     const marks = s.players.filter(q => hasGoodMark(s, q, plan)).length;
     const caravan = tilesOf(s, 'gate', plan).length > 0 && marks >= 2;
     if (dMate !== Infinity) {
-      score -= (caravan ? 2.2 : 1.2) * Math.max(0, dMate - (caravan ? 2 : 3));
+      score -= (caravan ? P.caravan : 1.2) * Math.max(0, dMate - (caravan ? 2 : 3));
     }
   }
   // a hopeless soul on a dead end is one forced Stay from tumbling forever
@@ -364,11 +423,11 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
       const gateConnected = dist.get(key(ga.gate[0], ga.gate[1])) !== undefined;
       const allMarked = s.players.every(q => hasGoodMark(s, q, plan));
       if (gateConnected) score += 1.5;
-      else if (s.stack.length < 25 || allMarked) score -= 9;
+      else if (s.stack.length < 25 || allMarked) score -= P.straggler;
     } else if (s.stack.length < 25) {
       const connected = s.players.some(q => q.placed && q.seat !== p.seat
         && dist.get(key(q.r, q.c)) !== undefined);
-      if (!connected) score -= 9;
+      if (!connected) score -= P.straggler;
     }
   }
   // cohesion: hopeful souls drift toward the hopeless to relight them,
@@ -379,7 +438,7 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
       const dark = s.players.filter(q => q.placed && !q.hopeful && q.seat !== p.seat).map(q => [q.r, q.c]);
       // a stranded hopeless soul in the late game is a countdown to a fatal
       // fall — rescue outranks nearly everything once the stack runs thin
-      if (dark.length) score += (s.stack.length < 15 ? 4.5 : 2.5) / (1 + nearest(dist, dark));
+      if (dark.length) score += (s.stack.length < 15 ? P.rescueLate : 2.5) / (1 + nearest(dist, dark));
     } else {
       const lit = s.players.filter(q => q.placed && q.hopeful).map(q => [q.r, q.c]);
       if (lit.length) score += 3.5 / (1 + nearest(dist, lit));
@@ -388,7 +447,7 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
   // fractured ground is a delayed fall — and a fall when the stack runs thin
   // is a death sentence (nothing left to land on)
   if (dt && dt.fractured && dt.kind !== 'rune') {
-    score -= 2.2 + (goalKind === 'gate' ? 2 : 0) + (s.stack.length < 15 ? 6 : 0);
+    score -= 2.2 + (goalKind === 'gate' ? 2 : 0) + (s.stack.length < 15 ? P.fractureLate : 0);
   }
   if (mv.kind === 'blind') score -= 2.2 * pDraugr(s); // stepping into the unknown
 
@@ -419,12 +478,92 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
   return score;
 }
 
+// ---------------------------------------------------------------- rollout lookahead
+//
+// Greedy play is blind to consequences three moves out (which circle-grab
+// strands you, which step wakes the draugr chain that fragments the party).
+// A rollout gives the party human-like ANTICIPATION: try a candidate action,
+// then let the fast greedy policy finish the game over a RESHUFFLED unknown
+// stack (the bot knows only the remaining tile counts, like the discard
+// tracker — never the order), and keep the action with the best expected
+// outcome. Enabled by ctx.rollouts (0 = pure greedy, the rollouts' own base).
+
+// deep clone of the engine state, minus the append-only log/event history the
+// engine writes but never branches on (keeps the clone cheap)
+function cloneState(s) {
+  const log = s.log, events = s.events, turnEvents = s.turnEvents, lastTurn = s.lastTurn;
+  s.log = []; s.events = []; s.turnEvents = []; s.lastTurn = null;
+  const c = structuredClone(s);
+  s.log = log; s.events = events; s.turnEvents = turnEvents; s.lastTurn = lastTurn;
+  return c;
+}
+
+function resampleStack(c, rnd) {
+  const a = c.stack;
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  c.rngState = (rnd() * 2 ** 31) | 0; // vary the engine's own RNG (random-runes) too
+}
+
+// how close a finished (or terminal) rollout came to the win — a win dwarfs
+// everything, but partial progress (marks gathered, souls on the gate) gives
+// the search a gradient even among the many losing lines. Measured on the BEST
+// gate, so a rollout that pivoted to the other pantheon still scores its work.
+function rolloutReward(s) {
+  if (s.phase === 'won') return 1000;
+  let best = 0;
+  for (const g of ['valhalla', 'folkvangr']) {
+    const held = new Set(s.players.filter(q => q.rune && q.rune.p === g).map(q => q.rune.k));
+    const gs = tilesOf(s, 'gate', g);
+    let onGate = 0, connected = 0;
+    if (gs.length) {
+      const [gr, gc] = gs[0];
+      const dist = bfs(s, gr, gc);
+      const gset = new Set(gs.map(([r, c]) => key(r, c)));
+      for (const q of s.players) {
+        if (!q.placed) continue;
+        if (gset.has(key(q.r, q.c))) onGate++;                       // home
+        else if (dist.get(key(q.r, q.c)) !== undefined) connected++; // still has a road home
+      }
+    }
+    // reward marks, being home, AND staying connected to the gate — the last
+    // is what separates "lost but assembling" from "lost, party fragmented"
+    best = Math.max(best, held.size * 40 + onGate * 22 + connected * 8 + (gs.length ? 12 : 0));
+  }
+  return best;
+}
+
+function rolloutToEnd(c, rnd, plan) {
+  const rctx = { plan, rollouts: 0 }; // rollouts finish greedily — no nesting
+  let steps = 0;
+  while (c.phase !== 'won' && c.phase !== 'lost') {
+    if (++steps > 4000 || (c.awaiting == null)) { c.phase = 'lost'; break; }
+    applyAction(c, c.awaiting.seat, policy(c, rnd, rctx));
+  }
+  return rolloutReward(c);
+}
+
+// expected outcome of taking `action` now, over M reshuffled futures
+function rolloutValue(s, rnd, ctx, action) {
+  let total = 0;
+  for (let m = 0; m < ctx.rollouts; m++) {
+    const c = cloneState(s);
+    resampleStack(c, rnd);
+    applyAction(c, c.awaiting.seat, action);
+    total += rolloutToEnd(c, rnd, ctx.plan);
+  }
+  return total / ctx.rollouts;
+}
+
 // ---------------------------------------------------------------- policy
 
 export function policy(s, rnd, ctx) {
   const aw = s.awaiting;
   const p = s.players[aw.seat];
   const plan = planPantheon(s, ctx);
+  ctx.econ = runeEconomy(s, plan); // shared rune budget for this decision
 
   switch (aw.type) {
     case 'place-start': {
@@ -494,6 +633,33 @@ export function policy(s, rnd, ctx) {
         });
         if (!adjacentLight) return { kind: 'rekindle' };
       }
+      // ROLLOUT LOOKAHEAD: keep the greedy heuristic as the primary ranking
+      // (it encodes hard-won wisdom), then ADJUST each option by how the game
+      // tends to END if we take it — over reshuffled futures. The greedy score
+      // guards against noise; the rollout adds the anticipation greed lacks.
+      if (ctx.rollouts > 0) {
+        const onFrac = myTile && myTile.fractured;
+        const cands = [];
+        for (const m of aw.moves) {
+          if (m.kind === 'charge') continue;
+          cands.push({ action: { kind: 'move', d: m.d }, greedy: scoreMove(s, p, m, plan, rnd, ctx) });
+        }
+        // a Stay's greedy value ≈ a mediocre-but-safe move; the rollout decides
+        if (aw.stay) cands.push({ action: { kind: 'stay' }, greedy: onFrac ? -8 : 0.4 });
+        if (!cands.length) return { kind: 'move', d: aw.moves[0].d };
+        // only roll out the plausible options — greedy already ranks them, so
+        // the top few are where lookahead actually earns its cost
+        cands.sort((a, b) => b.greedy - a.greedy);
+        const K = Math.min(cands.length, 4);
+        let best = cands[0], bestVal = -Infinity;
+        for (let i = 0; i < K; i++) {
+          const cand = cands[i];
+          const val = cand.greedy + 0.06 * rolloutValue(s, rnd, ctx, cand.action) + rnd() * 0.05;
+          if (val > bestVal) { bestVal = val; best = cand; }
+        }
+        if (best.action.kind === 'move') (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
+        return best.action;
+      }
       let best = null, bestScore = -Infinity;
       for (const m of aw.moves) {
         if (m.kind === 'charge') continue; // v2 still never charges (candidate v3 tool)
@@ -520,9 +686,12 @@ export function policy(s, rnd, ctx) {
         if (guarding) return { kind: 'stay' };
       }
       // staying burns a random stack tile — an ~8% chance of eating a rune
-      // circle — so only stand fast when broke and truly idle
+      // circle — so only stand fast when broke, truly idle, AND circles are
+      // plentiful. With a thin rune budget a Stay can burn the win; a human
+      // would rather explore (a move at least fishes for a circle).
       if (aw.stay && !onFractured && !inDanger && p.hopeful
-        && p.resolve === 0 && s.stack.length > 12 && (best === null || bestScore < 0.9)) {
+        && p.resolve === 0 && s.stack.length > 12 && ctx.econ.slack >= 3
+        && (best === null || bestScore < 0.9)) {
         return { kind: 'stay' };
       }
       // NEVER leap into the void just because it is the only road: a soul

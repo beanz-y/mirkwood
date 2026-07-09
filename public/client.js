@@ -573,7 +573,7 @@ const TUT_PAGES = [
       + riftSVG(PAD + CS, PAD)
       + tutCell(tutTile('cross'), 2, 0)
       + tutArrow(PAD + CS * 0.7, PAD + CS * 0.82, PAD + CS * 1.3, PAD + CS * 0.82, '#a678d8')),
-    x: `Cracked tiles are <b>Fractured</b>: they crumble into a <b>Void Rift</b> the moment you leave them. Falling ends your turn — next turn you land on a drawn tile anywhere in the rift's row or column, <b>hopeless</b>. A rift blinds the draugar, and a desperate soul may even leap in on purpose. But fall when the stack is spent, and the void keeps you.`,
+    x: `Cracked tiles are <b>Fractured</b>: they crumble into a <b>Void Rift</b> the moment you leave them. Falling ends your turn — next turn you land on a drawn tile anywhere in the rift's row or column, <b>ember still lit</b>. A rift blinds the draugar, and a desperate soul may even leap in on purpose. But fall when the stack is spent, and the void keeps you.`,
   },
   {
     t: 'Rune Circles & the Gates',
@@ -973,7 +973,7 @@ function renderSoul() {
   const can = [], cant = [];
   if (p.falling) {
     can.push('Next turn: land on any empty, unlit space in the fallen rift’s row or column — a tile is drawn for you to land on.');
-    can.push('You will land <b>hopeless</b>. Keep 1 ◆ ready to rekindle, or land beside a hopeful soul.');
+    can.push('You land with your <b>ember still lit</b> — you kindle the ways around where you land, as after any move.');
     cant.push('You light nothing while you fall.');
   } else if (p.hopeful) {
     can.push('You light every connected path one space around you (no diagonals).');
@@ -1405,7 +1405,7 @@ function addInteractions(parts, aw) {
           if (m.kind === 'charge') {
             confirmModal('Go berserk and rush the Draugr? Its strike WILL land on you — but with its spite spent, it is banished from the forest. (1 Resolve)', () => act({ kind: 'move', d: m.d }));
           } else if (m.kind === 'jump') {
-            confirmModal('Leap into the Void Rift? You will fall, and land hopeless.', () => act({ kind: 'move', d: m.d }));
+            confirmModal('Leap into the Void Rift? You will fall, and land next turn with your ember still lit.', () => act({ kind: 'move', d: m.d }));
           } else {
             act({ kind: 'move', d: m.d });
           }

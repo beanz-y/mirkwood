@@ -105,7 +105,7 @@ section('move: fracture behind, illumination draws');
 }
 
 // ---------------------------------------------------------------- fall & landing
-section('fall & landing (lands hopeless, rekindle)');
+section('fall & landing (lands lit, TNC-faithful)');
 {
   const s = createGame({ seed: 3, stack: deck(40) });
   doSetup(s);
@@ -128,13 +128,15 @@ section('fall & landing (lands hopeless, rekindle)');
   applyAction(s, 0, { r: spot.r, c: spot.c });
   check(s.awaiting.type === 'place-landing', 'landing tile placement awaited');
   applyAction(s, 0, { rot: 0 });
+  // landing lit (TNC-faithful): the ember survives the fall and kindles anew
+  while (s.awaiting && s.awaiting.type === 'place-tile') {
+    const tg = s.awaiting.targets[0];
+    applyAction(s, s.awaiting.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+  }
   const p0 = s.players[0];
-  check(p0.placed && !p0.hopeful, 'landed hopeless (Mirkwood rule)');
-  check(s.awaiting.type === 'action', 'takes turn after landing');
-  check(s.awaiting.rekindle === true, 'may rekindle with resolve (had 2)');
-  applyAction(s, 0, { kind: 'rekindle' });
-  check(s.players[0].hopeful, 'rekindled');
-  check(s.players[0].resolve === 1, 'resolve spent');
+  check(p0.placed && p0.hopeful, 'landed lit — the ember survives the fall');
+  check(s.awaiting.type === 'action' && s.awaiting.seat === 0, 'takes turn after landing');
+  check(s.awaiting.rekindle !== true, 'no rekindle needed — landed lit');
 }
 
 // ---------------------------------------------------------------- draugr attack

@@ -31,7 +31,7 @@ import {
   createGame, applyAction, losFor, RUNES, TILE_PRESETS, normTiles,
   SIZE, key, OPP, exitsFor, stepDir,
 } from '../public/shared/engine.js';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 
 // ---------------------------------------------------------------- CLI
 
@@ -47,17 +47,30 @@ const PRESET = opt('preset', 'normal');
 const RANDOM_RUNES = flag('randomRunes');
 const VERBOSE = flag('verbose');
 const JSON_OUT = opt('json', null);
+const ROLLOUTS = +opt('rollouts', 0); // >0 → rollout lookahead per move (slower, smarter)
 // balance experiments: override any tile counts, e.g. --tiles '{"rune":7}'
 const TILE_OVERRIDE = opt('tiles', null) ? JSON.parse(opt('tiles', null)) : null;
 
 // policy + shared helpers live in tools/policy.js — tune the party there
-import { policy, hasGoodMark, mulberry, tileAt, tilesOf } from './policy.js';
+import { policy, hasGoodMark, mulberry, tileAt, tilesOf, DEFAULT_PARAMS } from './policy.js';
+
+// weight overrides for the tuner / experiments: --params '{"convPull":4,...}'
+// or --params <file.json> (the CEM tuner writes best params there)
+const PARAMS_ARG = opt('params', null);
+let PARAMS = null;
+if (PARAMS_ARG) {
+  const raw = PARAMS_ARG.trim().startsWith('{')
+    ? PARAMS_ARG
+    : readFileSync(PARAMS_ARG, 'utf8');
+  PARAMS = { ...DEFAULT_PARAMS, ...JSON.parse(raw) };
+}
 
 // ---------------------------------------------------------------- runner
 
 function playGame(seed) {
   const rnd = mulberry(seed * 7 + 3);
-  const ctx = {};
+  const ctx = { rollouts: ROLLOUTS };
+  if (PARAMS) ctx.params = PARAMS;
   const s = createGame({
     seed,
     tiles: { ...(TILE_PRESETS[PRESET] || normTiles({})), ...(TILE_OVERRIDE || {}) },

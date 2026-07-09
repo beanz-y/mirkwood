@@ -131,8 +131,13 @@ retro-logged — only sagas finishing afterward produce documents.
 ## Balance harness (self-play)
 
 ```
-npm run selfplay -- --games 500 --preset hard --randomRunes --seed 7
+node tools/selfplay.js --games 500 --preset hard --randomRunes --seed 7
 ```
+
+> Run it with **`node` directly**, not `npm run selfplay -- …`. npm 11's config
+> parser eats `--flag` arguments after `--` (you'll see `Unknown cli config
+> "--games"` and the run silently falls back to the defaults). `trace.js` takes
+> args the same way: `node tools/trace.js <seed> --tiles '{"rune":7}'`.
 
 [tools/selfplay.js](tools/selfplay.js) plays full games headlessly against the
 real engine (~1 ms/game): win rate, loss-reason histogram, circle-economy

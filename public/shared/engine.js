@@ -1327,9 +1327,9 @@ function landSoul(s, p, r, c) {
   p.falling = null;
   p.placed = true;
   p.r = r; p.c = c;
-  p.hopeful = false; // Mirkwood: souls land hopeless
+  p.hopeful = true; // the ember survives the fall — land lit and kindle anew (TNC-faithful)
   ev(s, 'land', { seat: p.seat, r, c });
-  log(s, `${p.name} falls back into Myrkviðr, hope extinguished.`, 'info');
+  log(s, `${p.name} falls back into Myrkviðr, ember still glowing.`, 'info');
 }
 
 ACTIONS['scramble'] = (s, p, { r, c }, aw) => {

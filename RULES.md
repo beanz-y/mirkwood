@@ -169,7 +169,7 @@ On your turn you either **Stay** or **Move**. A Hopeless soul may first
 - **Rekindling:** a Hopeless soul adjacent to a Hopeful soul along a joined
   pathway is rekindled automatically. A Hopeless soul may also spend
   **1 Resolve** at the start of their turn to rekindle their own hope
-  *(a Mirkwood rule — it is what makes Rift falls survivable alone)*.
+  *(a Mirkwood rule — it lets a soul struck Hopeless by a Draugr recover alone)*.
 
 ## Resolve
 
@@ -200,8 +200,8 @@ the draugar, and a soul may deliberately leap into a connected Rift.
 your next turn, choose any empty, unlit space in the row **or** column of the
 Rift you fell through, draw a tile to land on (any orientation), and land.
 
-- **You land Hopeless** *(Mirkwood rule)* — spend 1 Resolve to Rekindle, or
-  find a Hopeful friend.
+- **You land with your ember still lit** — the fall does not gutter your hope.
+  You kindle the paths around where you land, exactly as after a Move.
 - If you land on a Draugr, it strikes you and everything in its gaze; it then
   collapses into a Rift beneath you, and you claw your way onto an adjacent
   space.
@@ -295,9 +295,10 @@ When the last tile leaves the stack, the primordial cold of Niflheim closes in:
    element, not a paradise's.
 2. **Resolve from draugar:** paid on *evading* a triggered Draugr, not on being
    hit — being hit can't grant the Resolve that pays for Brace.
-3. **Rekindle (new Resolve spend):** implements your "spend a Resolve to regain
-   Hope after a fall," generalized to any start of turn. Without it, a soul
-   who falls while alone could be unrecoverable.
+3. **Rekindle (Resolve spend):** a Hopeless soul may spend 1 Resolve at the start
+   of its turn to relight itself (TNC only relights via an adjacent lit ally).
+   Its purpose is recovering from a **Draugr strike** while alone — falls now
+   land lit (departure #8), so a lone faller is no longer stranded by the fall.
 4. **Gates:** exactly 2 (TNC: 4), single-doorway, permanent once placed, exempt
    from Niflheim removal (permanence would be meaningless otherwise). They can
    still be lost from the stack — that's the drama of the discard pile.
@@ -309,8 +310,12 @@ When the last tile leaves the stack, the primordial cold of Niflheim closes in:
 7. **Stay ends your turn** — you cannot Stay and then spend Resolve to keep
    moving (TNC's sequencing arguably allows it; disallowed here to keep Stay
    a real cost).
-8. **Landing Hopeless** (your rule) is harsh but kept: with Rekindle + the
-   auto-rekindle adjacency rule it plays fine.
+8. **Landing lit after a fall** (as in TNC): the ember survives the fall, so a
+   faller lands **Hopeful** and kindles the ways around it, like any arrival.
+   *(Earlier Mirkwood builds landed the faller Hopeless; reverted 2026-07-09 for
+   TNC fidelity and accessibility — hopeless landings turned a single fall into a
+   fragmentation cascade late-game. Self-play confirmed the change is a wash-to-
+   slight-help; ~+0.1 average marks gathered.)*
 9. **Tile mix:** kept TNC's ratios (2 of the forking paths are Fractured), and
    the stack opens with 8 plain paths as TNC's does, so the first reveals are
    never lethal.
