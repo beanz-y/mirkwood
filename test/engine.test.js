@@ -638,6 +638,35 @@ section('end conditions: the Embrace ends the saga when a soul is severed');
   check(/severed every road/.test(s.lossReason), 'embrace cutoff reason reported');
 }
 
+section('end conditions: a gate burning out from under its marked souls blames the GATE, not the circles');
+{
+  // playtest bug: Valhalla stood on the board, all four souls bore Fólkvangr
+  // marks, the Fólkvangr gate burned from the stack — and the loss blamed the
+  // Rune Circles instead of the lost gate. The set truly can't be completed
+  // (they'd need four circles to re-swear to Valhalla), but the message must
+  // name the real trigger.
+  const s = createGame({ seed: 24, stack: deck(20) });
+  doSetup(s);
+  ['berkano', 'uruz', 'wunjo', 'fehu'].forEach((k, i) => { s.players[i].rune = { p: 'folkvangr', k }; });
+  _test.setTile(s, 0, 0, _test.makeTileDef(s, 'gate', { gate: 'valhalla' }), 1);
+  s.stack = s.stack.filter(t => t.kind !== 'gate' && t.kind !== 'rune'); // Fólkvangr lost; no circles left
+  _test.lossCheck(s);
+  check(s.phase === 'lost', 'the saga ends — marked for a gate that is gone, too few circles to re-swear');
+  check(/Gate of F.lkvangr is lost/.test(s.lossReason), 'loss reason names the lost GATE');
+  check(!/Too many Rune Circles/.test(s.lossReason), 'and does NOT blame the rune circles');
+}
+
+section('end conditions: a lost gate is survivable while enough circles remain to re-swear');
+{
+  const s = createGame({ seed: 24, stack: deck(20) });
+  doSetup(s);
+  ['berkano', 'uruz', 'wunjo', 'fehu'].forEach((k, i) => { s.players[i].rune = { p: 'folkvangr', k }; });
+  _test.setTile(s, 0, 0, _test.makeTileDef(s, 'gate', { gate: 'valhalla' }), 1);
+  s.stack = s.stack.filter(t => t.kind !== 'gate'); // Fólkvangr lost, but the four circles remain
+  _test.lossCheck(s);
+  check(s.phase === 'play', 'four circles remain: the party can still swear anew to Valhalla');
+}
+
 // ---------------------------------------------------------------- full random game smoke test
 section('smoke: random self-play (200 games)');
 {

@@ -652,16 +652,31 @@ function lossCheck(s) {
   // for the best available gate, every soul not yet holding a distinct rune
   // of that gate needs one circle visit
   const circles = runeCirclesLeft(s);
-  let needed = Infinity;
+  let needed = Infinity, bestGate = null;
   for (const g of new Set(gates)) {
     const held = new Set();
     for (const p of s.players) {
       if (p.rune && p.rune.p === g) held.add(p.rune.k);
     }
-    needed = Math.min(needed, 4 - held.size);
+    const need = 4 - held.size;
+    if (need < needed) { needed = need; bestGate = g; }
   }
   if (circles < needed) {
-    lose(s, 'Too many Rune Circles are lost to the mist — the souls can never bear the four marks a gate demands.');
+    // Distinguish the trigger. If souls bear marks for a gate that is no longer
+    // available (it burned out from under them), the true cause is that GATE's
+    // loss — their marks turn worthless and too few circles remain to swear anew.
+    // Otherwise it is a plain shortage of Rune Circles. (Don't conflate the two —
+    // a playtester lost their standing Fólkvangr-marked party when the Fólkvangr
+    // gate burned, and the message blamed the circles, not the gate.)
+    const orphaned = [...new Set(
+      s.players.filter(p => p.rune && !gates.includes(p.rune.p)).map(p => p.rune.p)
+    )];
+    if (orphaned.length) {
+      const lost = orphaned.map(g => `The Gate of ${GATE_NAMES[g]}`).join(' and ');
+      lose(s, `${lost} is lost to the mist — the marks the souls bore for it turn to ash, and with too few Rune Circles left they can never swear the ${needed} the Gate of ${GATE_NAMES[bestGate]} still demands.`);
+    } else {
+      lose(s, 'Too many Rune Circles are lost to the mist — the souls can never bear the four marks a gate demands.');
+    }
     return;
   }
   embraceDoomCheck(s);
@@ -1481,5 +1496,5 @@ export function publicState(s) {
 // test hooks
 export const _test = {
   tileAt, cellAt, setTile, makeTileDef, sweep, run, STEPS,
-  triggeredBy, expandChains, occupantsAt,
+  triggeredBy, expandChains, occupantsAt, lossCheck,
 };
