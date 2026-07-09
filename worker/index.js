@@ -426,6 +426,21 @@ export class MirkwoodRoom {
         this.broadcast();
         return;
       }
+      case 'preview': {
+        // the active player's pending tile placement (cell + rotation), relayed
+        // live to everyone else so out-of-turn players and watchers can follow
+        // along. Ephemeral: never touches game state and is never persisted.
+        if (!r.state) return;
+        const aw = r.state.awaiting;
+        if (!aw) return;
+        const owner = r.seats[aw.seat];
+        if (!owner || owner.token !== token) return; // only the soul on the clock
+        const relay = { t: 'preview', seat: aw.seat, r: msg.r, c: msg.c, rot: msg.rot | 0 };
+        for (const w of this.ctx.getWebSockets()) {
+          if (w !== ws) this.send(w, relay);
+        }
+        return;
+      }
       case 'act': {
         if (!r.state) return;
         const aw = r.state.awaiting;

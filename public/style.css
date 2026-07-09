@@ -290,6 +290,8 @@ input:focus { outline: 1px solid var(--gold); }
    would occupy, with a dashed "not yet real" outline */
 .ghost { pointer-events: none; opacity: 0.65; }
 .ghost-outline { fill: none; stroke: var(--good); stroke-width: 2.5; stroke-dasharray: 7 5; }
+/* the live ghost shown to out-of-turn players & watchers (another soul's move) */
+.live-ghost { pointer-events: none; opacity: 0.7; }
 
 /* ---------------- floating preview ---------------- */
 #preview {
@@ -301,6 +303,11 @@ input:focus { outline: 1px solid var(--gold); }
 #preview-title { font-size: 13px; color: var(--gold); margin-bottom: 6px; }
 #preview-svg { width: 92px; height: 92px; cursor: pointer; }
 #preview .hint { font-size: 11px; }
+/* watching another soul place a tile: calmer border + no interaction cues */
+#preview.watching { border-color: var(--line); box-shadow: 0 4px 30px rgba(0,0,0,0.5); }
+#preview.watching #preview-title { color: var(--dim); }
+#preview.watching #preview-svg { cursor: default; }
+#preview.watching #rotate-btn { display: none !important; }
 
 /* ---------------- modal ---------------- */
 .modal-card h2 { color: var(--gold); margin-top: 0; font-size: 20px; }
@@ -575,9 +582,15 @@ body.no-anims *, body.no-anims *::before, body.no-anims *::after {
   #topbar { flex-wrap: wrap; gap: 6px 12px; }
   #turn-banner { order: 5; flex-basis: 100%; text-align: left; }
   /* keep the tile preview floating over the board while the page scrolls —
-     compact, so it never hides the action bar's Rotate / ✓ Place buttons */
-  #preview { position: fixed; right: 8px; bottom: 8px; z-index: 40; width: 128px; padding: 8px; }
+     compact, and raised so it never hides the footer buttons below */
+  #preview { position: fixed; right: 8px; bottom: 52px; z-index: 40; width: 128px; padding: 8px; }
   #preview-svg { width: 84px; height: 84px; }
+  /* the Leave / Abandon / Animations buttons stay pinned to the bottom, above
+     the floating preview, so they're always reachable even mid-turn */
+  .side-footer {
+    position: sticky; bottom: 0; z-index: 45;
+    background: rgba(9, 14, 10, 0.97);
+  }
 }
 
 /* narrow phones: the rune picker's two columns become one */

@@ -65,6 +65,8 @@ const IS_COARSE = (window.matchMedia && matchMedia('(pointer: coarse)').matches)
 let armedCell = null;   // "r,c" ghosted and awaiting a confirming second tap (touch)
 let armedAction = null; // the confirm for the armed cell (also behind ✓ Place)
 let hoverCell = null;   // hovered placement target (desktop ghost preview)
+let livePreview = null;    // onlooker's view of the active player's pending placement {seat,r,c,rot}
+let lastPreviewSent = '';  // active player: last preview signature broadcast (dedupe)
 
 function updateTimer() {
   const el = $('turn-timer');
@@ -281,6 +283,15 @@ function handle(msg) {
       }
       lastAnimatedSeq = seq;
       render();
+      break;
+    }
+    case 'preview': {
+      // relayed pending placement from the active player — show it live
+      if (state && state.awaiting && state.awaiting.seat === msg.seat && !isMine(msg.seat)) {
+        livePreview = { seat: msg.seat, r: msg.r, c: msg.c, rot: msg.rot };
+        renderLivePreview();
+        renderPreviewPanel();
+      }
       break;
     }
     case 'chat': addChat(msg.from, msg.text); break;
@@ -676,6 +687,7 @@ function render() {
     awaitingSig = sig;
     moveAgainArmed = false;
     armedCell = null; armedAction = null; hoverCell = null;
+    livePreview = null; lastPreviewSent = ''; // a finalized/changed decision clears the live ghost
     const rots = legalRots(aw);
     previewRot = rots.includes(previewRot) ? previewRot : (rots[0] ?? 0);
     // soft turn timer: a fresh countdown for every decision
@@ -691,6 +703,7 @@ function render() {
   renderDiscard();
   renderLog();
   renderBoard();
+  renderLivePreview();
   renderActionBar();
   renderPreviewPanel();
   renderModal();
@@ -1180,6 +1193,7 @@ function renderBoard() {
   svg.classList.toggle('my-turn', !!myDecision);
 
   parts.push('<g id="ghost-layer" class="ghost"></g>');
+  parts.push('<g id="live-layer" class="live-ghost"></g>');
   svg.innerHTML = parts.join('');
 
   // start delayed SMIL animations relative to now (begin offsets in markup
@@ -1228,7 +1242,7 @@ function updateGhost() {
       rots = [0, 1, 2, 3]; tile = { kind: 'start', fractured: true };
     }
   }
-  if (!cell || !tile) { layer.innerHTML = ''; return; }
+  if (!cell || !tile) { layer.innerHTML = ''; broadcastPreview(); return; }
   const [r, c] = cell.split(',').map(Number);
   const rot = rots.includes(previewRot) ? previewRot : rots[0];
   const x = PAD + c * CS, y = PAD + r * CS;
@@ -1236,6 +1250,54 @@ function updateGhost() {
   layer.innerHTML = tileSVG({ ...tile, rot, exits: ex }, x, y)
     + exitMarkers(ex, x, y)
     + `<rect x="${x + 3}" y="${y + 3}" width="${CS - 6}" height="${CS - 6}" rx="8" class="ghost-outline"/>`;
+  broadcastPreview();
+}
+
+// the active player relays their pending placement (cell + rotation) to the
+// server, which fans it out to everyone else. Deduped by signature so a still
+// hand doesn't spam the socket; the cell is null while nothing is hovered.
+function broadcastPreview() {
+  const aw = state && state.awaiting;
+  const placement = aw && ['place-start', 'place-tile', 'place-blind', 'place-landing', 'place-scramble'].includes(aw.type);
+  if (!placement || !isMine(aw.seat)) return;
+  let cell;
+  if (aw.type === 'place-blind' || aw.type === 'place-landing' || aw.type === 'place-scramble') cell = `${aw.r},${aw.c}`;
+  else cell = armedCell || hoverCell;
+  const sig = `${cell || 'none'}:${previewRot}`;
+  if (sig === lastPreviewSent) return;
+  lastPreviewSent = sig;
+  const [r, c] = cell ? cell.split(',').map(Number) : [null, null];
+  send({ t: 'preview', r, c, rot: previewRot });
+}
+
+// onlookers & watchers: draw the active player's pending tile where they're
+// hovering it, in their colour, clearly labelled so no one mistakes it for
+// their own turn. Fed by relayed 'preview' messages; empty for the active soul.
+function renderLivePreview() {
+  const layer = document.getElementById('live-layer');
+  if (!layer) return;
+  const aw = state && state.awaiting;
+  const placement = aw && ['place-start', 'place-tile', 'place-blind', 'place-landing', 'place-scramble'].includes(aw.type);
+  if (!livePreview || !placement || isMine(aw.seat) || livePreview.seat !== aw.seat
+      || livePreview.r == null || livePreview.c == null) {
+    layer.innerHTML = '';
+    return;
+  }
+  const p = state.players[livePreview.seat];
+  const tile = aw.type === 'place-start' ? { kind: 'start', fractured: true } : aw.tile;
+  if (!tile) { layer.innerHTML = ''; return; }
+  const rot = livePreview.rot || 0;
+  const { r, c } = livePreview;
+  const x = PAD + c * CS, y = PAD + r * CS;
+  const ex = exitsFor(tile.kind, rot);
+  const cx = x + CS / 2;
+  const name = (p.name || '?').slice(0, 14);
+  const chipW = Math.max(40, name.length * 6 + 14);
+  const chipY = r === 0 ? y + CS + 3 : y - 19;
+  layer.innerHTML = tileSVG({ ...tile, rot, exits: ex }, x, y)
+    + `<rect x="${x + 3}" y="${y + 3}" width="${CS - 6}" height="${CS - 6}" rx="8" fill="none" stroke="${p.color}" stroke-width="3" stroke-dasharray="7 5"/>`
+    + `<g><rect x="${cx - chipW / 2}" y="${chipY}" width="${chipW}" height="16" rx="8" fill="${p.color}"/>`
+    + `<text x="${cx}" y="${chipY + 11.5}" text-anchor="middle" font-size="9.5" fill="#0a100d" font-family="Georgia">${escapeHtml(name)}</text></g>`;
 }
 
 function hlRect(x, y, cls) {
@@ -1642,22 +1704,34 @@ function renderActionBar() {
 function renderPreviewPanel() {
   const aw = state.awaiting;
   const types = ['place-start', 'place-tile', 'place-blind', 'place-landing', 'place-scramble'];
-  const show = aw && types.includes(aw.type) && isMine(aw.seat);
-  $('preview').classList.toggle('hidden', !show);
-  if (!show) return;
+  const isPlacement = aw && types.includes(aw.type);
+  const mine = isPlacement && isMine(aw.seat);
+  const watching = isPlacement && !mine;   // out-of-turn player or spectator, following along
+  $('preview').classList.toggle('hidden', !isPlacement);
+  $('preview').classList.toggle('watching', !!watching);
+  if (!isPlacement) return;
+  // the active player turns their own tile; watchers see it at the rotation the
+  // active player is relaying
+  const rot = mine ? previewRot : (livePreview && livePreview.seat === aw.seat ? (livePreview.rot || 0) : 0);
   const tile = aw.type === 'place-start'
-    ? { kind: 'start', fractured: true, rot: previewRot }
-    : { ...aw.tile, rot: previewRot };
-  tile.exits = exitsFor(tile.kind, previewRot);
-  $('preview-title').textContent = tileName(tile);
-  const svg = $('preview-svg');
-  svg.innerHTML = tileSVG(tile, 1, 1) + exitMarkers(tile.exits, 1, 1); // draws at 90 within 92 viewbox
-  const rots = activeCellRots(aw);
-  $('rotate-btn').style.display = rots.length > 1 ? '' : 'none';
-  $('rotate-btn').innerHTML = IS_COARSE ? '⟳ Rotate' : '⟳ Rotate <small>(R)</small>';
-  $('preview-hint').textContent = rots.length > 1
-    ? (IS_COARSE ? 'Tap the tile to turn it' : 'Click tile · R · scroll to turn')
-    : 'Only one way fits';
+    ? { kind: 'start', fractured: true, rot }
+    : { ...aw.tile, rot };
+  tile.exits = exitsFor(tile.kind, rot);
+  $('preview-svg').innerHTML = tileSVG(tile, 1, 1) + exitMarkers(tile.exits, 1, 1); // draws at 90 within 92 viewbox
+  if (mine) {
+    $('preview-title').textContent = tileName(tile);
+    const rots = activeCellRots(aw);
+    $('rotate-btn').style.display = rots.length > 1 ? '' : 'none';
+    $('rotate-btn').innerHTML = IS_COARSE ? '⟳ Rotate' : '⟳ Rotate <small>(R)</small>';
+    $('preview-hint').textContent = rots.length > 1
+      ? (IS_COARSE ? 'Tap the tile to turn it' : 'Click tile · R · scroll to turn')
+      : 'Only one way fits';
+  } else {
+    const p = state.players[aw.seat];
+    $('preview-title').innerHTML = `<span style="color:${p.color}">◈</span> ${escapeHtml(seatName(aw.seat))} is placing`;
+    $('rotate-btn').style.display = 'none';
+    $('preview-hint').textContent = tileName(tile);
+  }
 }
 
 function tileName(tile) {

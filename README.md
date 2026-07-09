@@ -175,6 +175,13 @@ convergence timing, or 2-ply lookahead in `tools/policy.js`.
 - **Watchers**: joining a full saga makes you a spectator — you see the whole
   game live, you're listed ("watching from the mist", with an arrival toast),
   and you can adopt any soul the moment it's released.
+- **Live placement preview**: out-of-turn players and watchers see the active
+  player's tile as it's being placed — ghosted on the board where they're
+  hovering it, at their current rotation, outlined in their colour with a name
+  chip (plus a read-only "◈ Name is placing" panel). Purely visual: the active
+  player's client relays its pending cell+rotation via an ephemeral `preview`
+  message the Worker fans out (never touches game state or storage); it clears
+  when the move is finalized.
 - **Walkthrough**: an optional 8-page illustrated primer (goal, hope, moving &
   kindling, Resolve, draugar, rifts, runes & gates, the Embrace) drawn with
   the game's own tile art — from the lobby or the in-game rules screen.
