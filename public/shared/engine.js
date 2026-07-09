@@ -42,8 +42,8 @@ export const PLAYER_COLOR_NAMES = ['Gold', 'Ember', 'Teal', 'Violet', 'Ice', 'Mo
 // eight Norse sigils a soul may bear as its token, authored in a 24×24 box;
 // "CUR" is replaced with the drawing color at render time
 export const TOKEN_ICONS = {
-  // nasal helm: domed cap on a brow band with a nose guard hanging down
-  helm: { name: 'Helm', art: '<path d="M5 12 C5 6.5 8 3 12 3 C16 3 19 6.5 19 12 Z" fill="CUR"/><path d="M3.8 11.8 H20.2 V14 H3.8 Z" fill="CUR"/><path d="M10.7 14 H13.3 V18.6 L12 19.6 L10.7 18.6 Z" fill="CUR"/>' },
+  // horned war-helm: curved horns, peaked dome, angular eye slits, nasal + chin guard
+  helm: { name: 'Helm', art: '<path d="M8 7.5 C6 5.5 3.5 4 1.8 3.2 C2.2 5.8 3 8.8 4.6 11 C5.8 9.8 6.9 8.8 8 7.5 Z M16 7.5 C18 5.5 20.5 4 22.2 3.2 C21.8 5.8 21 8.8 19.4 11 C18.2 9.8 17.1 8.8 16 7.5 Z" fill="CUR"/><path fill-rule="evenodd" d="M12 2.8 C7.8 2.8 5.3 5.8 5 10 C4.8 13 5 16 5.9 19 C6.5 21.2 7.6 22.8 8.9 23.4 L10.2 19.6 L12 22.2 L13.8 19.6 L15.1 23.4 C16.4 22.8 17.5 21.2 18.1 19 C19 16 19.2 13 19 10 C18.7 5.8 16.2 2.8 12 2.8 Z M6.6 12.8 L10.1 14.4 L9.3 16.1 L6.3 15 Z M17.4 12.8 L13.9 14.4 L14.7 16.1 L17.7 15 Z" fill="CUR"/>' },
   // round shield: rim, central boss, radial planks
   shield: { name: 'Shield', art: '<circle cx="12" cy="12" r="9.2" fill="none" stroke="CUR" stroke-width="1.9"/><circle cx="12" cy="12" r="2.5" fill="CUR"/><path d="M12 3.2 V20.8 M3.2 12 H20.8 M5.8 5.8 L18.2 18.2 M18.2 5.8 L5.8 18.2" stroke="CUR" stroke-width="1.1" fill="none"/>' },
   // sword point-down: round pommel, grip, crossguard, tapering blade
@@ -56,8 +56,8 @@ export const TOKEN_ICONS = {
   raven: { name: 'Raven', art: '<path d="M21 6.2 C19 5.4 16 3.8 13.5 4.3 C10.5 5 8.5 6.5 7 8.5 C5 11 3.5 13.5 2 18.5 L3.8 19 C6 16.5 9 15.2 11.5 14.8 C14 14.6 16.5 13.8 17.8 11.8 C18.6 10.3 18.4 8.5 18.8 7.3 C19.4 6.9 20.2 6.5 21 6.2 Z" fill="CUR"/><path d="M11.4 15 L11 19.8 M11 19.8 L9.6 20.8 M11 19.8 L12.3 20.8 M14.3 14.7 L14.3 19.8 M14.3 19.8 L12.9 20.8 M14.3 19.8 L15.6 20.8" stroke="CUR" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' },
   // drinking horn: wide rim at the mouth tapering to a point
   horn: { name: 'Horn', art: '<path d="M4.2 4.2 C7 3 9.2 4 9.8 6.4 C12 13 16 18 20.6 20 L19.8 21.4 C14.5 18.6 9.4 13.4 6.3 8 C5 5.9 3.5 5 4.2 4.2 Z" fill="CUR"/><ellipse cx="6.3" cy="4.9" rx="3.1" ry="1.8" fill="CUR" transform="rotate(30 6.3 4.9)"/>' },
-  // valknut: three thin heavily-overlapping triangles — inner triangles show through
-  valknut: { name: 'Valknut', art: '<g fill="none" stroke="CUR" stroke-width="1.5" stroke-linejoin="round"><path d="M9 2.5 L16 16 L2 16 Z"/><path d="M15 2.5 L22 16 L8 16 Z"/><path d="M12 7 L18.5 20 L5.5 20 Z"/></g>' },
+  // triquetra: three interlocked arcs (trinity knot)
+  triquetra: { name: 'Triquetra', art: '<g fill="none" stroke="CUR" stroke-width="2" stroke-linejoin="round"><path d="M12 14.2 C7.7 11 7.7 6.2 12 4 C16.3 6.2 16.3 11 12 14.2 Z"/><path d="M12 14.2 C7.7 11 7.7 6.2 12 4 C16.3 6.2 16.3 11 12 14.2 Z" transform="rotate(120 12 12)"/><path d="M12 14.2 C7.7 11 7.7 6.2 12 4 C16.3 6.2 16.3 11 12 14.2 Z" transform="rotate(240 12 12)"/></g>' },
 };
 export const TOKEN_ICON_KEYS = Object.keys(TOKEN_ICONS);
 

@@ -29,7 +29,28 @@ Refresh the page (dev) or redeploy (`npm run deploy`) to see changes.
 | `rift` | Void Rift (never rotated) | — |
 | `mist` | Unlit empty cell (never rotated) | — |
 | `board-bg` | Full-board background under the grid (552×552 aspect) | — |
-| `token-0` … `token-3` | Player tokens (gold, crimson, teal, violet souls) | — |
+| `sigil-helm` `sigil-shield` `sigil-sword` `sigil-hammer` `sigil-ship` `sigil-raven` `sigil-horn` `sigil-triquetra` | The eight soul **sigils** (marks worn on the token) | — |
+| `token-0` … `token-3` | Whole player token per seat (legacy — overrides the disc *and* mark; ignores the chosen sigil) | — |
+
+### Soul sigils (`sigil-*`)
+
+Each soul wears one of eight sigils on a disc of its chosen color. A `sigil-<key>`
+image **replaces just the mark** — the coloured disc (the player's colour) is
+still drawn behind it — so it shows up on the board token, the player/soul
+cards, and the lobby picker, all at once. Reskin one sigil at a time; any you
+don't map keep the built-in vector.
+
+- **Square, transparent background**, 256×256 recommended (SVG/PNG/WebP).
+- Design it as a **mark that reads on the coloured disc** — a dark silhouette
+  (roughly `#0a100d`) is the safe default, matching the built-in look. It sits
+  centred at ~74% of the token's width.
+- No colour recolouring is applied to the image (unlike the built-in vectors),
+  so bake in whatever styling you want — just keep it legible on every one of
+  the eight soul colours.
+
+Prefer `sigil-*` over `token-0..3` for commissioned soul art: `sigil-*` keeps
+the player's colour choice and every sigil option, while `token-N` hard-codes
+one fixed image for a seat.
 
 ### Fractured variants (optional)
 

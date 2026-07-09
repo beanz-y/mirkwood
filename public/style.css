@@ -144,6 +144,12 @@ input:focus { outline: 1px solid var(--gold); }
 }
 .seat .seat-kick:hover { color: var(--danger); }
 .seat-name svg { vertical-align: -2px; margin-right: 3px; }
+.sigil-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; vertical-align: -5px; margin-right: 4px;
+  border: 1px solid rgba(0,0,0,0.45);
+}
+.sigil-chip svg, .sigil-chip img { display: block; margin: 0; }
 .seat-look {
   border: 1px solid var(--line); background: none; color: var(--dim);
   border-radius: 6px; font-size: 10px; padding: 2px 7px; cursor: pointer;
@@ -163,18 +169,24 @@ input:focus { outline: 1px solid var(--gold); }
 .look-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 2px; }
 .look-btn {
   width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
-  background: rgba(0,0,0,0.3); border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
+  border: 1px solid rgba(0,0,0,0.5); border-radius: 50%; cursor: pointer; position: relative;
 }
+.look-btn img { display: block; width: 22px; height: 22px; object-fit: contain; }
 .look-btn:hover { border-color: var(--gold); }
-.look-btn.sel { border-color: var(--gold); box-shadow: 0 0 8px rgba(232,178,60,0.3); }
-.look-btn.taken { opacity: 0.35; cursor: default; }
-.look-btn.taken:hover { border-color: var(--line); }
+.look-btn.sel { border-color: var(--gold); box-shadow: 0 0 8px rgba(232,178,60,0.4); }
 .look-swatch {
-  width: 26px; height: 26px; border-radius: 50%;
-  border: 2px solid rgba(0,0,0,0.5); cursor: pointer;
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.5); cursor: pointer; position: relative;
 }
 .look-swatch.sel { border-color: #f2ecd8; box-shadow: 0 0 0 2px var(--gold); }
-.look-swatch.taken { opacity: 0.3; cursor: default; }
+/* a claimed look reads as unavailable: greyed, cursor-default, and struck
+   through with a slash — clearer than dimming alone */
+.look-btn.taken, .look-swatch.taken { opacity: 0.5; cursor: default; filter: grayscale(0.4); }
+.look-btn.taken:hover { border-color: rgba(0,0,0,0.5); }
+.look-btn.taken::after, .look-swatch.taken::after {
+  content: ''; position: absolute; inset: -1px; border-radius: 50%; pointer-events: none;
+  background: linear-gradient(135deg, transparent 43%, var(--danger) 46%, var(--danger) 54%, transparent 57%);
+}
 .pcard .flame svg, .soul-head .flame svg { display: block; }
 
 #layout { flex: 1; display: flex; min-height: 0; }

@@ -29,11 +29,32 @@ let lookSeat = null;      // seat whose look picker is open in the lobby
 let lastAnimatedSeq = null; // engine action counter: animate each action ONCE
 let hiddenAtSeq = null;     // action counter when the tab went to sleep
 
-// a soul's sigil as inline HTML (board tokens use iconSVG into the board svg)
+// Sigils. Commissioned art drops in via the manifest key `sigil-<key>`
+// (e.g. "sigil-raven"); it overrides the built-in vector mark everywhere the
+// sigil appears, while the soul's chosen COLOR still rides on the disc behind
+// it. Missing keys keep the procedural vector — reskin one sigil at a time.
+
+// a sigil as inline HTML (cards, lobby, picker)
 function sigilHTML(iconKey, color, size = 16) {
+  const src = art['sigil-' + iconKey];
+  if (src) return `<img src="${src}" width="${size}" height="${size}" alt="" style="display:block;object-fit:contain">`;
   const ic = TOKEN_ICONS[iconKey];
   if (!ic) return '';
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${ic.art.replaceAll('CUR', color)}</svg>`;
+}
+
+// a sigil for placing into the board SVG (dark mark on the colored disc)
+function sigilMark(iconKey, x, y, size) {
+  const src = art['sigil-' + iconKey];
+  if (src) return `<image href="${src}" x="${x}" y="${y}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid meet"/>`;
+  return iconSVG(iconKey, x, y, size, '#0a100d');
+}
+
+// a sigil on a little colored disc — a mini token preview for the lobby/picker,
+// so any commissioned mark reads (and shows how the real token will look)
+function sigilChip(iconKey, color, px = 18) {
+  return `<span class="sigil-chip" style="background:${color};width:${px}px;height:${px}px">`
+    + `${sigilHTML(iconKey, '#0a100d', Math.round(px * 0.74))}</span>`;
 }
 
 // Touch ("coarse pointer") devices get a two-tap place flow: the first tap
@@ -418,7 +439,7 @@ const tutTok = (c, r, ci, icon, o = {}) => {
   return `<g${o.dim ? ' opacity="0.55"' : ''}>
     ${o.glow ? `<circle cx="${x}" cy="${y}" r="${R + 5}" fill="none" stroke="${PLAYER_COLORS[ci]}" stroke-opacity="0.4"/>` : ''}
     <circle cx="${x}" cy="${y}" r="${R}" fill="${PLAYER_COLORS[ci]}" stroke="#0a100d" stroke-width="2"/>
-    ${iconSVG(icon, x - S / 2, y - S / 2, S, '#0a100d')}
+    ${sigilMark(icon, x - S / 2, y - S / 2, S)}
   </g>`;
 };
 const tutArrow = (x1, y1, x2, y2, col = '#e8b23c') => {
@@ -692,7 +713,7 @@ function renderLobby() {
       ? `<button class="seat-kick" title="Release this soul">✕</button>` : '';
     const look = s.you
       ? `<button class="seat-look" title="Choose this soul's sigil and color">⚙ look</button>` : '';
-    div.innerHTML = `<div class="seat-name" style="color:${s.color}">${sigilHTML(s.icon, s.color, 15)} Soul ${s.seat + 1}${kick}</div>
+    div.innerHTML = `<div class="seat-name" style="color:${s.color}">${sigilChip(s.icon, s.color, 20)} Soul ${s.seat + 1}${kick}</div>
       <div class="seat-sub">${s.claimed ? escapeHtml(s.name) + (s.you ? ' (you)' : '') : 'unclaimed — click to take'}${look}</div>`;
     div.onclick = () => send({ t: 'claim', seat: s.seat });
     const kb = div.querySelector('.seat-kick');
@@ -749,10 +770,13 @@ function renderLookPicker() {
   lp.classList.remove('hidden');
   const takenI = new Set(room.seats.filter(x => x.claimed && x.seat !== lookSeat).map(x => x.icon));
   const takenC = new Set(room.seats.filter(x => x.claimed && x.seat !== lookSeat).map(x => x.color));
+  // each sigil button is a mini token in the soul's color — previews the real
+  // token and lets any commissioned mark read on the disc
   lp.innerHTML = `<h4>Soul ${lookSeat + 1} — bear a sigil, wear a color</h4>
     <div class="look-row">${TOKEN_ICON_KEYS.map(k =>
       `<button class="look-btn${k === seat.icon ? ' sel' : ''}${takenI.has(k) ? ' taken' : ''}" data-icon="${k}"
-        title="${TOKEN_ICONS[k].name}${takenI.has(k) ? ' — borne by another soul' : ''}">${sigilHTML(k, takenI.has(k) ? '#4a5548' : seat.color, 20)}</button>`).join('')}</div>
+        style="background:${takenI.has(k) ? '#3a4740' : seat.color}"
+        title="${TOKEN_ICONS[k].name}${takenI.has(k) ? ' — borne by another soul' : ''}">${sigilHTML(k, '#0a100d', 22)}</button>`).join('')}</div>
     <div class="look-row">${PLAYER_COLORS.map((c, i) =>
       `<button class="look-swatch${c === seat.color ? ' sel' : ''}${takenC.has(c) ? ' taken' : ''}" data-color="${c}"
         style="background:${c}" title="${PLAYER_COLOR_NAMES[i]}${takenC.has(c) ? ' — worn by another soul' : ''}"></button>`).join('')}</div>`;
@@ -1122,8 +1146,8 @@ function renderBoard() {
       const tokenArt = art[`token-${p.seat}`];
       const R = ps.length === 1 ? 18 : 13;
       const sigSize = ps.length === 1 ? 19 : 14;
-      const mark = p.icon && TOKEN_ICONS[p.icon]
-        ? iconSVG(p.icon, cx + ox - sigSize / 2, cy + oy - sigSize / 2, sigSize, '#0a100d')
+      const mark = p.icon && (art['sigil-' + p.icon] || TOKEN_ICONS[p.icon])
+        ? sigilMark(p.icon, cx + ox - sigSize / 2, cy + oy - sigSize / 2, sigSize)
         : `<text x="${cx + ox}" y="${cy + oy + 4.5}" text-anchor="middle" font-size="${ps.length === 1 ? 14 : 11}" fill="#0a100d" font-weight="bold" font-family="Georgia">${(p.name[0] || '?').toUpperCase()}</text>`;
       const body = tokenArt
         ? `<image href="${tokenArt}" x="${cx + ox - R}" y="${cy + oy - R}" width="${R * 2}" height="${R * 2}"/>`
