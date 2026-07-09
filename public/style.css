@@ -302,6 +302,27 @@ input:focus { outline: 1px solid var(--gold); }
 /* the live ghost shown to out-of-turn players & watchers (another soul's move) */
 .live-ghost { pointer-events: none; opacity: 0.7; }
 
+/* ping: a transient "look here" sonar marker anyone can drop on a cell */
+#ping-overlay { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 25; }
+.ping { position: absolute; width: 0; height: 0; }
+.ping .ring, .ping .dot { position: absolute; left: 0; top: 0; border-radius: 50%; }
+.ping .ring {
+  width: 54px; height: 54px; margin: -27px 0 0 -27px;
+  border: 2.5px solid var(--pc); opacity: 0; animation: pingring 1.9s ease-out;
+}
+.ping .ring.b { animation-delay: 0.3s; }
+.ping .dot { width: 12px; height: 12px; margin: -6px 0 0 -6px; background: var(--pc); animation: pingfade 2.2s ease-out forwards; }
+.ping .lbl {
+  position: absolute; left: 0; top: 12px; transform: translateX(-50%); white-space: nowrap;
+  font-size: 11px; padding: 1px 7px; border-radius: 7px; background: var(--pc); color: #0a100d;
+  font-family: Georgia; animation: pingfade 2.4s ease-out forwards;
+}
+@keyframes pingring { 0% { transform: scale(0.12); opacity: 0.9; } 100% { transform: scale(1); opacity: 0; } }
+@keyframes pingfade { 0% { opacity: 1; } 65% { opacity: 1; } 100% { opacity: 0; } }
+#board.ping-armed { cursor: crosshair; }
+#ping-btn.armed { border-color: var(--gold); color: var(--gold); background: #3a2f14; }
+body.no-anims .ping .ring { display: none; }
+
 /* ---------------- floating preview ---------------- */
 #preview {
   position: absolute; right: 360px; bottom: 80px; z-index: 20;

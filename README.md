@@ -182,6 +182,11 @@ convergence timing, or 2-ply lookahead in `tools/policy.js`.
   player's client relays its pending cell+rotation via an ephemeral `preview`
   message the Worker fans out (never touches game state or storage); it clears
   when the move is finalized.
+- **Ping**: any player or watcher can point the group at a spot without voice
+  chat — hit **⚑ Ping** in the top bar, then tap a board cell to drop a
+  transient sonar marker (in your soul's colour, tagged with your name) that
+  everyone sees. Same ephemeral relay pattern as the live preview (no game
+  state, no storage); armed pings win over the cell's normal move/place.
 - **Walkthrough**: an optional 8-page illustrated primer (goal, hope, moving &
   kindling, Resolve, draugar, rifts, runes & gates, the Embrace) drawn with
   the game's own tile art — from the lobby or the in-game rules screen.

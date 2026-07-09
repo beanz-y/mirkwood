@@ -93,6 +93,7 @@
     <span id="turn-timer" class="hidden"></span>
     <span id="stack-meter" title="Tiles remaining — the group's shared hope"></span>
     <button id="replay-btn" class="btn tiny hidden" title="Replay the last move's animations">⟲ Replay</button>
+    <button id="ping-btn" class="btn tiny" title="Ping a spot on the board for the others">⚑ Ping</button>
     <button id="rules-btn" class="btn tiny">Rules</button>
     <span id="room-tag" title="Click to copy an invite link"></span>
     <span id="conn-dot" class="conn wait" title="Connecting..."></span>
@@ -101,6 +102,7 @@
   <main id="layout">
     <section id="board-wrap">
       <svg id="board" viewBox="0 0 552 552" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="ping-overlay"></div>
       <div id="action-bar"></div>
     </section>
 

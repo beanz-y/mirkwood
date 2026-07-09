@@ -67,6 +67,8 @@ let armedAction = null; // the confirm for the armed cell (also behind ✓ Place
 let hoverCell = null;   // hovered placement target (desktop ghost preview)
 let livePreview = null;    // onlooker's view of the active player's pending placement {seat,r,c,rot}
 let lastPreviewSent = '';  // active player: last preview signature broadcast (dedupe)
+let pingArmed = false;     // ping mode: the next board click marks a spot for everyone
+let lastPingAt = 0;        // local throttle
 
 function updateTimer() {
   const el = $('turn-timer');
@@ -294,6 +296,9 @@ function handle(msg) {
       }
       break;
     }
+    case 'ping':
+      showPing(msg); // a "look here" marker from any player or watcher
+      break;
     case 'chat': addChat(msg.from, msg.text); break;
     case 'error':
       if (msg.fatal) leaveRoom(msg.msg);
@@ -412,6 +417,51 @@ $('replay-btn').onclick = () => {
   transientFx = buildTimeline(state.lastTurn.events, 5);
   render();
 };
+
+// ---------------------------------------------------------------- ping
+// Point teammates at a spot when you're not on voice. The Ping button arms
+// ping mode; the next board tap marks that cell for everyone (a transient
+// sonar marker in your colour with your name). Works for any player or watcher.
+function updatePingBtn() {
+  $('ping-btn').classList.toggle('armed', pingArmed);
+  $('board').classList.toggle('ping-armed', pingArmed);
+  $('ping-btn').textContent = pingArmed ? '⚑ Tap a spot' : '⚑ Ping';
+}
+$('ping-btn').onclick = () => { pingArmed = !pingArmed; updatePingBtn(); };
+
+// capture-phase so an armed ping wins over the cell's own move/place handler
+$('board').addEventListener('click', (e) => {
+  if (!pingArmed) return;
+  e.stopPropagation(); e.preventDefault();
+  pingArmed = false; updatePingBtn();
+  const br = $('board').getBoundingClientRect();
+  const vx = (e.clientX - br.left) / br.width * (SIZE * CS + PAD * 2);
+  const vy = (e.clientY - br.top) / br.height * (SIZE * CS + PAD * 2);
+  const c = Math.floor((vx - PAD) / CS), r = Math.floor((vy - PAD) / CS);
+  if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return;
+  const now = Date.now();
+  if (now - lastPingAt < 350) return; // local throttle
+  lastPingAt = now;
+  send({ t: 'ping', r, c });
+}, true);
+
+// draw a transient sonar marker at (r,c) in the pinger's colour + name. HTML
+// overlay so it's independent of the board SVG's re-renders.
+function showPing({ r, c, name, color }) {
+  const board = $('board'), wrap = $('board-wrap'), overlay = $('ping-overlay');
+  if (!board || !wrap || !overlay || r == null || c == null) return;
+  const br = board.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+  const scale = br.width / (SIZE * CS + PAD * 2);
+  const px = (br.left - wr.left) + (PAD + c * CS + CS / 2) * scale;
+  const py = (br.top - wr.top) + (PAD + r * CS + CS / 2) * scale;
+  const el = document.createElement('div');
+  el.className = 'ping';
+  el.style.cssText = `left:${px}px; top:${py}px; --pc:${color || '#d9d3c0'}`;
+  el.innerHTML = `<span class="ring"></span><span class="ring b"></span><span class="dot"></span>`
+    + `<span class="lbl">${escapeHtml((name || '').slice(0, 14))}</span>`;
+  overlay.appendChild(el);
+  setTimeout(() => el.remove(), 2400);
+}
 
 // coming back to a tab left sleeping: if turns passed while away, replay the
 // previous turn once — a catch-up highlight instead of a silently-changed board

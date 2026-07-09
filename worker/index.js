@@ -426,6 +426,22 @@ export class MirkwoodRoom {
         this.broadcast();
         return;
       }
+      case 'ping': {
+        // a transient "look here" marker on a board cell, relayed to everyone
+        // (including the sender, for feedback). Ephemeral: no state, no save.
+        if (!r.state) return;
+        const now = Date.now();
+        this.pingAt = this.pingAt || {};
+        if (now - (this.pingAt[token] || 0) < 250) return; // light anti-spam throttle
+        this.pingAt[token] = now;
+        const pr = msg.r | 0, pc = msg.c | 0;
+        if (pr < 0 || pr > 5 || pc < 0 || pc > 5) return;
+        let color = '#d9d3c0', seat = r.seats.findIndex(s => s && s.token === token);
+        if (seat >= 0) color = (r.state.players[seat] && r.state.players[seat].color) || color;
+        const relay = { t: 'ping', r: pr, c: pc, name: this.nameOf(token), color };
+        for (const w of this.ctx.getWebSockets()) this.send(w, relay);
+        return;
+      }
       case 'preview': {
         // the active player's pending tile placement (cell + rotation), relayed
         // live to everyone else so out-of-turn players and watchers can follow
