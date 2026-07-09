@@ -24,6 +24,15 @@ body {
   color: var(--text);
   font-family: Georgia, 'Times New Roman', serif;
   overflow: hidden;
+  /* iOS Safari: kill double-tap-to-zoom (it fights the two-tap tile-placement
+     flow and turns quick button presses into page zooms) and the 300ms tap
+     delay. Scrolling and pinch-zoom still work. Applied to the tap targets too,
+     since SVG cells and controls need it explicitly. */
+  touch-action: manipulation;
+}
+button, input, select, textarea, a,
+#board, .clickable, .seat, .pcard, .tab-btn, .look-btn, .look-swatch, .rune-btn {
+  touch-action: manipulation;
 }
 
 .hidden { display: none !important; }
