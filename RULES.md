@@ -78,11 +78,15 @@ The souls **lose together** if:
 > to their gods: **Ansuz (ᚨ), the god-rune of Odin, now stands at Valhalla**,
 > and Fólkvangr bears **Fehu (ᚠ)** — wealth and plenty, the mark of the Vanir
 > and of Freyja's golden tears. Isa was retired: ice belongs to Niflheim, not
-> to either paradise.
+> to either paradise. Thurisaz was retired in the rune-poem audit (2026-07-10):
+> both Norse rune poems read þurs as harm to women (Dickins: "anguish/torture
+> of women") — no reading of it belongs at a family table. **Dagaz (ᛞ)** stands
+> in its place: the Anglo-Saxon rune poem's "glorious light… a source of hope
+> and happiness to rich and poor" — the daybreak the souls walk toward.
 
 | Gate | Rune | Glyph | Meaning |
 |---|---|---|---|
-| Valhalla | **Thurisaz** | ᚦ | Thorn — strength, defense, warding off evil |
+| Valhalla | **Dagaz** | ᛞ | Day — daybreak, hope's return after the dark |
 | Valhalla | **Eihwaz** | ᛇ | Yew — endurance, overcoming death, Yggdrasil |
 | Valhalla | **Raido** | ᚱ | Ride — the journey, righteous action, fate |
 | Valhalla | **Ansuz** | ᚨ | God — wisdom, breath, Odin's insight |
@@ -293,7 +297,13 @@ When the last tile leaves the stack, the primordial cold of Niflheim closes in:
    draft's mislabeled glyphs were corrected in the first build; the mythos
    pass then moved Ansuz (Odin's rune) to Valhalla's set, gave Fólkvangr Fehu
    (the Vanir's wealth-rune, for Freyja), and retired Isa — ice is Niflheim's
-   element, not a paradise's.
+   element, not a paradise's. A later rune-poem audit (2026-07-10, all three
+   attested poems in the Dickins translations, plus a modern-appropriation
+   screen) retired **Thurisaz** — the Norwegian and Icelandic poems both read
+   þurs as harm to women — and seated **Dagaz** (day, hope) in Valhalla's set.
+   The same audit ruled out Tiwaz, Othala, Algiz and doubled Sowilo for their
+   documented use as hate symbols, and Kaun/Kenaz for its Norse verse ("ulcer…
+   fatal to children"), should future runes ever be added.
 2. **Resolve from draugar:** paid on *evading* a triggered Draugr, not on being
    hit — being hit can't grant the Resolve that pays for Brace.
 3. **Rekindle (Resolve spend):** a Hopeless soul may spend 1 Resolve at the start

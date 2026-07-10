@@ -7,6 +7,8 @@ import {
   losFor, litSet, RUNES, SIZE, key, OPP, exitsFor, stepDir, applyAction,
 } from '../public/shared/engine.js';
 
+// payload for a chosen move option (cross = Raido's rift-stride needs its flag)
+const moveAct = m => (m.kind === 'cross' ? { kind: 'move', d: m.d, cross: true } : { kind: 'move', d: m.d });
 const wrapDist = (r1, c1, r2, c2) =>
   Math.min(Math.abs(r1 - r2), SIZE - Math.abs(r1 - r2))
   + Math.min(Math.abs(c1 - c2), SIZE - Math.abs(c1 - c2));
@@ -333,6 +335,7 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
     return -7 + (severed ? 8 : 0) + 9 / (1 + bestLanding)
       - (p.resolve === 0 ? 3 : 0) + rnd() * 0.3;
   }
+  if (mv.kind === 'cross') score -= (p.resolve <= 1 ? 2 : 0.5); // Wayfarer's toll (1 ◆)
   const sim = triggerSim(s, p, mv);
   score -= P.victim * sim.victims;              // never buy progress with a teammate's hope
   score -= 7 * (sim.meHit ? 1 : 0);
@@ -545,6 +548,13 @@ function cloneState(s) {
     movesThisTurn: s.movesThisTurn,
     randomRunes: s.randomRunes,
     gateExits: s.gateExits, // rollout re-placements must keep the doorway variant
+    // rune perks: rollouts must keep the variant, its bookkeeping and free steps
+    runePerks: s.runePerks,
+    uruzAdjacent: s.uruzAdjacent,
+    perkSet: s.perkSet,
+    perkUse: s.perkUse ? { ...s.perkUse } : s.perkUse,
+    freeSteps: s.freeSteps,
+    storesCtx: s.storesCtx ? { ...s.storesCtx } : null,
     tileTotals: { ...s.tileTotals },
   };
 }
@@ -683,6 +693,7 @@ function scorePlanMove(s, p, mv, P2, rnd, ctx) {
   const P = (ctx && ctx.params) || DEFAULT_PARAMS;
   const a = P2.assign[p.seat] || { goal: 'fish', target: P2.ga ? nearestApproach(P2.ga, p.r, p.c) : null };
   let score = rnd() * 0.1;
+  if (mv.kind === 'cross') score -= (p.resolve <= 1 ? 2 : 0.5); // Wayfarer's toll (1 ◆)
   const sim = triggerSim(s, p, mv);
   score -= 12 * sim.victims;
   score -= 7 * (sim.meHit ? 1 : 0);
@@ -848,19 +859,19 @@ function plannerDecision(s, rnd, ctx) {
       // real decisions.
       const stayRun = (ctx.stayRun = ctx.stayRun || {});
       if (aw.stay) cands.push({ m: { kind: 'stay' }, base: (a.goal === 'guard' ? 0.5 : -0.5) - 0.2 * (stayRun[p.seat] || 0) });
-      if (!cands.length) return aw.stay ? { kind: 'stay' } : { kind: 'move', d: aw.moves[0].d };
+      if (!cands.length) return aw.stay ? { kind: 'stay' } : moveAct(aw.moves[0]);
       cands.sort((x, y) => y.base - x.base);
       let best = cands[0].m, bestVal = -Infinity;
       for (let i = 0; i < Math.min(cands.length, 4); i++) {
         const c = cands[i];
-        const action = c.m.kind === 'stay' ? { kind: 'stay' } : { kind: 'move', d: c.m.d };
+        const action = c.m.kind === 'stay' ? { kind: 'stay' } : moveAct(c.m);
         const val = c.base + 0.06 * rolloutValue(s, rnd, { ...ctx, plan: P2.plan }, action) + rnd() * 0.05; // 0.10 probed 2026-07-09: noise, worse scarcity — keep 0.06
         if (val > bestVal) { bestVal = val; best = c.m; }
       }
       if (best.kind === 'stay') { stayRun[p.seat] = (stayRun[p.seat] || 0) + 1; return { kind: 'stay' }; }
       stayRun[p.seat] = 0;
       (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
-      return { kind: 'move', d: best.d };
+      return moveAct(best);
     }
     // greedy plan path: drive toward the goal (souls keep moving — Staying just
     // burns the tile budget; guard/beachhead Stays are handled explicitly above).
@@ -875,8 +886,8 @@ function plannerDecision(s, rnd, ctx) {
     // stalemate concessions up): scorePlanMove's scale differs from scoreMove's,
     // and freezing beats fighting through less often than greedy's threshold says.
     if (best && best.kind === 'jump' && aw.stay && bestScore <= -10) return { kind: 'stay' };
-    if (best) { (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c]; return { kind: 'move', d: best.d }; }
-    return aw.stay ? { kind: 'stay' } : { kind: 'move', d: aw.moves[0].d };
+    if (best) { (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c]; return moveAct(best); }
+    return aw.stay ? { kind: 'stay' } : moveAct(aw.moves[0]);
   }
 
   // post-move: press on toward the goal when it helps and resolve is spare
@@ -886,7 +897,7 @@ function plannerDecision(s, rnd, ctx) {
     for (const m of aw.moves) { if (m.kind !== 'move') continue; const sc = scorePlanMove(s, p, m, P2, rnd, ctx); if (sc > bestScore) { bestScore = sc; best = m; } }
     if (best && (standingDanger(s, p.r, p.c) || p.resolve === 2 || a.goal === 'gate')) {
       (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
-      return { kind: 'move', d: best.d };
+      return moveAct(best);
     }
   }
   return { kind: 'end' };
@@ -981,11 +992,11 @@ export function policy(s, rnd, ctx) {
         const cands = [];
         for (const m of aw.moves) {
           if (m.kind === 'charge') continue;
-          cands.push({ action: { kind: 'move', d: m.d }, greedy: scoreMove(s, p, m, plan, rnd, ctx) });
+          cands.push({ action: moveAct(m), greedy: scoreMove(s, p, m, plan, rnd, ctx) });
         }
         // a Stay's greedy value ≈ a mediocre-but-safe move; the rollout decides
         if (aw.stay) cands.push({ action: { kind: 'stay' }, greedy: onFrac ? -8 : 0.4 });
-        if (!cands.length) return { kind: 'move', d: aw.moves[0].d };
+        if (!cands.length) return moveAct(aw.moves[0]);
         // only roll out the plausible options — greedy already ranks them, so
         // the top few are where lookahead actually earns its cost
         cands.sort((a, b) => b.greedy - a.greedy);
@@ -1041,9 +1052,9 @@ export function policy(s, rnd, ctx) {
       }
       if (best) {
         (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
-        return { kind: 'move', d: best.d };
+        return moveAct(best);
       }
-      return aw.stay ? { kind: 'stay' } : { kind: 'move', d: aw.moves[0].d };
+      return aw.stay ? { kind: 'stay' } : moveAct(aw.moves[0]);
     }
 
     case 'post-move': {
@@ -1067,7 +1078,7 @@ export function policy(s, rnd, ctx) {
         }
         if (best && (inDanger || p.resolve === 2 || (kind === 'gate' && goals.length))) {
           (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
-          return { kind: 'move', d: best.d };
+          return moveAct(best);
         }
       }
       return { kind: 'end' };
@@ -1133,6 +1144,13 @@ export function policy(s, rnd, ctx) {
       return { r: pick.r, c: pick.c };
     }
 
+    case 'winter-stores': {
+      // Freyja's stores (Fehu winter-form): buy back gates and circles always;
+      // a plain path only if it sat on somebody's shortest road home
+      const t = aw.tile;
+      return { restore: !!t && (t.kind === 'gate' || t.kind === 'rune') };
+    }
+
     case 'niflheim': {
       // give the cold what the party needs least: far tiles, never circles,
       // never anything hugging the gate — and NEVER a stone on someone's
@@ -1183,6 +1201,9 @@ export function policy(s, rnd, ctx) {
           const t = q.placed && tileAt(s, q.r, q.c);
           return t && t.kind === 'gate';
         });
+      // the Allfather's refusal (Ansuz winter-form): spend the party's one
+      // denial when the cold has cornered us into surrendering sacred ground
+      if (aw.canRefuse && bestScore < -8) return { refuse: true };
       if (p.resolve > 0 && (assembling || (p.resolve > 1 && bestScore < 2))) return { sustain: true };
       return { r: best.r, c: best.c };
     }

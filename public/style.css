@@ -277,6 +277,9 @@ input:focus { outline: 1px solid var(--gold); }
 #log p.k-turn { color: var(--gold); margin-top: 8px; }
 .side-footer { padding: 6px 12px; border-top: 1px solid var(--line); text-align: right; }
 .auto-end-note { opacity: 0.85; font-weight: normal; }
+/* rune perks: the boon line in the picker / soul card, and the raven-counsel peek */
+.perk-line { color: var(--gold); opacity: 0.9; }
+#stack-meter .peek { color: var(--gold); margin-left: 8px; font-size: 12px; }
 
 /* ---------------- board svg ---------------- */
 .cell-mist { fill: var(--mist); }

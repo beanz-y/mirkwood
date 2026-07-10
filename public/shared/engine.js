@@ -9,7 +9,7 @@
 
 // Bump when the state shape changes incompatibly: rooms persisted with an
 // older version are gracefully reset by the worker instead of crashing.
-export const STATE_VERSION = 2; // v2: rune realignment (ansuz→valhalla, fehu in, isa out)
+export const STATE_VERSION = 3; // v3: rune realignment (dagaz in, thurisaz out — see RUNES note)
 
 export const SIZE = 6;
 export const DIRS = [[-1, 0], [0, 1], [1, 0], [0, -1]];
@@ -18,21 +18,79 @@ export const OPP = d => (d + 2) % 4;
 
 // Odin's gate bears Odin's rune (Ansuz); Freyja's gate bears the Vanir's
 // wealth-rune (Fehu). Isa is retired — ice belongs to Niflheim, not paradise.
+// Thurisaz is retired too (2026-07-10): both Norse rune poems read þurs as
+// harm to women (Dickins: "anguish/torture of women") — not this game's
+// table. Dagaz replaces it: the Anglo-Saxon poem's "glorious light...
+// a source of hope and happiness", the daybreak the souls walk toward.
+// perk / winterPerk: the Rune Perks host variant (each rune grants its bearer
+// a boon; the winter form applies during Niflheim's Embrace). Text here is the
+// single source for the picker, soul card and rules screen.
 export const RUNES = {
   valhalla: [
-    { k: 'thurisaz', g: 'ᚦ', name: 'Thurisaz', gloss: 'Thorn — strength and defense' },
-    { k: 'eihwaz',   g: 'ᛇ', name: 'Eihwaz',   gloss: 'Yew — endurance beyond death' },
-    { k: 'raido',    g: 'ᚱ', name: 'Raido',    gloss: 'Ride — the righteous path' },
-    { k: 'ansuz',    g: 'ᚨ', name: 'Ansuz',    gloss: "God — wisdom and Odin's insight" },
+    { k: 'dagaz',  g: 'ᛞ', name: 'Dagaz',  gloss: "Day — hope's daybreak",
+      perk: 'Dawn returns — you relight free at the start of your turn',
+      winterPerk: 'Dawnkeeper — while you stand on a Gate, the cold cannot take tiles touching it' },
+    { k: 'eihwaz', g: 'ᛇ', name: 'Eihwaz', gloss: 'Yew — rooted endurance',
+      perk: 'Tireless — your first Press On each turn costs no Resolve',
+      winterPerk: 'Deathless roots — a fall never dooms you: land on any tile in the rift’s row or column' },
+    { k: 'raido',  g: 'ᚱ', name: 'Raido',  gloss: 'Ride — the righteous path',
+      perk: 'Wayfarer — spend 1 ◆ to step across a Void Rift to solid ground beyond',
+      winterPerk: 'The last road — crossing a Void Rift costs nothing' },
+    { k: 'ansuz',  g: 'ᚨ', name: 'Ansuz',  gloss: "God — wisdom and Odin's insight",
+      perk: 'Raven-counsel — on your turn, the next two stack tiles are known',
+      winterPerk: 'The refusal — once per Embrace, the party skips one surrender' },
   ],
   folkvangr: [
-    { k: 'berkano', g: 'ᛒ', name: 'Berkano', gloss: 'Birch — nurture and protection' },
-    { k: 'uruz',    g: 'ᚢ', name: 'Uruz',    gloss: 'Aurochs — vitality and growth' },
-    { k: 'wunjo',   g: 'ᚹ', name: 'Wunjo',   gloss: 'Joy — harmony and fulfilment' },
-    { k: 'fehu',    g: 'ᚠ', name: 'Fehu',    gloss: "Cattle — wealth, Freyja's plenty" },
+    { k: 'berkano', g: 'ᛒ', name: 'Berkano', gloss: 'Birch — nurture and protection',
+      perk: 'New growth — fractured paths do not crumble when you leave them',
+      winterPerk: 'Grove shade — the cold takes the tiles beside you last' },
+    { k: 'uruz',    g: 'ᚢ', name: 'Uruz',    gloss: 'Aurochs — vitality and growth',
+      perk: 'Deep vitality — your Resolve cap is 3, and your ◆ may pay for a teammate’s spend on their turn',
+      winterPerk: 'Winter strength — your Stay steels +2 ◆' },
+    { k: 'wunjo',   g: 'ᚹ', name: 'Wunjo',   gloss: 'Joy — harmony and fulfilment',
+      perk: 'Shared joy — your Stay also steels an adjacent teammate +1 ◆',
+      winterPerk: 'Heartened — teammates who begin their move beside you take one free extra step' },
+    { k: 'fehu',    g: 'ᚠ', name: 'Fehu',    gloss: "Cattle — wealth, Freyja's plenty",
+      perk: 'Stocked hearth — your Stay burns no stack tile (lingering still burns)',
+      winterPerk: 'Winter stores — twice per Embrace, spend 1 ◆ to return a tile the cold has just taken' },
   ],
 };
 export const GATE_NAMES = { valhalla: 'Valhalla', folkvangr: 'Fólkvangr' };
+
+// ---------------------------------------------------------------- rune perks
+// Host variant: each rune grants its bearer a boon (RUNES[..].perk), with a
+// second form during Niflheim's Embrace (winterPerk). s.perkSet (null = all 8)
+// lets the self-play harness ablate perks one at a time for balance work.
+
+function hasPerk(s, q, k) {
+  return !!(s.runePerks && q && q.rune && q.rune.k === k
+    && (!s.perkSet || s.perkSet.includes(k)));
+}
+function perkBearer(s, k) {
+  for (const q of s.players) if (q.placed && hasPerk(s, q, k)) return q;
+  return null;
+}
+const resolveCap = (s, q) => (hasPerk(s, q, 'uruz') ? 3 : 2);
+const wrapAdj = (a, b) => { // wrapped orthogonal distance ≤ 1 (0 = sharing a gate)
+  const dr = Math.min(Math.abs(a.r - b.r), SIZE - Math.abs(a.r - b.r));
+  const dc = Math.min(Math.abs(a.c - b.c), SIZE - Math.abs(a.c - b.c));
+  return dr + dc;
+};
+// Deep vitality: the Uruz bearer's ◆ may pay for a teammate's spend on their
+// turn — any distance on Normal, adjacent-only on Hard (uruzAdjacent)
+function uruzLender(s, actor) {
+  const b = perkBearer(s, 'uruz');
+  if (!b || b.seat === actor.seat || b.resolve < 1 || !actor.placed) return null;
+  if (s.uruzAdjacent && wrapAdj(b, actor) !== 1) return null;
+  return b;
+}
+function lendResolve(s, actor, what) {
+  const b = uruzLender(s, actor);
+  if (!b) return false;
+  b.resolve--;
+  log(s, `${b.name}'s deep vitality pays for ${actor.name}'s ${what}. (ᚢ)`, 'good');
+  return true;
+}
 
 // eight soul colors, tuned to read against the near-black board and against
 // each other (the first four are the original seat defaults)
@@ -222,6 +280,12 @@ export function createGame(opts = {}) {
     // gate-doorway variant (balance experiments): 'one' (live rule, default) |
     // 'straight' | 'tee'. Old persisted states lack the field → 'one'.
     gateExits: GATE_EXIT_STYLES[opts.gateExits] ? opts.gateExits : 'one',
+    // Rune Perks host variant (see the RUNES table + helpers above)
+    runePerks: !!opts.runePerks,
+    uruzAdjacent: !!opts.uruzAdjacent, // Hard telling: Uruz lends to neighbors only
+    perkSet: Array.isArray(opts.perkSet) ? opts.perkSet : null,
+    perkUse: { refusal: false, stores: 0 }, // per-Embrace bookkeeping
+    freeSteps: 0, // free Press Ons this turn (Eihwaz; +Wunjo's Heartened in winter)
   };
   const names = opts.names || DEFAULT_NAMES;
   const looks = opts.appearance || []; // per seat: {color, icon} chosen in the lobby
@@ -464,6 +528,18 @@ function fractureCell(s, r, c) {
   s.grid[key(r, c)] = { rift: true };
 }
 
+// a fractured tile crumbles when its occupant departs — unless the departing
+// soul bears Berkano (New growth): the birch holds the cracked path together,
+// still fractured, for those who follow
+function crumbleBehind(s, p, r, c, fractured) {
+  if (!fractured) return;
+  if (hasPerk(s, p, 'berkano')) {
+    log(s, `The birch holds the cracked path together behind ${p.name}. (ᛒ)`, 'good');
+    return;
+  }
+  fractureCell(s, r, c);
+}
+
 // ---------------------------------------------------------------- options
 
 export function computeMoves(s, p) {
@@ -475,7 +551,21 @@ export function computeMoves(s, p) {
     if (!t.exits[d]) continue;
     const [nr, nc] = stepDir(p.r, p.c, d);
     const cl = cellAt(s, nr, nc);
-    if (cl && cl.rift) { moves.push({ d, kind: 'jump', r: nr, c: nc }); continue; }
+    if (cl && cl.rift) {
+      moves.push({ d, kind: 'jump', r: nr, c: nc });
+      // Wayfarer (Raido): step ACROSS the rift to solid ground beyond —
+      // 1 ◆ normally, free once the Embrace holds (The last road)
+      const cost = s.niflheim ? 0 : 1;
+      if (hasPerk(s, p, 'raido') && p.resolve >= cost) {
+        const [rr, cc] = stepDir(nr, nc, d);
+        const ft = tileAt(s, rr, cc);
+        if (ft && ft.exits[OPP(d)] && ft.kind !== 'draugr'
+          && (ft.kind === 'gate' || !occupantsAt(s, rr, cc).length)) {
+          moves.push({ d, kind: 'cross', r: rr, c: cc, cost });
+        }
+      }
+      continue;
+    }
     const nt = cl && cl.tile;
     if (nt) {
       if (!nt.exits[OPP(d)]) continue; // wall
@@ -495,7 +585,7 @@ export function computeMoves(s, p) {
 function actionOptions(s, p) {
   const moves = computeMoves(s, p);
   const stay = p.hopeful || p.resolve > 0 || moves.length === 0;
-  const rekindle = !p.hopeful && p.resolve > 0;
+  const rekindle = !p.hopeful && (p.resolve > 0 || !!uruzLender(s, p));
   return { moves, stay, rekindle };
 }
 
@@ -563,6 +653,16 @@ function lose(s, reason) {
 // not a full round later when their landing turn comes up.
 function fallDoomCheck(s, p) {
   if (s.stack.length || s.phase !== 'play') return;
+  // Deathless roots (Eihwaz): with nothing left to draw, the bearer still
+  // lands on any standing tile in the rift's row or column — no doom while
+  // one remains for them to cling to
+  if (hasPerk(s, p, 'eihwaz')) {
+    const { r: fr, c: fc } = p.falling;
+    for (let i = 0; i < SIZE; i++) {
+      if ((tileAt(s, fr, i) && !occupantsAt(s, fr, i).length)
+        || (tileAt(s, i, fc) && !occupantsAt(s, i, fc).length)) return;
+    }
+  }
   const lit = litSet(s);
   const { r: fr, c: fc } = p.falling;
   for (let i = 0; i < SIZE; i++) {
@@ -753,8 +853,27 @@ STEPS['begin-turn'] = (s) => {
   s.turnsTaken = (s.turnsTaken || 0) + 1;
   s.moveCtx = null;
   s.movesThisTurn = 0;
+  // free Press Ons this turn: Eihwaz's tirelessness, and — in the Embrace —
+  // Wunjo's Heartened (beginning your move beside the bearer, or on their gate)
+  s.freeSteps = 0;
+  if (hasPerk(s, p, 'eihwaz')) s.freeSteps++;
+  if (s.niflheim) {
+    const w = perkBearer(s, 'wunjo');
+    if (w && w.seat !== p.seat && p.placed && wrapAdj(w, p) <= 1) {
+      s.freeSteps++;
+      log(s, `${w.name}'s joy heartens ${p.name} for the road. (ᚹ)`, 'good');
+    }
+  }
   log(s, `— ${p.name}'s turn —`, 'turn');
   if (p.falling) { STEPS['landing'](s); return; }
+  // Dawn returns: the Dagaz bearer never begins a turn hopeless
+  if (!p.hopeful && p.placed && hasPerk(s, p, 'dagaz')) {
+    p.hopeful = true;
+    ev(s, 'rekindle', { seat: p.seat });
+    log(s, `Dawn returns — ${p.name}'s ember rekindles itself. (ᛞ)`, 'good');
+    s.queue.unshift({ t: 'illum', forSeat: p.seat, chooser: p.seat }, { t: 'relight', chooser: s.turn }, { t: 'action' });
+    return;
+  }
   s.queue.unshift({ t: 'action' });
 };
 
@@ -768,7 +887,12 @@ STEPS['landing'] = (s) => {
     if (i !== fr) cells.push([i, fc]);
   }
   const empty = cells.filter(([r, c]) => !cellAt(s, r, c) && !lit.has(key(r, c)));
-  if (empty.length) {
+  // Deathless roots (Eihwaz): with the stack spent, the bearer ignores the
+  // empty spaces (nothing can be drawn to land on) and clings to a standing
+  // tile in the row or column instead
+  const rooted = !s.stack.length && hasPerk(s, p, 'eihwaz');
+  if (rooted && empty.length) log(s, `${p.name} clings to the deathless roots. (ᛇ)`, 'good');
+  if (empty.length && !rooted) {
     if (!s.stack.length) {
       lose(s, `${p.name} falls through the void with no light left to land by. The souls are lost.`);
       return;
@@ -953,8 +1077,9 @@ STEPS['post-move'] = (s) => {
   const p = P(s, s.turn);
   if (!p.placed) { s.queue.unshift({ t: 'end-turn' }); return; }
   const moves = computeMoves(s, p);
-  const canMoveAgain = p.resolve > 0 && s.movesThisTurn < 3 && moves.length > 0;
-  s.awaiting = { type: 'post-move', seat: s.turn, canMoveAgain, moves };
+  const canMoveAgain = (p.resolve > 0 || s.freeSteps > 0 || !!uruzLender(s, p))
+    && s.movesThisTurn < 3 && moves.length > 0;
+  s.awaiting = { type: 'post-move', seat: s.turn, canMoveAgain, moves, freeStep: s.freeSteps > 0 };
 };
 
 STEPS['end-turn'] = (s) => {
@@ -964,7 +1089,7 @@ STEPS['end-turn'] = (s) => {
     log(s, 'The path stack is spent — the last ember of shared hope goes dark. NIFLHEIM’S EMBRACE begins.', 'danger');
   }
   if (s.niflheim) {
-    const removable = [];
+    let removable = [];
     for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
       const cl = cellAt(s, r, c);
       // the Embrace may surrender ANY tile it still sees — Gates and Void Rifts
@@ -972,10 +1097,31 @@ STEPS['end-turn'] = (s) => {
       // sparing only one a soul is standing on.
       if (cl && (cl.tile || cl.rift) && !occupantsAt(s, r, c).length) removable.push({ r, c });
     }
+    // Dawnkeeper (Dagaz): while the bearer holds a Gate, the cold CANNOT take
+    // the tiles touching it — hard protection, even if nothing else remains
+    const dawn = perkBearer(s, 'dagaz');
+    if (dawn && removable.length) {
+      const dt = tileAt(s, dawn.r, dawn.c);
+      if (dt && dt.kind === 'gate') {
+        removable = removable.filter(o => wrapAdj(dawn, { r: o.r, c: o.c }) !== 1);
+        if (!removable.length) log(s, `The dawn holds at the gate — the cold finds nothing to take. (ᛞ)`, 'good');
+      }
+    }
+    // Grove shade (Berkano): the cold takes the tiles beside the bearer LAST
+    const birch = perkBearer(s, 'berkano');
+    if (s.runePerks && birch && removable.length) {
+      const elsewhere = removable.filter(o => wrapAdj(birch, { r: o.r, c: o.c }) !== 1);
+      if (elsewhere.length) removable = elsewhere;
+    }
     if (removable.length) {
       const p = P(s, s.turn);
       s.queue.unshift({ t: 'end-turn2' });
-      s.awaiting = { type: 'niflheim', seat: s.turn, canSustain: p.resolve > 0, options: removable };
+      s.awaiting = {
+        type: 'niflheim', seat: s.turn,
+        canSustain: p.resolve > 0 || !!uruzLender(s, p),
+        canRefuse: !s.perkUse.refusal && !!perkBearer(s, 'ansuz'),
+        options: removable,
+      };
       return;
     }
   }
@@ -1099,8 +1245,10 @@ ACTIONS['action'] = (s, p, payload, aw) => {
   const kind = payload.kind;
   if (kind === 'rekindle') {
     if (!aw.rekindle) err('Cannot rekindle.');
+    if (p.resolve < 1 && !uruzLender(s, p)) err('No Resolve.');
     s.awaiting = null;
-    p.resolve--;
+    if (p.resolve >= 1) p.resolve--;
+    else lendResolve(s, p, 'rekindling');
     p.hopeful = true;
     ev(s, 'rekindle', { seat: p.seat });
     log(s, `${p.name} spends Resolve to rekindle their hope.`, 'good');
@@ -1114,7 +1262,7 @@ ACTIONS['action'] = (s, p, payload, aw) => {
     return;
   }
   if (kind === 'move') {
-    const mv = aw.moves.find(m => m.d === payload.d);
+    const mv = aw.moves.find(m => m.d === payload.d && (payload.cross ? m.kind === 'cross' : m.kind !== 'cross'));
     if (!mv) err('Not a legal move.');
     s.awaiting = null;
     s.movesThisTurn = (s.movesThisTurn || 0) + 1;
@@ -1131,13 +1279,29 @@ function doStay(s, p, aw) {
     p.resolve--;
     log(s, `${p.name} spends Resolve to endure the mist, hopeless and still.`, 'info');
   } else if (p.hopeful) {
-    if (p.resolve < 2) p.resolve++;
-    log(s, `${p.name} stands fast and steels their Resolve (+1).`, 'info');
+    const gain = (s.niflheim && hasPerk(s, p, 'uruz')) ? 2 : 1; // Winter strength
+    p.resolve = Math.min(resolveCap(s, p), p.resolve + gain);
+    log(s, `${p.name} stands fast and steels their Resolve (+${gain}).`, 'info');
+    // Shared joy: the Wunjo bearer's Stay also steels one adjacent teammate
+    if (hasPerk(s, p, 'wunjo')) {
+      const near = s.players
+        .filter(q => q.placed && q.seat !== p.seat && wrapAdj(q, p) <= 1 && q.resolve < resolveCap(s, q))
+        .sort((a, b) => a.resolve - b.resolve);
+      if (near.length) {
+        near[0].resolve++;
+        log(s, `${p.name}'s joy steels ${near[0].name} (+1). (ᚹ)`, 'good');
+      }
+    }
   } else {
     log(s, `${p.name} is trapped, hopeless and unmoving.`, 'info');
   }
-  // staying burns hope
-  if (s.stack.length) {
+  // staying burns hope — unless Freyja's hearth is stocked (Fehu). Lingering
+  // at a Rune Circle under Random Runes always burns: no free rerolls.
+  const hearthT = tileAt(s, p.r, p.c);
+  const lingering = s.randomRunes && hearthT && hearthT.kind === 'rune';
+  if (hasPerk(s, p, 'fehu') && !lingering && s.stack.length) {
+    log(s, `${p.name}'s hearth is stocked — the forest keeps its hope. (ᚠ)`, 'good');
+  } else if (s.stack.length) {
     const t = drawTile(s);
     if (t.kind === 'draugr') {
       // it does not go quietly: replace a connected tile
@@ -1192,11 +1356,18 @@ function doMove(s, p, mv, then) {
   const originTile = tileAt(s, or_, oc);
   const originFractured = originTile && originTile.fractured;
 
+  if (kind === 'cross') {
+    // Wayfarer (Raido): pay the toll and stride the gap; the rift remains.
+    // Falls through to the ordinary arrival below — mv.r/mv.c is the far side.
+    if (mv.cost) p.resolve -= mv.cost;
+    log(s, `${p.name} strides across the Void Rift${mv.cost ? ', spending Resolve' : ''}. (ᚱ)`, 'good');
+  }
+
   if (kind === 'jump') {
     log(s, `${p.name} leaps into the Void Rift.`, 'info');
     const trig = triggeredBy(s, [originKey]);
     ev(s, 'fall', { seat: p.seat, from: [or_, oc], r: nr, c: nc });
-    if (originFractured) fractureCell(s, or_, oc);
+    crumbleBehind(s, p, or_, oc, originFractured);
     p.placed = false; p.r = null; p.c = null;
     p.falling = { r: nr, c: nc };
     fallDoomCheck(s, p);
@@ -1213,7 +1384,7 @@ function doMove(s, p, mv, then) {
     const trig = triggeredBy(s, [originKey, destKey]);
     p.r = nr; p.c = nc;
     ev(s, 'move', { seat: p.seat, from: [or_, oc], to: [nr, nc] });
-    if (originFractured) fractureCell(s, or_, oc);
+    crumbleBehind(s, p, or_, oc, originFractured);
     // the charger always stands in the draugr's sight, so its strike always
     // lands on them; once the attack concludes and they scramble off it,
     // the draugr is banished (banish flag on the scramble)
@@ -1232,7 +1403,7 @@ function doMove(s, p, mv, then) {
       p.r = nr; p.c = nc;
       ev(s, 'reveal', { r: nr, c: nc });
       ev(s, 'move', { seat: p.seat, from: [or_, oc], to: [nr, nc] });
-      if (originFractured) fractureCell(s, or_, oc);
+      crumbleBehind(s, p, or_, oc, originFractured);
       s.queue.unshift({ t: 'scramble', seat: p.seat, from: [nr, nc], free: false, then });
       startHitWave(s, trig, { mover: p.seat, lateral: false });
       return;
@@ -1248,7 +1419,7 @@ function doMove(s, p, mv, then) {
   const trig = triggeredBy(s, [originKey, destKey]);
   p.r = nr; p.c = nc;
   ev(s, 'move', { seat: p.seat, from: [or_, oc], to: [nr, nc] });
-  if (originFractured) fractureCell(s, or_, oc);
+  crumbleBehind(s, p, or_, oc, originFractured);
   s.queue.unshift({ t: 'arrive', seat: p.seat, then });
   startHitWave(s, trig, { mover: p.seat, lateral: true });
 }
@@ -1265,19 +1436,20 @@ ACTIONS['place-blind'] = (s, p, { rot }, aw) => {
   p.r = aw.r; p.c = aw.c;
   ev(s, 'reveal', { r: aw.r, c: aw.c });
   ev(s, 'move', { seat: p.seat, from: origin, to: [aw.r, aw.c] });
-  if (originFractured) fractureCell(s, origin[0], origin[1]);
+  crumbleBehind(s, p, origin[0], origin[1], originFractured);
   log(s, `${p.name} feels their way onto ${describeTile(aw.tile)}.`, 'info');
   s.queue.unshift({ t: 'arrive', seat: p.seat, then });
   startHitWave(s, trig, { mover: p.seat, lateral: true });
 };
 
 ACTIONS['block'] = (s, p, { block }) => {
+  if (block && p.resolve < 1 && !uruzLender(s, p)) err('No Resolve to brace with.');
   const { seat } = s.pendingHit;
   s.pendingHit = null;
   s.awaiting = null;
   if (block) {
-    if (p.resolve < 1) err('No Resolve to brace with.');
-    p.resolve--;
+    if (p.resolve >= 1) p.resolve--;
+    else lendResolve(s, p, 'brace');
     applyHit(s, seat, 2, true);
   } else {
     applyHit(s, seat, 3, false);
@@ -1450,13 +1622,22 @@ ACTIONS['post-move'] = (s, p, payload, aw) => {
   }
   if (payload.kind === 'move') {
     if (!aw.canMoveAgain) err('Cannot press on.');
-    const mv = aw.moves.find(m => m.d === payload.d);
+    const mv = aw.moves.find(m => m.d === payload.d && (payload.cross ? m.kind === 'cross' : m.kind !== 'cross'));
     if (!mv) err('Not a legal move.');
-    if (p.resolve < 1) err('No Resolve.');
+    const free = s.freeSteps > 0;
+    if (!free && p.resolve < 1 && !uruzLender(s, p)) err('No Resolve.');
     s.awaiting = null;
-    p.resolve--;
+    if (free) {
+      s.freeSteps--;
+      log(s, `${p.name} presses on, tireless.`, 'info');
+    } else if (p.resolve >= 1) {
+      p.resolve--;
+      log(s, `${p.name} presses on, spending Resolve for another step.`, 'info');
+    } else {
+      lendResolve(s, p, 'stride'); // verified above
+      log(s, `${p.name} presses on.`, 'info');
+    }
     s.movesThisTurn = (s.movesThisTurn || 0) + 1;
-    log(s, `${p.name} presses on, spending Resolve for another step.`, 'info');
     doMove(s, p, mv, 'post-move');
     return;
   }
@@ -1464,11 +1645,24 @@ ACTIONS['post-move'] = (s, p, payload, aw) => {
 };
 
 ACTIONS['niflheim'] = (s, p, payload, aw) => {
-  if (payload.sustain) {
-    if (!aw.canSustain || p.resolve < 1) err('Cannot ward the forest.');
+  if (payload.refuse) {
+    // The refusal (Ansuz, once per Embrace): the party denies the cold its toll
+    if (!aw.canRefuse) err('The refusal has been spoken already.');
     s.awaiting = null;
-    p.resolve--;
-    log(s, `${p.name} spends Resolve to ward the forest against Niflheim.`, 'good');
+    s.perkUse.refusal = true;
+    const b = perkBearer(s, 'ansuz');
+    log(s, `${b ? b.name : 'The party'} speaks the Allfather's refusal — the cold is denied its toll. (ᚨ)`, 'good');
+    return;
+  }
+  if (payload.sustain) {
+    if (!aw.canSustain || (p.resolve < 1 && !uruzLender(s, p))) err('Cannot ward the forest.');
+    s.awaiting = null;
+    if (p.resolve >= 1) {
+      p.resolve--;
+      log(s, `${p.name} spends Resolve to ward the forest against Niflheim.`, 'good');
+    } else {
+      lendResolve(s, p, 'ward');
+    }
     return;
   }
   const opt = aw.options.find(o => o.r === payload.r && o.c === payload.c);
@@ -1481,10 +1675,34 @@ ACTIONS['niflheim'] = (s, p, payload, aw) => {
     s.discard.push(t);
     ev(s, 'sweep', { cells: [{ r: payload.r, c: payload.c, tile: t, rift: false }] });
     log(s, `Niflheim's cold claims ${describeTile(t)}.`, 'danger');
+    // Winter stores (Fehu): the bearer may buy the taken tile back at once
+    const f = perkBearer(s, 'fehu');
+    if (f && s.perkUse.stores < 2 && f.resolve >= 1) {
+      s.storesCtx = { r: payload.r, c: payload.c };
+      s.awaiting = { type: 'winter-stores', seat: f.seat, r: payload.r, c: payload.c, tile: { kind: t.kind, gate: t.gate } };
+    }
   } else {
     ev(s, 'sweep', { cells: [{ r: payload.r, c: payload.c, tile: null, rift: true }] });
     log(s, `Niflheim's cold swallows a Void Rift.`, 'danger');
   }
+};
+
+ACTIONS['winter-stores'] = (s, p, payload) => {
+  // validate BEFORE consuming the prompt — a refused restore must not wedge
+  if (payload.restore) {
+    if (!s.storesCtx) err('Nothing to restore.');
+    if (p.resolve < 1 || s.perkUse.stores >= 2) err('The stores are spent.');
+  }
+  const ctx = s.storesCtx;
+  s.awaiting = null;
+  s.storesCtx = null;
+  if (!payload.restore) return; // let it go — the cold keeps its prize
+  p.resolve--;
+  s.perkUse.stores++;
+  const t = s.discard.pop(); // the tile the cold just claimed
+  s.grid[key(ctx.r, ctx.c)] = { tile: t };
+  ev(s, 'reveal', { r: ctx.r, c: ctx.c });
+  log(s, `${p.name} opens Freyja's stores — ${describeTile(t)} is returned to the forest. (ᚠ)`, 'good');
 };
 
 export function concede(s) {
@@ -1535,6 +1753,15 @@ export function publicState(s) {
     lastTurn: s.lastTurn || null,
     randomRunes: !!s.randomRunes,
     gateExits: s.gateExits || 'one',
+    runePerks: !!s.runePerks,
+    uruzAdjacent: !!s.uruzAdjacent,
+    perkUse: s.perkUse || null,
+    // Raven-counsel (Ansuz): on the bearer's turn the next two stack tiles are
+    // known — surfaced to the whole table, exactly as a physical peek-and-tell
+    // would be at a co-op table
+    stackPeek: (s.runePerks && s.phase === 'play' && s.players[s.turn] && hasPerk(s, s.players[s.turn], 'ansuz'))
+      ? s.stack.slice(-2).reverse().map(t => ({ kind: t.kind, gate: t.gate || undefined }))
+      : null,
     tileTotals: s.tileTotals || null,
     turnsTaken: s.turnsTaken || 0,
     seq: s.seq || 0,

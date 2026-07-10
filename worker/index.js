@@ -399,6 +399,10 @@ export class MirkwoodRoom {
           tiles: r.config || undefined,
           label: r.config ? r.config.label : '',
           randomRunes: !!(r.config && r.config.randomRunes),
+          gateExits: (r.config && r.config.gateExits) || 'one',
+          runePerks: !!(r.config && r.config.runePerks),
+          // Dan's rule: on a Hard telling, Uruz lends to neighbors only
+          uruzAdjacent: !!(r.config && r.config.label === 'Hard'),
         });
         await this.save();
         this.broadcast();
@@ -415,6 +419,9 @@ export class MirkwoodRoom {
         r.config = {
           ...tiles, label,
           randomRunes: msg.config && msg.config.randomRunes ? 1 : 0,
+          runePerks: msg.config && msg.config.runePerks ? 1 : 0,
+          gateExits: ['one', 'straight', 'tee'].includes(msg.config && msg.config.gateExits)
+            ? msg.config.gateExits : 'one',
           turnTimer: tt,
         };
         await this.save();

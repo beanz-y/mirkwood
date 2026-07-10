@@ -77,6 +77,10 @@ function parseTiles(str) {
 const TILE_OVERRIDE = parseTiles(opt('tiles', null));
 // gate doorway variant: one (live rule) | straight | tee — balance experiments
 const GATE_EXITS = opt('gateExits', 'one');
+// rune perks variant: --runePerks enables all 8; --perks dagaz,fehu restricts
+// to a subset (per-perk ablation); Hard preset lends Uruz adjacent-only
+const RUNE_PERKS = flag('runePerks') || !!opt('perks', null);
+const PERK_SET = opt('perks', null) ? opt('perks', null).split(',').map(x => x.trim()).filter(Boolean) : null;
 
 // policy + shared helpers live in tools/policy.js — tune the party there
 import { policy, hasGoodMark, mulberry, tileAt, tilesOf, DEFAULT_PARAMS } from './policy.js';
@@ -104,6 +108,9 @@ function playGame(seed) {
     tiles: { ...(TILE_PRESETS[PRESET] || normTiles({})), ...(TILE_OVERRIDE || {}) },
     randomRunes: RANDOM_RUNES,
     gateExits: GATE_EXITS,
+    runePerks: RUNE_PERKS,
+    perkSet: PERK_SET,
+    uruzAdjacent: PRESET === 'hard', // Dan's rule: Hard lends adjacent-only
   });
   let steps = 0, emptyStackSteps = 0;
   let circlesRevealed = 0, attunes = 0;
@@ -164,6 +171,7 @@ function report(results, errors, ms) {
   }
   const summary = {
     policy: 'v2-cooperative', preset: PRESET, randomRunes: RANDOM_RUNES, gateExits: GATE_EXITS,
+    runePerks: RUNE_PERKS, perkSet: PERK_SET,
     games: results.length, errors, jobs: JOBS, wins: wins.length,
     winRate: +(100 * wins.length / Math.max(1, results.length)).toFixed(2),
     avgTurns: +avg(results, r => r.turns), avgStackLeft: +avg(results, r => r.stackLeft),

@@ -425,19 +425,25 @@ function pushConfig(label) {
   cfg.gateValhalla = $('cfg-gateValhalla').checked ? 1 : 0;
   cfg.gateFolkvangr = $('cfg-gateFolkvangr').checked ? 1 : 0;
   cfg.randomRunes = $('cfg-randomRunes').checked ? 1 : 0;
+  cfg.runePerks = $('cfg-runePerks').checked ? 1 : 0;
+  cfg.gateExits = $('cfg-gateExits').value;
   cfg.turnTimer = +$('cfg-turnTimer').value;
   send({ t: 'config', config: cfg });
 }
 const randomRunesOn = () => ($('cfg-randomRunes').checked ? 1 : 0);
+const runePerksOn = () => ($('cfg-runePerks').checked ? 1 : 0);
+const gateExitsVal = () => $('cfg-gateExits').value;
 const timerVal = () => +$('cfg-turnTimer').value;
-$('preset-normal').onclick = () => send({ t: 'config', config: { ...TILE_PRESETS.normal, randomRunes: randomRunesOn(), turnTimer: timerVal(), label: 'Normal' } });
-$('preset-hard').onclick = () => send({ t: 'config', config: { ...TILE_PRESETS.hard, randomRunes: randomRunesOn(), turnTimer: timerVal(), label: 'Hard' } });
+$('preset-normal').onclick = () => send({ t: 'config', config: { ...TILE_PRESETS.normal, randomRunes: randomRunesOn(), runePerks: runePerksOn(), gateExits: gateExitsVal(), turnTimer: timerVal(), label: 'Normal' } });
+$('preset-hard').onclick = () => send({ t: 'config', config: { ...TILE_PRESETS.hard, randomRunes: randomRunesOn(), runePerks: runePerksOn(), gateExits: gateExitsVal(), turnTimer: timerVal(), label: 'Hard' } });
 $('custom-toggle').onclick = () => $('custom-tiles').classList.toggle('hidden');
 for (const k of CFG_KEYS) $('cfg-' + k).onchange = () => pushConfig('Custom');
 $('cfg-gateValhalla').onchange = () => pushConfig('Custom');
 $('cfg-gateFolkvangr').onchange = () => pushConfig('Custom');
 // variants are orthogonal to difficulty: toggling them keeps the preset label
 $('cfg-randomRunes').onchange = () => pushConfig((room && room.config && room.config.label) || 'Normal');
+$('cfg-runePerks').onchange = () => pushConfig((room && room.config && room.config.label) || 'Normal');
+$('cfg-gateExits').onchange = () => pushConfig((room && room.config && room.config.label) || 'Normal');
 $('cfg-turnTimer').onchange = () => pushConfig((room && room.config && room.config.label) || 'Normal');
 
 // (Whispers/chat removed 2026-07-09 — underused, and Dan wants no user-to-user
@@ -885,6 +891,8 @@ function renderLobby() {
     $('cfg-gateValhalla').checked = !!cfg.gateValhalla;
     $('cfg-gateFolkvangr').checked = !!cfg.gateFolkvangr;
     $('cfg-randomRunes').checked = !!cfg.randomRunes;
+    $('cfg-runePerks').checked = !!cfg.runePerks;
+    $('cfg-gateExits').value = cfg.gateExits || 'one';
     $('cfg-turnTimer').value = String(cfg.turnTimer || 0);
   }
   const total = CFG_KEYS.reduce((n, k) => n + cfg[k], 0) + cfg.gateValhalla + cfg.gateFolkvangr;
@@ -892,6 +900,8 @@ function renderLobby() {
   $('diff-summary').textContent =
     `${cfg.label || 'Custom'} — ${total} tiles · ${cfg.rune} rune circles · ${cfg.draugr} draugr · ${gates} gate${gates === 1 ? '' : 's'}`
     + (cfg.randomRunes ? ' · random runes' : '')
+    + (cfg.runePerks ? ' · rune perks' : '')
+    + (cfg.gateExits === 'straight' ? ' · two-door gates' : cfg.gateExits === 'tee' ? ' · three-door gates' : '')
     + (cfg.turnTimer ? ` · ${cfg.turnTimer}s timer` : '');
 }
 
@@ -930,9 +940,13 @@ function renderLookPicker() {
 function renderTopbar() {
   $('room-tag').textContent = room.code;
   const n = state.stackCount;
-  $('stack-meter').innerHTML = state.niflheim
+  // Raven-counsel (Ansuz): on the bearer's turn, the next tiles are known
+  const peek = state.stackPeek && state.stackPeek.length
+    ? ` <span class="peek" title="Raven-counsel: the next tiles of the stack">ᚨ next: ${state.stackPeek.map(t => t.kind === 'gate' ? `Gate of ${GATE_NAMES[t.gate]}` : t.kind === 'rune' ? 'Rune Circle' : t.kind).join(' · ')}</span>`
+    : '';
+  $('stack-meter').innerHTML = (state.niflheim
     ? `❄ <b>Niflheim’s Embrace</b> — the forest dwindles`
-    : `Hope remaining: <b>${n}</b> tiles`;
+    : `Hope remaining: <b>${n}</b> tiles`) + peek;
   $('stack-meter').classList.toggle('embrace', !!state.niflheim);
   $('stack-meter').classList.toggle('low', !state.niflheim && n <= 10);
   if (transientFx && transientFx.burn) {
@@ -1008,7 +1022,7 @@ function renderPlayers() {
       <div class="flame" style="background:${p.color}">${p.icon && TOKEN_ICONS[p.icon] ? sigilHTML(p.icon, '#0a100d', 16) : (p.name[0] || '?').toUpperCase()}</div>
       <div class="pinfo">
         <div class="pname">${p.name}${isMine(p.seat) ? ' ✦' : ''}${turnChip}</div>
-        <div class="pstat">${status} · resolve <span class="resolve-pips">${'◆'.repeat(p.resolve)}${'◇'.repeat(2 - p.resolve)}</span></div>
+        <div class="pstat">${status} · resolve <span class="resolve-pips">${'◆'.repeat(p.resolve)}${'◇'.repeat(Math.max(0, capOf(p) - p.resolve))}</span></div>
       </div>
       ${admin}${rune}`;
     div.onclick = () => { soulSeat = p.seat; selectTab('soul'); renderSoul(); };
@@ -1084,6 +1098,9 @@ function renderSoul() {
     const i = runeInfo(p.rune);
     const col = p.rune.p === 'valhalla' ? 'var(--gold)' : 'var(--good)';
     runeLine = `Marked with <span class="glyph" style="color:${col}">${i.g}</span> ${i.name} — bound for <b>${GATE_NAMES[p.rune.p]}</b>.`;
+    if (state.runePerks && i.perk) {
+      runeLine += `<br><small class="perk-line">✦ ${state.niflheim && i.winterPerk ? i.winterPerk : i.perk}</small>`;
+    }
   }
   el.innerHTML = `
     <div class="soul-card ${cls}">
@@ -1091,7 +1108,7 @@ function renderSoul() {
         <div class="flame" style="background:${p.color}">${p.icon && TOKEN_ICONS[p.icon] ? sigilHTML(p.icon, '#0a100d', 16) : (p.name[0] || '?').toUpperCase()}</div>
         <div>
           <div class="soul-name">${escapeHtml(p.name)}${isMine(seat) ? ' ✦' : ''}</div>
-          <div class="pstat">resolve <span class="resolve-pips">${'◆'.repeat(p.resolve)}${'◇'.repeat(2 - p.resolve)}</span></div>
+          <div class="pstat">resolve <span class="resolve-pips">${'◆'.repeat(p.resolve)}${'◇'.repeat(Math.max(0, capOf(p) - p.resolve))}</span></div>
         </div>
       </div>
       <div class="soul-state">${word}</div>
@@ -1113,6 +1130,8 @@ function renderSoul() {
 function runeInfo(rune) {
   return RUNES[rune.p].find(r => r.k === rune.k);
 }
+// resolve cap: Deep vitality (Uruz, rune perks) lifts the bearer's to 3
+const capOf = p => (state && state.runePerks && p.rune && p.rune.k === 'uruz' ? 3 : 2);
 
 function renderDiscard() {
   const d = state.discard;
@@ -1480,6 +1499,8 @@ function addInteractions(parts, aw) {
         clickRect(parts, m.r, m.c, m.kind, () => {
           if (m.kind === 'charge') {
             confirmModal('Go berserk and rush the Draugr? Its strike WILL land on you — but with its spite spent, it is banished from the forest. (1 Resolve)', () => act({ kind: 'move', d: m.d }));
+          } else if (m.kind === 'cross') {
+            confirmModal(`Stride across the Void Rift to the far side?${m.cost ? ' (1 Resolve — Wayfarer ᚱ)' : ' (The last road ᚱ)'}`, () => act({ kind: 'move', d: m.d, cross: true }));
           } else if (m.kind === 'jump') {
             confirmModal('Leap into the Void Rift? You will fall, and land next turn with your ember still lit.', () => act({ kind: 'move', d: m.d }));
           } else {
@@ -1495,6 +1516,8 @@ function addInteractions(parts, aw) {
           clickRect(parts, m.r, m.c, m.kind, () => {
             if (m.kind === 'charge') {
               confirmModal('Go berserk and rush the Draugr? Its strike WILL land on you, then it is banished. (2 Resolve in total)', () => act({ kind: 'move', d: m.d }));
+            } else if (m.kind === 'cross') {
+              confirmModal(`Stride across the Void Rift?${m.cost ? ' (1 Resolve — Wayfarer ᚱ)' : ''}`, () => act({ kind: 'move', d: m.d, cross: true }));
             } else if (m.kind === 'jump') {
               confirmModal('Leap into the Void Rift?', () => act({ kind: 'move', d: m.d }));
             } else {
@@ -1651,7 +1674,7 @@ function tileSVG(tile, x, y) {
     const rot = (tile.rot || 0) * 90;
     const col = tile.gate === 'valhalla' ? '#e8b23c' : '#6fce9a';
     const glowId = tile.gate === 'valhalla' ? 'mk-gold' : 'mk-green';
-    const g1 = tile.gate === 'valhalla' ? 'ᚦ' : 'ᛒ';
+    const g1 = tile.gate === 'valhalla' ? 'ᛞ' : 'ᛒ'; // thurisaz retired; the dawn-rune marks Valgrind
     const g2 = tile.gate === 'valhalla' ? 'ᚱ' : 'ᚹ';
     parts.push(`<g transform="rotate(${rot} ${cx} ${cy})">
       <ellipse cx="${cx}" cy="${cy - 6}" rx="27" ry="24" fill="url(#${glowId})"/>
@@ -1806,7 +1829,7 @@ function renderActionBar() {
     case 'post-move': {
       btn('End turn', () => act({ kind: 'end' }), 'primary');
       if (aw.canMoveAgain) {
-        btn(moveAgainArmed ? 'Cancel move' : 'Press on <small>(1 ◆)</small>', () => {
+        btn(moveAgainArmed ? 'Cancel move' : (aw.freeStep ? 'Press on <small>(free — ᛇ)</small>' : 'Press on <small>(1 ◆)</small>'), () => {
           moveAgainArmed = !moveAgainArmed;
           render();
         });
@@ -1818,6 +1841,7 @@ function renderActionBar() {
     case 'fall-landing': note('Choose where to fall back into Myrkviðr (along the rift’s row or column)'); break;
     case 'scramble': note('Find your footing — choose an adjacent space'); break;
     case 'niflheim': {
+      if (aw.canRefuse) btn('Refuse the cold <small>(once — ᚨ)</small>', () => act({ refuse: true }));
       if (aw.canSustain) btn('Ward <small>(1 ◆)</small>', () => act({ sustain: true }));
       note('Niflheim claims a tile — click one to surrender it');
       break;
@@ -2010,6 +2034,24 @@ function renderModal() {
     return;
   }
 
+  // Winter stores (Fehu): buy back the tile the cold just took
+  if (aw && aw.type === 'winter-stores' && isMine(aw.seat)) {
+    const what = !aw.tile ? 'a tile'
+      : aw.tile.kind === 'gate' ? `the Gate of ${GATE_NAMES[aw.tile.gate]}`
+        : aw.tile.kind === 'rune' ? 'a Rune Circle' : 'a path tile';
+    card.innerHTML = `<h2>Freyja’s stores ᚠ</h2>
+      <p>The cold has taken ${what}. Open the stores and return it to the forest?</p>`;
+    const row = document.createElement('div'); row.className = 'row';
+    const yes = document.createElement('button'); yes.className = 'btn primary';
+    yes.innerHTML = 'Return it <small>(1 ◆)</small>';
+    yes.onclick = () => act({ restore: true });
+    const no = document.createElement('button'); no.className = 'btn'; no.textContent = 'Let it go';
+    no.onclick = () => act({ restore: false });
+    row.append(yes, no); card.appendChild(row);
+    modal.classList.remove('hidden');
+    return;
+  }
+
   // block decision
   if (aw && aw.type === 'block' && isMine(aw.seat)) {
     const p = state.players[aw.seat];
@@ -2069,7 +2111,8 @@ function renderModal() {
         const holder = aw.taken.find(t => t.p === pantheon && t.k === rn.k);
         const b = document.createElement('button');
         b.className = 'rune-btn' + (holder && holder.seat === aw.seat ? ' mine' : '');
-        b.innerHTML = `<span class="glyph">${rn.g}</span><span>${rn.name}<br><small style="color:var(--dim)">${rn.gloss}</small></span>
+        b.innerHTML = `<span class="glyph">${rn.g}</span><span>${rn.name}<br><small style="color:var(--dim)">${rn.gloss}</small>
+          ${state.runePerks && rn.perk ? `<br><small class="perk-line">✦ ${rn.perk}</small>` : ''}</span>
           ${holder ? `<span class="taken">${escapeHtml(seatName(holder.seat))}</span>` : ''}`;
         if (lost) { b.disabled = true; b.title = 'This gate is lost — its runes hold no power now.'; }
         else b.onclick = () => act({ p: pantheon, k: rn.k });

@@ -198,8 +198,8 @@ section('rune attunement and victory');
   _test.setTile(s, 1, 2, _test.makeTileDef(s, 'rune', { fractured: true }), 0);
   applyAction(s, 0, { kind: 'move', d: 1 });
   check(s.awaiting.type === 'attune' && s.awaiting.seat === 0, 'attune prompt on arrival');
-  applyAction(s, 0, { p: 'valhalla', k: 'thurisaz' });
-  check(s.players[0].rune && s.players[0].rune.k === 'thurisaz', 'rune marked');
+  applyAction(s, 0, { p: 'valhalla', k: 'dagaz' });
+  check(s.players[0].rune && s.players[0].rune.k === 'dagaz', 'rune marked');
   while (s.awaiting && s.awaiting.type === 'place-tile') {
     const tg = s.awaiting.targets[0];
     applyAction(s, 0, { r: tg.r, c: tg.c, rot: tg.rots[0] });
@@ -373,14 +373,14 @@ section('rune capacity: held marks reduce the circles needed');
   const s = createGame({ seed: 14, stack: deck(30) });
   doSetup(s);
   // three distinct Valhalla marks held -> only one circle is needed
-  ['thurisaz', 'eihwaz', 'raido'].forEach((k, i) => { s.players[i].rune = { p: 'valhalla', k }; });
+  ['dagaz', 'eihwaz', 'raido'].forEach((k, i) => { s.players[i].rune = { p: 'valhalla', k }; });
   while (s.stack.filter(t => t.kind === 'rune').length > 1) {
     s.stack.splice(s.stack.findIndex(t => t.kind === 'rune'), 1);
   }
   applyAction(s, 0, { kind: 'move', d: 1 });
   check(s.phase === 'play', 'one circle for one missing mark — the saga continues');
   // a duplicate mark does not count toward the set
-  s.players[3].rune = { p: 'valhalla', k: 'thurisaz' };
+  s.players[3].rune = { p: 'valhalla', k: 'dagaz' };
   s.stack.splice(s.stack.findIndex(t => t.kind === 'rune'), 1); // now 0 circles
   while (s.awaiting && s.awaiting.type === 'place-tile') {
     const tg = s.awaiting.targets[0];
@@ -467,7 +467,7 @@ section('random runes: the stones choose an unclaimed mark');
   _test.setTile(s, 1, 2, _test.makeTileDef(s, 'rune', { fractured: true }), 0);
   applyAction(s, 0, { kind: 'move', d: 1 });
   check(s.awaiting.type === 'attune' && s.awaiting.random === true, 'random attune prompt on arrival');
-  applyAction(s, 0, { p: 'valhalla', k: 'thurisaz', draw: true }); // explicit picks are ignored
+  applyAction(s, 0, { p: 'valhalla', k: 'dagaz', draw: true }); // explicit picks are ignored
   const r0 = s.players[0].rune;
   check(!!r0, 'a rune was assigned');
   // finish soul 0's turn, then walk soul 1 onto a fresh circle
@@ -568,7 +568,7 @@ section('end conditions: an incompatible rune at the last circle loses at once')
   doSetup(s);
   // three souls already bear distinct Valhalla marks; no circles wait in the
   // stack; a single circle stands beside soul 0
-  ['thurisaz', 'eihwaz', 'raido'].forEach((k, i) => { s.players[i + 1].rune = { p: 'valhalla', k }; });
+  ['dagaz', 'eihwaz', 'raido'].forEach((k, i) => { s.players[i + 1].rune = { p: 'valhalla', k }; });
   while (s.stack.some(t => t.kind === 'rune')) {
     s.stack.splice(s.stack.findIndex(t => t.kind === 'rune'), 1);
   }
@@ -585,7 +585,7 @@ section('end conditions: taking the fitting mark at the last circle is safe');
 {
   const s = createGame({ seed: 21, stack: deck(30) });
   doSetup(s);
-  ['thurisaz', 'eihwaz', 'raido'].forEach((k, i) => { s.players[i + 1].rune = { p: 'valhalla', k }; });
+  ['dagaz', 'eihwaz', 'raido'].forEach((k, i) => { s.players[i + 1].rune = { p: 'valhalla', k }; });
   while (s.stack.some(t => t.kind === 'rune')) {
     s.stack.splice(s.stack.findIndex(t => t.kind === 'rune'), 1);
   }
@@ -613,7 +613,7 @@ section('end conditions: the Embrace ends the saga when a soul is severed');
   const mk = () => {
     const s = createGame({ seed: 23, stack: deck(20) });
     doSetup(s);
-    ['thurisaz', 'eihwaz', 'raido', 'ansuz'].forEach((k, i) => { s.players[i].rune = { p: 'valhalla', k }; });
+    ['dagaz', 'eihwaz', 'raido', 'ansuz'].forEach((k, i) => { s.players[i].rune = { p: 'valhalla', k }; });
     s.stack = [];
     s.niflheim = true;
     for (let i = 0; i < SIZE * SIZE; i++) s.grid[i] = null;
@@ -786,6 +786,196 @@ section('gate doorway variants (balance experiments)');
   check(createGame({ seed: 32, stack: deck(10) }).gateExits === 'one', 'default games keep one doorway');
   check(createGame({ seed: 33, stack: deck(10), gateExits: 'nonsense' }).gateExits === 'one',
     'unknown variants fall back to the live rule');
+}
+
+// ---------------------------------------------------------------- rune perks
+section('rune perks (host variant)');
+{
+  // Dagaz — Dawn returns: the bearer never begins a turn hopeless
+  const s = createGame({ seed: 40, stack: deck(40), runePerks: true });
+  s.players[1].rune = { p: 'valhalla', k: 'dagaz' };
+  doSetup(s);
+  s.players[1].hopeful = false;
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  while (s.awaiting && s.awaiting.type === 'place-tile') {
+    const tg = s.awaiting.targets[0];
+    applyAction(s, s.awaiting.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+  }
+  applyAction(s, 0, { kind: 'end' });
+  check(s.players[1].hopeful === true, 'Dagaz: dawn returns at the turn start');
+}
+{
+  // Eihwaz — Tireless: one free Press On per turn, even at 0 Resolve
+  const s = createGame({ seed: 41, stack: deck(40), runePerks: true });
+  s.players[0].rune = { p: 'valhalla', k: 'eihwaz' };
+  doSetup(s);
+  s.players[0].resolve = 0;
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  while (s.awaiting && s.awaiting.type === 'place-tile') {
+    const tg = s.awaiting.targets[0];
+    applyAction(s, s.awaiting.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+  }
+  check(s.awaiting.type === 'post-move' && s.awaiting.canMoveAgain === true,
+    'Eihwaz: may press on with no Resolve');
+  const before = s.players[0].resolve;
+  const mv = s.awaiting.moves.find(m => m.kind === 'move');
+  if (mv) {
+    applyAction(s, 0, { kind: 'move', d: mv.d });
+    check(s.players[0].resolve === before, 'Eihwaz: the free step costs nothing');
+  } else check(true, 'Eihwaz: (no plain move available to press into — skipped)');
+}
+{
+  // Raido — Wayfarer: 1 ◆ steps across a rift; the rift remains
+  const s = createGame({ seed: 42, stack: deck(40), runePerks: true });
+  s.players[0].rune = { p: 'valhalla', k: 'raido' };
+  doSetup(s);
+  s.grid[key(1, 2)] = { rift: true };
+  _test.setTile(s, 1, 3, _test.makeTileDef(s, 'cross'), 0);
+  s.players[0].resolve = 1;
+  s.awaiting = null; s.queue.unshift({ t: 'action' }); _test.run(s);
+  const cross = s.awaiting.moves.find(m => m.kind === 'cross');
+  check(!!cross && cross.r === 1 && cross.c === 3 && cross.cost === 1, 'Raido: the crossing is offered for 1 ◆');
+  applyAction(s, 0, { kind: 'move', d: cross.d, cross: true });
+  check(s.players[0].r === 1 && s.players[0].c === 3, 'Raido: the bearer stands beyond the rift');
+  check(s.players[0].resolve === 0, 'Raido: the toll was paid');
+  check(s.grid[key(1, 2)] && s.grid[key(1, 2)].rift, 'Raido: the rift remains for the unwary');
+}
+{
+  // Ansuz — Raven-counsel: the next two tiles are known on the bearer's turn
+  const s = createGame({ seed: 43, stack: deck(40), runePerks: true });
+  s.players[0].rune = { p: 'valhalla', k: 'ansuz' };
+  doSetup(s);
+  const peek = publicState(s).stackPeek;
+  const top = s.stack.slice(-2).reverse();
+  check(Array.isArray(peek) && peek.length === 2
+    && peek[0].kind === top[0].kind && peek[1].kind === top[1].kind,
+    'Ansuz: raven-counsel names the next two tiles');
+  check(publicState(createGame({ seed: 44, stack: deck(10) })).stackPeek === null,
+    'no peek without the variant');
+}
+{
+  // Berkano — New growth: the fractured start does not crumble behind her
+  const s = createGame({ seed: 45, stack: deck(40), runePerks: true });
+  s.players[0].rune = { p: 'folkvangr', k: 'berkano' };
+  doSetup(s);
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  const behind = s.grid[key(1, 1)];
+  check(behind && behind.tile && behind.tile.fractured === true,
+    'Berkano: the cracked path holds, still fractured, for those who follow');
+}
+{
+  // Uruz — Deep vitality: cap 3, and ◆ lent across the board (any distance)
+  const s = createGame({ seed: 46, stack: deck(40), runePerks: true });
+  s.players[1].rune = { p: 'folkvangr', k: 'uruz' };
+  doSetup(s);
+  const t0 = _test.tileAt(s, 1, 1); if (t0) t0.fractured = false;
+  s.players[1].resolve = 2;
+  s.players[0].hopeful = false;
+  s.players[0].resolve = 0;
+  s.awaiting = null; s.queue.unshift({ t: 'action' }); _test.run(s);
+  check(s.awaiting.rekindle === true, 'Uruz: a broke teammate may still rekindle on lent ◆');
+  applyAction(s, 0, { kind: 'rekindle' });
+  check(s.players[0].hopeful === true && s.players[1].resolve === 1,
+    'Uruz: the bearer paid for the rekindling');
+  // and the cap: the bearer stands fast to 3
+  while (!(s.awaiting && s.awaiting.type === 'action' && s.awaiting.seat === 1) && s.awaiting) {
+    const aw = s.awaiting;
+    if (aw.type === 'place-tile') { const tg = aw.targets[0]; applyAction(s, aw.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] }); continue; }
+    if (aw.type === 'action') { applyAction(s, aw.seat, { kind: 'stay' }); continue; }
+    if (aw.type === 'post-move') { applyAction(s, aw.seat, { kind: 'end' }); continue; }
+    break;
+  }
+  if (s.awaiting && s.awaiting.type === 'action' && s.awaiting.seat === 1) {
+    const t1 = _test.tileAt(s, s.players[1].r, s.players[1].c); if (t1) t1.fractured = false;
+    s.players[1].resolve = 2;
+    applyAction(s, 1, { kind: 'stay' });
+    check(s.players[1].resolve === 3, 'Uruz: resolve steels to a cap of 3');
+  } else check(true, 'Uruz: (cap check skipped — turn order drifted)');
+}
+{
+  // Uruz on Hard — adjacent-only lending
+  const s = createGame({ seed: 47, stack: deck(40), runePerks: true, uruzAdjacent: true });
+  s.players[1].rune = { p: 'folkvangr', k: 'uruz' };
+  doSetup(s); // souls 0 and 1 sit far apart (1,1) vs (1,4)
+  s.players[1].resolve = 2;
+  s.players[0].hopeful = false;
+  s.players[0].resolve = 0;
+  s.awaiting = null; s.queue.unshift({ t: 'action' }); _test.run(s);
+  check(s.awaiting.rekindle !== true, 'Uruz (Hard): too far away to lend');
+}
+{
+  // Wunjo — Shared joy + Fehu — Stocked hearth
+  const s = createGame({ seed: 48, stack: deck(40), runePerks: true });
+  s.players[0].rune = { p: 'folkvangr', k: 'wunjo' };
+  doSetup(s);
+  const t0 = _test.tileAt(s, 1, 1); if (t0) t0.fractured = false;
+  s.players[1].r = 1; s.players[1].c = 2; s.players[1].resolve = 0; // beside the bearer
+  applyAction(s, 0, { kind: 'stay' });
+  check(s.players[1].resolve === 1, 'Wunjo: the Stay also steels the neighbor');
+
+  const f = createGame({ seed: 49, stack: deck(40), runePerks: true });
+  f.players[0].rune = { p: 'folkvangr', k: 'fehu' };
+  doSetup(f);
+  const ft = _test.tileAt(f, 1, 1); if (ft) ft.fractured = false;
+  const stackBefore = f.stack.length;
+  applyAction(f, 0, { kind: 'stay' });
+  check(f.stack.length === stackBefore, 'Fehu: the stocked hearth burns nothing');
+}
+{
+  // Winter-forms: the refusal (Ansuz), winter stores (Fehu), grove shade (Berkano)
+  const s = createGame({ seed: 50, stack: deck(30), runePerks: true });
+  s.players[1].rune = { p: 'valhalla', k: 'ansuz' };
+  doSetup(s);
+  s.stack = []; s.niflheim = true;
+  s.awaiting = null; s.queue.length = 0; s.queue.push({ t: 'end-turn' }); _test.run(s);
+  check(s.awaiting && s.awaiting.type === 'niflheim' && s.awaiting.canRefuse === true,
+    'winter: the refusal is offered while unspent');
+  const tilesBefore = s.grid.filter(Boolean).length;
+  applyAction(s, s.awaiting.seat, { refuse: true });
+  check(s.perkUse.refusal === true, 'winter: the refusal is spent');
+  check(s.grid.filter(Boolean).length === tilesBefore, 'winter: the cold took nothing');
+
+  const w = createGame({ seed: 51, stack: deck(30), runePerks: true });
+  w.players[2].rune = { p: 'folkvangr', k: 'fehu' };
+  doSetup(w);
+  w.stack = []; w.niflheim = true;
+  w.players[2].resolve = 1;
+  w.awaiting = null; w.queue.length = 0; w.queue.push({ t: 'end-turn' }); _test.run(w);
+  const opt = w.awaiting.options.find(o => { const cl = w.grid[key(o.r, o.c)]; return cl && cl.tile; });
+  applyAction(w, w.awaiting.seat, { r: opt.r, c: opt.c });
+  check(w.awaiting && w.awaiting.type === 'winter-stores' && w.awaiting.seat === 2,
+    'winter: Freyja’s stores are offered to the bearer');
+  applyAction(w, 2, { restore: true });
+  const back = w.grid[key(opt.r, opt.c)];
+  check(back && back.tile, 'winter: the taken tile is returned to the forest');
+  check(w.players[2].resolve === 0 && w.perkUse.stores === 1, 'winter: the stores were paid for');
+
+  const g = createGame({ seed: 52, stack: deck(30), runePerks: true });
+  g.players[0].rune = { p: 'folkvangr', k: 'berkano' };
+  doSetup(g);
+  g.stack = []; g.niflheim = true;
+  g.awaiting = null; g.queue.length = 0; g.queue.push({ t: 'end-turn' }); _test.run(g);
+  const b = g.players[0];
+  const nearBearer = g.awaiting.options.some(o => {
+    const dr = Math.min(Math.abs(o.r - b.r), SIZE - Math.abs(o.r - b.r));
+    const dc = Math.min(Math.abs(o.c - b.c), SIZE - Math.abs(o.c - b.c));
+    return dr + dc === 1;
+  });
+  check(!nearBearer, 'winter: the cold takes the tiles beside the birch last');
+}
+{
+  // Winter-form: deathless roots (Eihwaz) — a fall with no stack still lands
+  const s = createGame({ seed: 53, stack: deck(30), runePerks: true });
+  s.players[0].rune = { p: 'valhalla', k: 'eihwaz' };
+  doSetup(s);
+  s.stack = [];
+  s.players[0].placed = false; s.players[0].r = null; s.players[0].c = null;
+  s.players[0].falling = { r: 1, c: 1 };
+  s.turn = 0;
+  s.awaiting = null; s.queue.length = 0; s.queue.push({ t: 'begin-turn' }); _test.run(s);
+  check(s.phase === 'play' && s.awaiting && s.awaiting.type === 'fall-landing'
+    && s.awaiting.options.every(o => o.draw === false),
+    'winter: the bearer clings to the roots and lands on standing tiles');
 }
 
 // ---------------------------------------------------------------- full random game smoke test

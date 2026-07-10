@@ -50,6 +50,9 @@
           <label class="tile-check random-row" title="At a Rune Circle, a random unclaimed rune is assigned instead of choosing">
             <input type="checkbox" id="cfg-randomRunes"> Random runes — the stones choose your mark
           </label>
+          <label class="tile-check random-row" title="Each rune grants its bearer a boon — with a second, stronger form once Niflheim's Embrace begins">
+            <input type="checkbox" id="cfg-runePerks"> Rune perks — every mark carries a boon
+          </label>
           <label class="tile-check random-row" title="A visible countdown per decision — a nudge, not an enforcer">
             Turn timer
             <select id="cfg-turnTimer">
@@ -69,6 +72,14 @@
             <label class="tile-field">Draugr <input type="number" id="cfg-draugr" min="0" max="24"></label>
             <label class="tile-check"><input type="checkbox" id="cfg-gateValhalla"> Gate of Valhalla</label>
             <label class="tile-check"><input type="checkbox" id="cfg-gateFolkvangr"> Gate of Fólkvangr</label>
+            <label class="tile-check" title="How many doorways each Gate opens — a balance experiment until one becomes the rule">
+              Gate doorways
+              <select id="cfg-gateExits">
+                <option value="one">one (classic)</option>
+                <option value="straight">two — opposite sides</option>
+                <option value="tee">three</option>
+              </select>
+            </label>
           </div>
         </div>
         <p id="diff-summary" class="hint"></p>
@@ -264,7 +275,7 @@
     are sealed: the stones no longer offer that pantheon's marks.</p>
     <table class="rune-table">
       <tr><th colspan="2">ᚨ Valhalla</th><th colspan="2">ᚠ Fólkvangr</th></tr>
-      <tr><td>ᚦ</td><td>Thurisaz — strength</td><td>ᛒ</td><td>Berkano — nurture</td></tr>
+      <tr><td>ᛞ</td><td>Dagaz — daybreak</td><td>ᛒ</td><td>Berkano — nurture</td></tr>
       <tr><td>ᛇ</td><td>Eihwaz — endurance</td><td>ᚢ</td><td>Uruz — vitality</td></tr>
       <tr><td>ᚱ</td><td>Raido — the journey</td><td>ᚹ</td><td>Wunjo — joy</td></tr>
       <tr><td>ᚨ</td><td>Ansuz — Odin's wisdom</td><td>ᚠ</td><td>Fehu — Freyja's plenty</td></tr>
