@@ -73,7 +73,7 @@ export const DEFAULT_NAMES = ['Astrid', 'Bjorn', 'Sigrun', 'Torvald'];
 // Difficulty presets and tile-count sanitizer. The host may start from a
 // preset or edit every count; ranges are clamped so a game is always playable.
 export const TILE_PRESETS = {
-  normal: { straight: 10, tee: 30, teeFractured: 2, cross: 12, rune: 6, draugr: 12, gateValhalla: 1, gateFolkvangr: 1 },
+  normal: { straight: 12, tee: 32, teeFractured: 2, cross: 16, rune: 6, draugr: 10, gateValhalla: 1, gateFolkvangr: 1 },
   hard:   { straight: 10, tee: 26, teeFractured: 5, cross: 10, rune: 5, draugr: 15, gateValhalla: 1, gateFolkvangr: 1 },
 };
 

@@ -490,12 +490,44 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
 
 // deep clone of the engine state, minus the append-only log/event history the
 // engine writes but never branches on (keeps the clone cheap)
+// lean deep clone of ONLY the fields the engine mutates during a rollout — far
+// faster than structuredClone (which pays generic-clone overhead on the grid +
+// stack every call, the perf bottleneck of the search). The append-only display
+// fields (log/events/turnEvents/lastTurn) are reset empty; the engine writes but
+// never branches on them. Validated to give identical rollout results to
+// structuredClone (same seed → identical win counts), so the search is unchanged
+// in behaviour but much cheaper — which buys deeper/wider lookahead.
+const cloneTile = t => t && { id: t.id, kind: t.kind, fractured: t.fractured, gate: t.gate, rot: t.rot, exits: t.exits ? t.exits.slice() : t.exits, spent: t.spent };
+const cloneCell = cl => !cl ? null : (cl.rift ? { rift: true } : { tile: cloneTile(cl.tile) });
+function cloneNode(node) { // one-level deep copy of a queue step / awaiting (nested arrays/objects copied)
+  const o = {};
+  for (const k in node) {
+    const v = node[k];
+    o[k] = Array.isArray(v) ? v.map(x => Array.isArray(x) ? x.slice() : (x && typeof x === 'object' ? { ...x } : x))
+      : (v && typeof v === 'object' ? { ...v } : v);
+  }
+  return o;
+}
 function cloneState(s) {
-  const log = s.log, events = s.events, turnEvents = s.turnEvents, lastTurn = s.lastTurn;
-  s.log = []; s.events = []; s.turnEvents = []; s.lastTurn = null;
-  const c = structuredClone(s);
-  s.log = log; s.events = events; s.turnEvents = turnEvents; s.lastTurn = lastTurn;
-  return c;
+  return {
+    v: s.v, startedAt: s.startedAt, turnsTaken: s.turnsTaken, phase: s.phase,
+    grid: s.grid.map(cloneCell),
+    stack: s.stack.map(cloneTile),
+    discard: s.discard.map(cloneTile),
+    players: s.players.map(p => ({ ...p, rune: p.rune ? { ...p.rune } : null, falling: p.falling ? { ...p.falling } : null })),
+    turn: s.turn,
+    queue: s.queue.map(cloneNode),
+    awaiting: s.awaiting ? cloneNode(s.awaiting) : null,
+    niflheim: s.niflheim, winnerGate: s.winnerGate, lossReason: s.lossReason,
+    log: [], events: [], turnEvents: [], lastTurn: null,
+    turnOwner: s.turnOwner, rngState: s.rngState, tileSeq: s.tileSeq,
+    moveCtx: s.moveCtx ? { ...s.moveCtx } : null,
+    pendingHit: s.pendingHit ? { ...s.pendingHit } : null,
+    blindCtx: s.blindCtx ? { ...s.blindCtx } : null,
+    movesThisTurn: s.movesThisTurn,
+    randomRunes: s.randomRunes,
+    tileTotals: { ...s.tileTotals },
+  };
 }
 
 function resampleStack(c, rnd) {
@@ -535,8 +567,10 @@ function rolloutReward(s) {
   return best;
 }
 
-function rolloutToEnd(c, rnd, plan) {
-  const rctx = { plan, rollouts: 0 }; // rollouts finish greedily — no nesting
+function rolloutToEnd(c, rnd, plan, usePlanner) {
+  // no nesting (rollouts:0); usePlanner makes the rollout PLAN-FOLLOWING, so the
+  // search evaluates "where does the party's plan end up" rather than greedy play.
+  const rctx = { plan, rollouts: 0, usePlanner };
   let steps = 0;
   while (c.phase !== 'won' && c.phase !== 'lost') {
     if (++steps > 4000 || (c.awaiting == null)) { c.phase = 'lost'; break; }
@@ -552,9 +586,198 @@ function rolloutValue(s, rnd, ctx, action) {
     const c = cloneState(s);
     resampleStack(c, rnd);
     applyAction(c, c.awaiting.seat, action);
-    total += rolloutToEnd(c, rnd, ctx.plan);
+    total += rolloutToEnd(c, rnd, ctx.plan, ctx.usePlanner);
   }
   return total / ctx.rollouts;
+}
+
+// ================================================================ THE PLANNER
+//
+// Opt-in (ctx.usePlanner / --planner). A human does not score single moves — they
+// hold a MULTI-TURN PLAN for the whole party and drive each soul toward its role
+// in it. computePlan assigns, every turn, a concrete goal to every soul; the party
+// then executes the plan (with an optional plan-following lookahead). The point is
+// JOINT reasoning: gather the RIGHT marks, on the CONNECTED road, and converge in
+// time — the coupling the greedy per-move heuristic structurally cannot handle.
+
+export function computePlan(s, ctx) {
+  const plan = planPantheon(s, ctx);
+  const ga = gateApproach(s, plan);
+  const econ = runeEconomy(s, plan);
+  const placed = s.players.filter(q => q.placed);
+  const good = q => hasGoodMark(s, q, plan);
+  const dists = new Map();
+  for (const q of placed) dists.set(q.seat, bfs(s, q.r, q.c));
+  const circles = tilesOf(s, 'rune').filter(([r, c]) => { const t = tileAt(s, r, c); return t && !t.spent; });
+
+  const assign = {};
+  // JOINT 1:1 assignment: give each reachable circle to the nearest unmarked soul,
+  // shortest treks first, so no two souls chase the same stone and the marks come
+  // off circles closest to the party (near the connected road, not far corners).
+  const cands = [];
+  for (const q of placed) {
+    if (good(q)) continue;
+    const dm = dists.get(q.seat);
+    for (const [cr, cc] of circles) {
+      const dd = dm.get(key(cr, cc));
+      if (dd !== undefined) cands.push([q.seat, cr, cc, dd]);
+    }
+  }
+  cands.sort((a, b) => a[3] - b[3]);
+  const soulTaken = new Set(), circTaken = new Set();
+  for (const [seat, cr, cc, dd] of cands) {
+    if (soulTaken.has(seat) || circTaken.has(key(cr, cc))) continue;
+    assign[seat] = { goal: 'rune', target: [cr, cc], d: dd };
+    soulTaken.add(seat); circTaken.add(key(cr, cc));
+  }
+  // an unmarked soul with no reachable circle FISHES toward the gate region (its
+  // moves open fresh mist — a chance to surface a circle — while trending home).
+  for (const q of placed) if (!good(q) && !assign[q.seat]) {
+    assign[q.seat] = { goal: 'fish', target: ga ? ga.approach : null };
+  }
+  // a marked soul converges on the doorway — UNLESS its light is holding a circle
+  // an unmarked teammate is assigned to and hasn't reached yet (guard duty).
+  for (const q of placed) {
+    if (!good(q)) continue;
+    let guard = null;
+    for (const seat of soulTaken) {
+      const a = assign[seat]; if (!a || a.goal !== 'rune') continue;
+      const [cr, cc] = a.target; const owner = s.players[seat];
+      if (owner.r === cr && owner.c === cc) continue;
+      if (Math.abs(q.r - cr) + Math.abs(q.c - cc) === 1) { guard = [cr, cc]; break; }
+    }
+    assign[q.seat] = guard ? { goal: 'guard', target: guard }
+      : { goal: 'gate', target: ga ? ga.approach : null };
+  }
+  return { plan, ga, econ, assign };
+}
+
+// score a move by how well it advances THIS soul's assigned goal, plus the party
+// viability terms a plan must respect (never strike a teammate; stay on the road
+// home; don't crumble a circle you don't need).
+function scorePlanMove(s, p, mv, P2, rnd, ctx) {
+  if (mv.kind === 'jump') return scoreMove(s, p, mv, P2.plan, rnd, ctx); // rare; reuse greedy valuation
+  const a = P2.assign[p.seat] || { goal: 'fish', target: P2.ga ? P2.ga.approach : null };
+  let score = rnd() * 0.1;
+  const sim = triggerSim(s, p, mv);
+  score -= 12 * sim.victims;
+  score -= 7 * (sim.meHit ? 1 : 0);
+  if (sim.triggered && !sim.meHit && sim.victims === 0 && p.resolve < 2) score += 1.0; // clean evade
+  if (!sim.meHit && standingDanger(s, mv.r, mv.c)) score -= 3;
+  const dt = tileAt(s, mv.r, mv.c);
+  if (a.target) {
+    const [tr, tc] = a.target;
+    score += 3.0 * (wrapDist(p.r, p.c, tr, tc) - wrapDist(mv.r, mv.c, tr, tc)); // progress toward goal
+    if (a.goal === 'rune' && mv.r === tr && mv.c === tc) score += 20;           // step onto my circle
+    if (a.goal === 'gate') {
+      if (dt && dt.kind === 'gate' && dt.gate === P2.plan) score += 20;
+      const dmin = dt ? nearest(bfs(s, mv.r, mv.c), tilesOf(s, 'gate', P2.plan)) : Infinity;
+      if (dmin <= 3) score += 10 / (1 + dmin);
+    }
+  }
+  if (a.goal === 'fish' || a.goal === 'rune') {
+    const frontier = dt ? [0, 1, 2, 3].reduce((n, d) => {
+      if (!dt.exits[d]) return n; const [nr, nc] = stepDir(mv.r, mv.c, d); return n + (cellAt(s, nr, nc) ? 0 : 1);
+    }, 0) : 0;
+    score += (a.goal === 'fish' ? 1.6 : 0.6) * frontier + (mv.kind === 'blind' ? 0.5 : 0);
+  }
+  // VIABILITY: stay on the gate-connected component — the anti-fragmentation term
+  if (P2.ga && dt && dt.kind !== 'gate') {
+    const conn = bfs(s, mv.r, mv.c).get(key(P2.ga.gate[0], P2.ga.gate[1])) !== undefined;
+    if (conn) score += 1.5; else if (s.stack.length < 30) score -= 6;
+  }
+  if (dt && dt.kind === 'rune' && hasGoodMark(s, p, P2.plan)) score -= 6; // don't crumble a spare circle
+  if (dt && dt.fractured && dt.kind !== 'rune') score -= 2 + (s.stack.length < 15 ? 5 : 0);
+  if (mv.kind === 'blind') score -= 2 * pDraugr(s);
+  return score;
+}
+
+// NOTE: smart Berserk/charge was implemented and measured (2026-07-09) — it does
+// NOT help. Eager charging HURT (Normal 0.31→0.23%); a strict "only banish a
+// draugr on the gate funnel, with Resolve to Brace" version fired so rarely it was
+// a no-op (0.31→0.31%). The planner already avoids draugr sight-lines, so paying a
+// Resolve + a 3-tile self-hit + a hopeless soul to remove one is a losing trade.
+// Left out on purpose. (See tools/SELFPLAY_NOTES.md.)
+
+// planner brain for the decisions that matter (movement, attunement); other
+// decision types (placements, niflheim, scramble, block, fall-landing) fall back
+// to the proven greedy handlers.
+function plannerDecision(s, rnd, ctx) {
+  const aw = s.awaiting;
+  if (aw.type !== 'action' && aw.type !== 'post-move' && aw.type !== 'attune') return null;
+  const p = s.players[aw.seat];
+  const P2 = computePlan(s, ctx);
+  ctx.econ = P2.econ;
+  const a = P2.assign[p.seat] || { goal: 'fish', target: P2.ga ? P2.ga.approach : null };
+  const good = hasGoodMark(s, p, P2.plan);
+  const myTile = tileAt(s, p.r, p.c);
+
+  if (aw.type === 'attune') {
+    if (aw.random) return good ? { skip: true } : { draw: true };
+    if (good) return { skip: true };
+    const held = new Set(s.players.filter(q => q.seat !== p.seat && q.rune && q.rune.p === P2.plan).map(q => q.rune.k));
+    const free = RUNES[P2.plan].filter(rn => !held.has(rn.k));
+    return free.length ? { p: P2.plan, k: free[0].k } : { skip: true };
+  }
+
+  if (aw.type === 'action') {
+    if (myTile && myTile.kind === 'gate' && myTile.gate === P2.plan && good && aw.stay) return { kind: 'stay' };
+    if (aw.stay && s.randomRunes && myTile && myTile.kind === 'rune' && !good && s.stack.length > 6) return { kind: 'stay' };
+    if (aw.rekindle) {
+      const adj = myTile && [0, 1, 2, 3].some(d => {
+        if (!myTile.exits[d]) return false; const [nr, nc] = stepDir(p.r, p.c, d); const nt = tileAt(s, nr, nc);
+        return nt && nt.exits[OPP(d)] && s.players.some(q => q.placed && q.hopeful && q.r === nr && q.c === nc);
+      });
+      if (!adj) return { kind: 'rekindle' };
+    }
+    // GUARD DUTY: my role is to hold a circle lit for an incoming teammate → stand fast
+    if (a.goal === 'guard' && aw.stay && myTile && !myTile.fractured && !standingDanger(s, p.r, p.c)) return { kind: 'stay' };
+    // score every option toward my goal; Stay is a real candidate (the plan may
+    // want me to hold position). With --rollouts, the top few are rolled out
+    // PLAN-FOLLOWING — genuine anticipation of where the party's plan ends up.
+    if (ctx.rollouts > 0) {
+      // LOOKAHEAD: Stay is a real candidate; roll out the top few PLAN-FOLLOWING —
+      // genuine anticipation of where the party's plan ends up.
+      const cands = [];
+      for (const m of aw.moves) { if (m.kind === 'charge') continue; cands.push({ m, base: scorePlanMove(s, p, m, P2, rnd, ctx) }); }
+      if (aw.stay) cands.push({ m: { kind: 'stay' }, base: a.goal === 'guard' ? 0.5 : -0.5 });
+      if (!cands.length) return aw.stay ? { kind: 'stay' } : { kind: 'move', d: aw.moves[0].d };
+      cands.sort((x, y) => y.base - x.base);
+      let best = cands[0].m, bestVal = -Infinity;
+      for (let i = 0; i < Math.min(cands.length, 3); i++) {
+        const c = cands[i];
+        const action = c.m.kind === 'stay' ? { kind: 'stay' } : { kind: 'move', d: c.m.d };
+        const val = c.base + 0.06 * rolloutValue(s, rnd, { ...ctx, plan: P2.plan }, action) + rnd() * 0.05;
+        if (val > bestVal) { bestVal = val; best = c.m; }
+      }
+      if (best.kind === 'stay') return { kind: 'stay' };
+      (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
+      return { kind: 'move', d: best.d };
+    }
+    // greedy plan path: drive toward the goal (souls keep moving — Staying just
+    // burns the tile budget; guard/beachhead Stays are handled explicitly above).
+    let best = null, bestScore = -Infinity;
+    for (const m of aw.moves) {
+      if (m.kind === 'charge') continue;
+      const sc = scorePlanMove(s, p, m, P2, rnd, ctx);
+      if (sc > bestScore) { bestScore = sc; best = m; }
+    }
+    if (best && best.kind === 'jump' && aw.stay && bestScore <= -10) return { kind: 'stay' };
+    if (best) { (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c]; return { kind: 'move', d: best.d }; }
+    return aw.stay ? { kind: 'stay' } : { kind: 'move', d: aw.moves[0].d };
+  }
+
+  // post-move: press on toward the goal when it helps and resolve is spare
+  if (aw.canMoveAgain && p.resolve > 0 && aw.moves.length) {
+    if (myTile && myTile.kind === 'gate' && myTile.gate === P2.plan) return { kind: 'end' };
+    let best = null, bestScore = 1.0;
+    for (const m of aw.moves) { if (m.kind !== 'move') continue; const sc = scorePlanMove(s, p, m, P2, rnd, ctx); if (sc > bestScore) { bestScore = sc; best = m; } }
+    if (best && (standingDanger(s, p.r, p.c) || p.resolve === 2 || a.goal === 'gate')) {
+      (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
+      return { kind: 'move', d: best.d };
+    }
+  }
+  return { kind: 'end' };
 }
 
 // ---------------------------------------------------------------- policy
@@ -562,6 +785,10 @@ function rolloutValue(s, rnd, ctx, action) {
 export function policy(s, rnd, ctx) {
   const aw = s.awaiting;
   const p = s.players[aw.seat];
+  if (ctx.usePlanner) {
+    const d = plannerDecision(s, rnd, ctx);
+    if (d) return d; // else fall through to greedy for placements/niflheim/scramble/etc.
+  }
   const plan = planPantheon(s, ctx);
   ctx.econ = runeEconomy(s, plan); // shared rune budget for this decision
 

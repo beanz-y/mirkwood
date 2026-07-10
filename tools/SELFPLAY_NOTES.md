@@ -6,6 +6,68 @@ memory; this file is the technical detail a coding session needs.*
 
 ---
 
+## UPDATE (2026-07-09 session 3b — preset + lookahead depth; charge dead)
+
+- **New `normal` preset** (Dan's call, live): straight12/tee32/teeFractured2/
+  cross16/rune6/draugr10/2gates = 80 tiles (was 74). Slightly more winnable
+  (greedy ~0.1→0.25%). Browser-verified.
+- **DEEPER lookahead is a big lever.** On the winnable control (seed 30000, 300
+  games): planner+`--rollouts 4` = 27%, **`--rollouts 8` = 38.7%** (+11.7 pts).
+  The search is where the strength is (the ML detour proved the same). Use higher
+  M for offline strength; cost scales ~linearly (M=4 ≈ 0.47s/game, M=8 ≈ 0.94s).
+- **Lean clone** replaced `structuredClone` in `cloneState` — identical rollout
+  results (validated: same seed → same win count), ~15% faster. The sim, not the
+  clone, is the real rollout cost, so the win is modest but free.
+- **Smart Berserk/charge: TRIED, DOESN'T HELP, reverted.** Eager charging HURT
+  (Normal 0.31→0.23%); a strict "only banish a draugr on the gate funnel with a
+  spare Resolve" version was a no-op (0.31→0.31%). The planner already avoids
+  draugr sight-lines, so paying Resolve + a 3-tile self-hit + a hopeless soul to
+  remove one is a losing trade. Left a note in `policy.js` so it isn't re-tried.
+
+## UPDATE (2026-07-09 session 3 — the PLANNER beats greedy)
+
+**A multi-turn party planner is the first thing that genuinely outplays greedy.**
+Opt-in via `--planner` (`ctx.usePlanner`); greedy stays the default. On the
+winnable control (`cross:40,rune:10,draugr:0`) it wins **~21.8% vs greedy's
+~19.5%** (≈2.7σ, holds on fresh seeds) — where EVERY greedy tweak this session
+(convergence model, rune-priority) *lost*. It cuts the "severed every road"
+fragmentation loss, which is the real ceiling.
+
+Why it works: instead of scoring single moves, `computePlan(s, ctx)` assigns
+every soul a role each turn — nearest reachable circle for a needed rune (JOINT
+1:1, so no two souls chase the same stone and marks come off circles near the
+connected road), marked souls converge on the gate doorway, a soul whose light
+holds a teammate's circle *guards* it, circle-less souls *fish* toward the gate.
+`scorePlanMove` drives each soul to its assigned goal with the party-viability
+terms greedy can't coordinate (stay gate-connected, don't crumble a spare
+circle). This is `policy.js` → `computePlan` / `scorePlanMove` / `plannerDecision`
+(specialises action/attune/post-move; other decisions reuse the greedy handlers).
+
+Caveats / where it still needs work:
+- On Normal it's only on-par (~0.13% vs 0.12% — the noise floor / the game's
+  hard ceiling), and on the mid config `cross:24` (draugr + scarce circles) it
+  slightly *trails* greedy (0.39 vs 0.48): its STRATEGY (assignment) is strong
+  but its per-move TACTICS are coarser than greedy's finely-tuned `scoreMove`.
+  It shines where ASSEMBLY dominates, trails where scarcity/draugr tactics do.
+- **Landmines found & fixed:** adding scarcity "urgency" to the circle-pull
+  *tanked* it (winnable 21.8→12%, over-pulls and breaks assembly — REVERTED);
+  making Stay a candidate in the *no-rollout* path also tanked it (12%, souls
+  stall and burn the tile budget) — Stay is now only a candidate inside the
+  rollout branch. The planner's balance is delicate: pull to circles vs hold
+  the party together.
+- **`--planner --rollouts M` is the strong config — the search adds a LOT.**
+  Plan-following rollouts (rolloutToEnd propagates usePlanner; top-3 candidates
+  incl. Stay, M rollouts each) take the winnable control from **21% (planner
+  greedy) → ~31%** at M=4 (500 games, seed 30000: 157 vs 106 wins, ≈3σ) — greedy
+  there is ~19.5%. The bot now *anticipates* where the party's plan ends up. Cost
+  ~530ms/game (offline only). Next levers: bump M, widen the candidate set beyond
+  top-3, or a proper MCTS tree instead of independent rollouts.
+
+Everything below (the greedy verdict) still stands for the GREEDY bot. The
+planner is the path past it — refine `scorePlanMove` tactics + the lookahead.
+
+---
+
 ## VERDICT (2026-07-09 session 2 — parameterization + automated tuning)
 
 **The greedy heuristic is at its representational ceiling. Do not spend more
@@ -93,9 +155,28 @@ node tools/tune.js --iters 12 --pop 24 --games 1500 --out best.json   # CEM tune
 ```
 
 Flags (`tools/selfplay.js`): `--games`, `--seed` (default 1000), `--preset`
-(normal|hard), `--randomRunes`, `--verbose`, `--json <file>`, `--tiles '{…}'`
-(override any tile count), `--rollouts N` (0 = greedy), `--params <file|json>`
-(override `DEFAULT_PARAMS` weights — inline `'{"march":4}'` or a JSON file).
+(normal|hard), `--randomRunes`, `--verbose`, `--json <file>`, `--tiles` (override
+any tile count — JSON `'{"cross":20}'` OR quote-free `cross:20,tee:32`, the latter
+surviving PowerShell), `--rollouts N` (0 = greedy), `--planner` (multi-turn party
+planner, else greedy — see the top of this doc), `--params <file|json>` (override
+`DEFAULT_PARAMS` weights — inline `'{"march":4}'` or a JSON file), `--quiet`
+(suppress the live progress line), `--jobs N` (CPU-parallel — shard the games
+across N worker threads; `--jobs auto` = all logical cores). A live progress line
+(`done/total · % · running win% · ms/game · elapsed · ETA`) prints to **stderr**
+by default, so it never pollutes stdout (`--json`, `| grep`, `2>/dev/null` all
+keep working); it updates in place on a terminal and prints one line per tick when
+piped to a file.
+
+**`--jobs` (CPU parallelism):** games are seed-deterministic and independent, so
+sharding across worker threads gives **identical results** (same wins + loss
+histogram) — just ~N× faster. Measured on a 7950X3D: 40k fast games 48.6s→6.8s at
+`--jobs 16` (7.2×); the big win is the slow rollout runs (`--planner --rollouts M`
+at ~0.5–1.8s/game) which drop from minutes to seconds. NB: `--jobs auto` uses all
+*logical* threads (32 on a 16-core SMT chip) and can be *slower* than `--jobs 16`
+on short runs (worker startup + SMT oversubscription); **~physical-core count is
+the sweet spot** for these compute-bound runs. Workers re-parse the CLI flags
+(passed via the Worker `argv`), so `--planner/--rollouts/--tiles/--params` all
+propagate; `--json`/summary are written once by the main thread after merging.
 
 `tune.js` flags: `--iters`, `--pop`, `--elite`, `--games` (per eval), `--seed`,
 `--preset`, `--randomRunes`, `--tiles`, `--sigma` (init std as a fraction of each
@@ -193,12 +274,21 @@ the scarcity-vs-fragmentation split move meaningfully and aren't noise.
    and `'{"rune":8}'` (Normal is 6) to quantify how much the circle budget
    drives the win rate. (Handoff withheld "license to retune until the bot hits
    the human band" — but the bot now suggests the budget is *why* it can't.)
-2. **Global rune-assignment plan** — the bot assigns runes greedily ("first
-   free rune when you land on a circle"). A human assigns "you take Thurisaz,
-   you take Eihwaz…" up front and routes each soul to gather its mark near the
-   gate. This directly attacks the scarcity/fragmentation coupling (gather the
-   RIGHT marks in the RIGHT places). Probably the highest-leverage smart-play
-   change.
+2. **Global rune-assignment plan** — ~~probably the highest-leverage change~~
+   **TRIED 2026-07-09, REVERTED.** Two targeted fixes, both matching a playtest
+   spec: (A) an unmarked soul FISHES instead of standing idle while circles remain
+   (traced seed 1006: a soul stood fast farming Resolve while the last circle
+   burned); (B) marks-FIRST gate commitment so the party never flips off a gate it
+   has invested marks in (the bot flipped ~1×/game, orphaning marks → re-attunes).
+   **Result: exactly the trade-off this whole doc describes.** Scarcity losses
+   −24% and avg marks 2.6→2.8 on Normal — but net wins FLAT (the gained marks
+   convert to *severed*/fragmentation losses), and on the winnable control BOTH
+   changes lost ~2.4% (20.0%→17.6%) since there's no scarcity to relieve there,
+   only the fragmentation cost. Same signature as the reverted convergence model:
+   reducing scarcity feeds fragmentation; assembly is the true ceiling. Do NOT
+   re-attempt via smarter mark-gathering — the lever is balance, or a genuinely
+   better ASSEMBLY strategy (keep the marked party mutually gate-connected), which
+   nothing tried so far achieves without over-clustering.
 3. **Faster clone** → larger M → less-noisy rollout values → can raise the
    rollout weight without picking noise.
 4. **Tune the reward trade-off** (`connected·8` vs marks·40) toward a balance

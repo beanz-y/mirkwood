@@ -1,0 +1,9 @@
+{
+  "name": "mirkwood-ml",
+  "private": true,
+  "type": "module",
+  "description": "Offline ML tooling for Mirkwood — NOT part of the deployed Worker (separate package.json so onnxruntime-node never touches the Cloudflare build).",
+  "dependencies": {
+    "onnxruntime-node": "^1.27.0"
+  }
+}

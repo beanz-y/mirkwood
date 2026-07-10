@@ -1,0 +1,27 @@
+=== round 0 (base imitation net) ===
+NET movement + heuristic: 3/1000 = 0.30%  (3.7ms/game, model=ml/model.onnx)
+=== DAgger round 1: collect net-driven, bot-labelled states ===
+DAgger: 44087 bot-labelled samples from 1000 net-driven games (net win 0.30%, net~bot agree 44.9%) in 4s → ml/data/dag1
+--- retrain on aggregate (ml/data/norm ml/data/win ml/data/dag1) ---
+exported ml/model.onnx  (+ .pt, .json)
+--- measure round 1 net ---
+NET movement + heuristic: 0/1000 = 0.00%  (3.9ms/game, model=ml/model.onnx)
+=== DAgger round 2: collect net-driven, bot-labelled states ===
+DAgger: 44298 bot-labelled samples from 1000 net-driven games (net win 0.00%, net~bot agree 43.6%) in 4s → ml/data/dag2
+--- retrain on aggregate (ml/data/norm ml/data/win ml/data/dag1 ml/data/dag2) ---
+exported ml/model.onnx  (+ .pt, .json)
+--- measure round 2 net ---
+NET movement + heuristic: 5/1000 = 0.50%  (3.8ms/game, model=ml/model.onnx)
+=== DAgger round 3: collect net-driven, bot-labelled states ===
+DAgger: 45195 bot-labelled samples from 1000 net-driven games (net win 0.10%, net~bot agree 46.0%) in 4s → ml/data/dag3
+--- retrain on aggregate (ml/data/norm ml/data/win ml/data/dag1 ml/data/dag2 ml/data/dag3) ---
+exported ml/model.onnx  (+ .pt, .json)
+--- measure round 3 net ---
+NET movement + heuristic: 1/1000 = 0.10%  (4.0ms/game, model=ml/model.onnx)
+=== DAgger round 4: collect net-driven, bot-labelled states ===
+DAgger: 44586 bot-labelled samples from 1000 net-driven games (net win 0.40%, net~bot agree 48.1%) in 4s → ml/data/dag4
+--- retrain on aggregate (ml/data/norm ml/data/win ml/data/dag1 ml/data/dag2 ml/data/dag3 ml/data/dag4) ---
+exported ml/model.onnx  (+ .pt, .json)
+--- measure round 4 net ---
+NET movement + heuristic: 3/1000 = 0.30%  (4.0ms/game, model=ml/model.onnx)
+=== DAgger complete ===

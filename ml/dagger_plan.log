@@ -1,0 +1,23 @@
+=== round 0 (plan-conditioned imitation net) ===
+NET movement + heuristic: 57/1000 = 5.70%  (5.3ms/game, model=ml/model_plan.onnx)
+=== plan-DAgger round 1 ===
+DAgger: 70408 bot-labelled samples from 1500 net-driven games (net win 3.80%, net~bot agree 65.8%) in 9s → ml/data/dagP1
+exported ml/model_plan.onnx  (+ .pt, .json)
+NET movement + heuristic: 57/1000 = 5.70%  (4.5ms/game, model=ml/model_plan.onnx)
+=== plan-DAgger round 2 ===
+DAgger: 70652 bot-labelled samples from 1500 net-driven games (net win 4.47%, net~bot agree 67.1%) in 8s → ml/data/dagP2
+exported ml/model_plan.onnx  (+ .pt, .json)
+NET movement + heuristic: 65/1000 = 6.50%  (4.5ms/game, model=ml/model_plan.onnx)
+=== plan-DAgger round 3 ===
+DAgger: 69965 bot-labelled samples from 1500 net-driven games (net win 6.07%, net~bot agree 68.0%) in 7s → ml/data/dagP3
+exported ml/model_plan.onnx  (+ .pt, .json)
+NET movement + heuristic: 77/1000 = 7.70%  (5.1ms/game, model=ml/model_plan.onnx)
+=== plan-DAgger round 4 ===
+DAgger: 70218 bot-labelled samples from 1500 net-driven games (net win 7.13%, net~bot agree 69.4%) in 8s → ml/data/dagP4
+exported ml/model_plan.onnx  (+ .pt, .json)
+NET movement + heuristic: 72/1000 = 7.20%  (4.7ms/game, model=ml/model_plan.onnx)
+=== plan-DAgger round 5 ===
+DAgger: 69796 bot-labelled samples from 1500 net-driven games (net win 7.47%, net~bot agree 69.3%) in 8s → ml/data/dagP5
+exported ml/model_plan.onnx  (+ .pt, .json)
+NET movement + heuristic: 98/1000 = 9.80%  (4.9ms/game, model=ml/model_plan.onnx)
+=== plan-DAgger complete ===

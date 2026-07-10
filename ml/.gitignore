@@ -1,0 +1,17 @@
+# ML artifacts — never commit heavy/generated files
+data/
+models/
+*.jsonl
+*.bin
+*.npz
+*.onnx
+*.pt
+*.ckpt
+# node (isolated ml tooling deps)
+node_modules/
+package-lock.json
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/

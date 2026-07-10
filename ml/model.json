@@ -1,0 +1,11 @@
+{
+  "featureLen": 758,
+  "hidden": 512,
+  "moveActions": [
+    "N",
+    "E",
+    "S",
+    "W",
+    "stay"
+  ]
+}

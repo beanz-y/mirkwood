@@ -44,7 +44,24 @@ const PRESET = opt('preset', 'normal');
 const RANDOM_RUNES = flag('randomRunes');
 const SIGMA0 = +opt('sigma', 0.5);          // initial std as a fraction of |mean|
 const OUT = opt('out', 'tools/params.tuned.json');
-const TILE_OVERRIDE = opt('tiles', null) ? JSON.parse(opt('tiles', null)) : null;
+// accepts JSON (--tiles '{"cross":20}') or a quote-free list (--tiles cross:20,tee:32),
+// the latter surviving PowerShell's stripping of inner double quotes.
+function parseTiles(str) {
+  if (!str) return null;
+  str = str.trim();
+  try { return JSON.parse(str); } catch { /* lenient parse below */ }
+  const out = {};
+  for (const pair of str.replace(/^\{|\}$/g, '').split(',')) {
+    if (!pair.trim()) continue;
+    const [k, v] = pair.split(/[:=]/);
+    const key = (k || '').trim().replace(/['"]/g, '');
+    const val = Number((v || '').trim());
+    if (key && Number.isFinite(val)) out[key] = val;
+  }
+  if (!Object.keys(out).length) throw new Error(`could not parse --tiles "${str}"`);
+  return out;
+}
+const TILE_OVERRIDE = parseTiles(opt('tiles', null));
 const ROLLOUTS = +opt('rollouts', 0);
 
 const baseTiles = { ...(TILE_PRESETS[PRESET] || normTiles({})), ...(TILE_OVERRIDE || {}) };
