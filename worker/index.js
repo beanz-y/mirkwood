@@ -182,11 +182,6 @@ export class MirkwoodRoom {
     }
   }
 
-  sendChat(from, text) {
-    const msg = { t: 'chat', from, text, at: Date.now() };
-    for (const ws of this.ctx.getWebSockets()) this.send(ws, msg);
-  }
-
   nameOf(token) {
     const m = this.room && this.room.members[token];
     return (m && m.name) || 'A wanderer';
@@ -493,11 +488,12 @@ export class MirkwoodRoom {
         this.broadcast();
         return;
       }
-      case 'chat': {
-        const text = clean(msg.text, 300);
-        if (text) this.sendChat(this.nameOf(token), text);
+      case 'chat':
+        // Whispers removed 2026-07-09: no user-to-user message content is
+        // relayed or stored, by design (it never was persisted — sendChat only
+        // fanned out to live sockets). Silently ignored so a stale cached
+        // client gets no error.
         return;
-      }
       case 'leave': {
         // before the saga starts, walking away frees the claimed souls;
         // mid-game the seats stay bound to the token so they can rejoin

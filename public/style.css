@@ -275,12 +275,8 @@ input:focus { outline: 1px solid var(--gold); }
 #log p.k-danger { color: var(--danger); }
 #log p.k-good { color: var(--good); }
 #log p.k-turn { color: var(--gold); margin-top: 8px; }
-#chat { display: flex; flex-direction: column; }
-#chat-messages { flex: 1; overflow-y: auto; min-height: 0; }
-#chat-messages p { margin: 3px 0; }
-#chat-messages .from { color: var(--gold); }
-#chat-form { margin-top: 6px; }
 .side-footer { padding: 6px 12px; border-top: 1px solid var(--line); text-align: right; }
+.auto-end-note { opacity: 0.85; font-weight: normal; }
 
 /* ---------------- board svg ---------------- */
 .cell-mist { fill: var(--mist); }
@@ -648,7 +644,7 @@ body.no-anims *, body.no-anims *::before, body.no-anims *::after {
   #game { overflow-y: auto; }
   body { overflow: auto; }
   /* tab panes collapse to zero height inside the unconstrained column flex —
-     give them a real height so Saga/Soul/Whispers are usable on phones */
+     give them a real height so Saga/Soul are usable on phones */
   #tabs { flex: none; }
   .tab-pane { height: 45vh; min-height: 240px; }
   #players { grid-template-columns: 1fr 1fr; }
@@ -677,4 +673,14 @@ body.no-anims *, body.no-anims *::before, body.no-anims *::after {
   .btn.small { font-size: 14px; padding: 10px 14px; }
   .btn.tiny { padding: 8px 12px; }
   #action-bar { gap: 8px; }
+}
+/* the look picker's sigil discs and colour swatches are finger targets AND
+   need to be readable — enlarge on touch devices and phone-width screens
+   (playtest: 34px discs were hard to hit and hard to read on mobile) */
+@media (pointer: coarse), (max-width: 520px) {
+  .seat-look { font-size: 13px; padding: 6px 12px; }
+  .look-btn, .look-swatch { width: 46px; height: 46px; }
+  .look-btn img, .look-btn svg { width: 32px; height: 32px; }
+  .look-row { gap: 9px; }
+  #look-picker h4 { font-size: 12px; }
 }

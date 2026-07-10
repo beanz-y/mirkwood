@@ -118,16 +118,9 @@
         <div class="tab-buttons">
           <button data-tab="log" class="tab-btn active">Saga</button>
           <button data-tab="soul" class="tab-btn">Soul</button>
-          <button data-tab="chat" class="tab-btn">Whispers</button>
         </div>
         <div id="log" class="tab-pane"></div>
         <div id="soul" class="tab-pane hidden"></div>
-        <div id="chat" class="tab-pane hidden">
-          <div id="chat-messages"></div>
-          <form id="chat-form">
-            <input id="chat-input" maxlength="300" placeholder="whisper to the others..." autocomplete="off">
-          </form>
-        </div>
       </div>
       <div class="side-footer">
         <button id="anims-btn" class="btn tiny"></button>
@@ -215,7 +208,9 @@
       <li><b>Stay</b> instead: gain 1 Resolve ◆ (max 2), but hope gutters while you
         linger — the top tile of the stack burns. If it's a Draugr, it claws onto a
         path beside you.</li>
-      <li>After moving you may spend Resolve to <b>press on</b> (up to two more steps).</li>
+      <li>After moving you may spend Resolve to <b>press on</b> (up to two more steps).
+        Linger too long at that choice and your soul rests on its own — half a minute
+        with no touch on the page ends the turn (any activity resets it).</li>
     </ul>
 
     <h3>Hope</h3>

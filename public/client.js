@@ -88,6 +88,46 @@ function updateTimer() {
   el.textContent = `⌛ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
 }
 setInterval(updateTimer, 500);
+
+// ---- idle auto-rest ---------------------------------------------------------
+// A player who has already MOVED but forgot "End turn" stalls the whole party.
+// When the post-move prompt is ours and the page sees no input for IDLE_END_MS,
+// end the turn automatically. Any pointer/key/touch activity restarts the
+// clock, so someone weighing "Press on" is never cut off. Client-side only —
+// a closed tab never auto-ends (the adopt flow covers vanished players).
+// ?idleend=N (seconds) overrides the delay for testing, like ?touch=1.
+const IDLE_END_MS = (() => {
+  const m = location.search.match(/[?&]idleend=(\d+)/);
+  return (m ? Math.max(2, +m[1]) : 30) * 1000;
+})();
+let lastInputAt = Date.now();
+let idleEndSig = null; // awaitingSig this decision is armed for (null = off)
+for (const evt of ['pointerdown', 'pointermove', 'wheel', 'keydown', 'touchstart']) {
+  addEventListener(evt, () => { lastInputAt = Date.now(); }, { passive: true, capture: true });
+}
+function idleEndTick() {
+  if (!idleEndSig || !state || state.phase !== 'play') return;
+  const aw = state.awaiting;
+  if (!aw || aw.type !== 'post-move' || !isMine(aw.seat) || awaitingSig !== idleEndSig) return;
+  const left = Math.ceil((lastInputAt + IDLE_END_MS - Date.now()) / 1000);
+  const endBtn = [...document.querySelectorAll('#action-bar button')]
+    .find(b => /end turn/i.test(b.textContent));
+  if (left > 0) {
+    // gentle warning on the button itself for the final stretch
+    if (endBtn) {
+      let tag = endBtn.querySelector('.auto-end-note');
+      if (left <= 10) {
+        if (!tag) { tag = document.createElement('small'); tag.className = 'auto-end-note'; endBtn.appendChild(tag); }
+        tag.textContent = ` — resting in ${left}s`;
+      } else if (tag) tag.remove();
+    }
+    return;
+  }
+  idleEndSig = null; // fire exactly once
+  act({ kind: 'end' });
+}
+setInterval(idleEndTick, 500);
+
 let anims = localStorage.getItem('mk-anims') !== 'off';
 const sm = s => (anims ? s : ''); // gate SMIL snippets on the animations setting
 
@@ -304,7 +344,6 @@ function handle(msg) {
     case 'ping':
       showPing(msg); // a "look here" marker from any player or watcher
       break;
-    case 'chat': addChat(msg.from, msg.text); break;
     case 'error':
       if (msg.fatal) leaveRoom(msg.msg);
       else showError(msg.msg);
@@ -401,15 +440,12 @@ $('cfg-gateFolkvangr').onchange = () => pushConfig('Custom');
 $('cfg-randomRunes').onchange = () => pushConfig((room && room.config && room.config.label) || 'Normal');
 $('cfg-turnTimer').onchange = () => pushConfig((room && room.config && room.config.label) || 'Normal');
 
-$('chat-form').onsubmit = (e) => {
-  e.preventDefault();
-  const text = $('chat-input').value.trim();
-  if (text) send({ t: 'chat', text });
-  $('chat-input').value = '';
-};
+// (Whispers/chat removed 2026-07-09 — underused, and Dan wants no user-to-user
+// message content flowing through or stored by the app at all; use Ping ⚑ for
+// on-board coordination)
 function selectTab(name) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-  for (const pane of ['log', 'soul', 'chat']) $(pane).classList.toggle('hidden', pane !== name);
+  for (const pane of ['log', 'soul']) $(pane).classList.toggle('hidden', pane !== name);
 }
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.onclick = () => selectTab(btn.dataset.tab);
@@ -704,16 +740,6 @@ for (const el of [$('board'), $('preview')]) {
   }, { passive: false });
 }
 
-function addChat(from, text) {
-  const p = document.createElement('p');
-  const f = document.createElement('span');
-  f.className = 'from'; f.textContent = from + ': ';
-  p.appendChild(f);
-  p.appendChild(document.createTextNode(text));
-  $('chat-messages').appendChild(p);
-  $('chat-messages').scrollTop = $('chat-messages').scrollHeight;
-}
-
 // ---------------------------------------------------------------- helpers
 
 const mySeats = () => room ? room.seats.filter(s => s.you).map(s => s.seat) : [];
@@ -791,6 +817,10 @@ function render() {
     decisionDeadline = (tt && aw && (state.phase === 'play' || state.phase === 'setup'))
       ? Date.now() + tt * 1000 : null;
     updateTimer();
+    // idle auto-rest arms only for OUR post-move prompt (see idleEndTick)
+    idleEndSig = (aw && aw.type === 'post-move' && state.phase === 'play' && isMine(aw.seat))
+      ? awaitingSig : null;
+    if (idleEndSig) lastInputAt = Date.now(); // full grace period per decision
   }
 
   renderTopbar();

@@ -197,6 +197,13 @@ convergence timing, or 2-ply lookahead in `tools/policy.js`.
   the game's own tile art — from the lobby or the in-game rules screen.
 - **Turn timer** (host option): a soft countdown per decision (60s–3min) in
   the top bar — a nudge, not an enforcer.
+- **Idle auto-rest**: a player who has already moved but forgets **End turn**
+  won't stall the party — after 30s with no mouse/key/touch input on their
+  page, their turn ends itself (any activity resets the clock; a countdown
+  shows on the button for the final 10s). Client-side only, always on.
+- **No chat, by design**: there is no in-app messaging and no user-to-user
+  message content is relayed or stored anywhere; coordination happens via the
+  ⚑ Ping marker (ephemeral, never persisted).
 - **State versioning**: rooms persisted by an older engine version are
   gracefully reset to the lobby after a deploy instead of crashing
   (`STATE_VERSION` in the engine — bump it on breaking state changes).
@@ -207,5 +214,5 @@ convergence timing, or 2-ply lookahead in `tools/policy.js`.
 |---|---|
 | `public/shared/engine.js` | Pure rules engine (no I/O). A queue-driven state machine: every player decision is an `awaiting` prompt; `applyAction` validates and advances. Bundled into the Worker *and* served to the browser for constants/tile geometry — one source of truth. |
 | `worker/index.js` | Worker entry (routes `/ws?room=CODE` upgrades to the room's Durable Object) + `MirkwoodRoom` DO: hibernating WebSockets, seats/members, engine state persisted to DO storage on every action. Broadcasts `publicState` (path stack redacted to a count). |
-| `public/` | No-build browser client: procedural Norse-forest SVG tile art (replaceable via the art manifest), placement previews with rotation (press **R**), modals for rune attunement / bracing / endgame, saga log + chat, in-app rules reference, and a per-soul status card (Soul tab / click any player card). The engine emits semantic events per action (`state.events`) and the client choreographs them into a sequence — token slides, fracture collapse, draugr shriek + corridor strike wave, hit shakes, hope dimming, mist fades, rune bursts — with an "Animations" on/off toggle (persisted per browser). |
-| `test/engine.test.js` | 104 assertions across every mechanic plus a 200-game random self-play soak. |
+| `public/` | No-build browser client: procedural Norse-forest SVG tile art (replaceable via the art manifest), placement previews with rotation (press **R**), modals for rune attunement / bracing / endgame, saga log, in-app rules reference, and a per-soul status card (Soul tab / click any player card). The engine emits semantic events per action (`state.events`) and the client choreographs them into a sequence — token slides, fracture collapse, draugr shriek + corridor strike wave, hit shakes, hope dimming, mist fades, rune bursts — with an "Animations" on/off toggle (persisted per browser). |
+| `test/engine.test.js` | 150 assertions across every mechanic plus a 200-game random self-play soak. |
