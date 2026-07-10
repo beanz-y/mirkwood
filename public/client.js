@@ -1906,25 +1906,30 @@ function renderModal() {
   // (incl. the leave-confirm) and under Animations: off the static gold
   // styling still carries the message.
   const isWin = !modalLock && state && state.phase === 'won';
+  const isLoss = !modalLock && state && state.phase === 'lost';
   modal.classList.toggle('victory', !!isWin);
-  // the fanfare wears the winning gate's light: Valhalla gold, Fólkvangr green
+  // the fanfare wears the winning gate's light: Valhalla gold, Fólkvangr green —
+  // and defeat fades to the mist's red, with falling ash in place of embers
   modal.classList.toggle('folkvangr', !!isWin && state.winnerGate === 'folkvangr');
+  modal.classList.toggle('defeat', !!isLoss);
   // the endgame card renders ONCE per outcome (see the endgame branch): any other
   // modal content invalidates the guard so a later endgame render rebuilds fresh
   if (modalLock || !state || (state.phase !== 'won' && state.phase !== 'lost')) {
     delete card.dataset.endgame;
   }
-  const oldEmbers = modal.querySelector('#victory-embers');
-  if (!isWin && oldEmbers) oldEmbers.remove();
-  if (isWin && anims && !oldEmbers) {
+  const oldEmbers = modal.querySelector('#end-embers');
+  if (!isWin && !isLoss && oldEmbers) oldEmbers.remove();
+  if ((isWin || isLoss) && anims && !oldEmbers) {
     const em = document.createElement('div');
-    em.id = 'victory-embers';
-    for (let i = 0; i < 26; i++) {
+    em.id = 'end-embers';
+    const n = isWin ? 26 : 14;             // ash is sparser than celebration
+    const slow = isWin ? 0 : 3;            // ...and drifts, rather than dances
+    for (let i = 0; i < n; i++) {
       const sp = document.createElement('span');
       const sz = (3 + Math.random() * 4).toFixed(1);
       sp.style.cssText = `left:${(Math.random() * 100).toFixed(1)}%;width:${sz}px;height:${sz}px;`
         + `--dx:${(Math.random() * 120 - 60).toFixed(0)}px;`
-        + `animation-duration:${(4 + Math.random() * 5).toFixed(1)}s;animation-delay:${(Math.random() * 6).toFixed(1)}s`;
+        + `animation-duration:${(4 + slow + Math.random() * 5).toFixed(1)}s;animation-delay:${(Math.random() * 6).toFixed(1)}s`;
       em.appendChild(sp);
     }
     modal.insertBefore(em, card);

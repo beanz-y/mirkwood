@@ -419,27 +419,36 @@ body.no-anims .ping .ring { display: none; }
   --vic: 111, 206, 154;      /* Fólkvangr green (#6fce9a, matches the rune burst) */
   --vic-solid: var(--good);
 }
-/* the beat of suspense: the wash + embers bloom FIRST (a slow 1.6s fade), the
-   card holds back and fades up at 2.2s, the title blazes in at 2.5s, the souls
-   file through from 3.1s. Under Animations: off everything is simply visible. */
-#modal.victory {
+#modal.defeat {
+  --vic: 208, 94, 94;        /* --danger red: the mist takes all */
+  --vic-solid: var(--danger);
+}
+/* the beat of suspense: the wash + motes bloom FIRST, the card holds back and
+   fades up after. Victory takes it slow (1.6s wash, card at 2.2s, title at
+   2.5s, souls from 3.1s); defeat is the same shape but quicker and colder
+   (1.2s wash, card at 1.6s) — losses are common, grief shouldn't dawdle.
+   Under Animations: off everything is simply visible. */
+#modal.victory, #modal.defeat {
   background: radial-gradient(ellipse at 50% 42%,
     rgba(var(--vic), 0.22), rgba(var(--vic), 0.06) 45%, rgba(5, 9, 7, 0.93) 78%);
   animation: vic-wash 1.6s ease-in-out both;
 }
+#modal.defeat { animation-duration: 1.2s; }
 @keyframes vic-wash { from { opacity: 0; } to { opacity: 1; } }
-#modal.victory .modal-card {
+#modal.victory .modal-card, #modal.defeat .modal-card {
   position: relative; z-index: 1;
   border-color: rgba(var(--vic), 0.65);
   box-shadow: 0 0 90px rgba(var(--vic), 0.32), inset 0 0 26px rgba(var(--vic), 0.12);
   animation: vic-card-in 0.8s ease-out 2.2s both;
 }
+#modal.defeat .modal-card { animation: vic-card-in 0.7s ease-out 1.6s both; }
 @keyframes vic-card-in {
   from { opacity: 0; transform: translateY(14px) scale(0.97); }
   to   { opacity: 1; transform: none; }
 }
-#victory-embers { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-#victory-embers span {
+/* end-of-saga motes: gold embers RISE for a win, grey ash FALLS for a loss */
+#end-embers { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+#end-embers span {
   position: absolute; bottom: -14px; border-radius: 50%;
   background: var(--vic-solid, var(--gold)); opacity: 0;
   box-shadow: 0 0 9px 2px rgba(var(--vic, 232, 178, 60), 0.55);
@@ -449,6 +458,17 @@ body.no-anims .ping .ring { display: none; }
   0%   { transform: translate(0, 0) scale(1); opacity: 0; }
   10%  { opacity: 0.95; }
   100% { transform: translate(var(--dx, 0px), -105vh) scale(0.35); opacity: 0; }
+}
+#modal.defeat #end-embers span {
+  bottom: auto; top: -14px;
+  background: #8a8378; /* pale ash, not celebration */
+  box-shadow: 0 0 7px 2px rgba(var(--vic), 0.3);
+  animation-name: ash-fall;
+}
+@keyframes ash-fall {
+  0%   { transform: translate(0, 0) scale(1); opacity: 0; }
+  12%  { opacity: 0.65; }
+  100% { transform: translate(var(--dx, 0px), 108vh) scale(0.5); opacity: 0; }
 }
 .vic-glyph {
   font-size: 56px; line-height: 1.1; color: var(--vic-solid, var(--gold));
