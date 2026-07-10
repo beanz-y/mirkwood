@@ -1907,6 +1907,13 @@ function renderModal() {
   // styling still carries the message.
   const isWin = !modalLock && state && state.phase === 'won';
   modal.classList.toggle('victory', !!isWin);
+  // the fanfare wears the winning gate's light: Valhalla gold, Fólkvangr green
+  modal.classList.toggle('folkvangr', !!isWin && state.winnerGate === 'folkvangr');
+  // the endgame card renders ONCE per outcome (see the endgame branch): any other
+  // modal content invalidates the guard so a later endgame render rebuilds fresh
+  if (modalLock || !state || (state.phase !== 'won' && state.phase !== 'lost')) {
+    delete card.dataset.endgame;
+  }
   const oldEmbers = modal.querySelector('#victory-embers');
   if (!isWin && oldEmbers) oldEmbers.remove();
   if (isWin && anims && !oldEmbers) {
@@ -1941,6 +1948,11 @@ function renderModal() {
   // endgame
   if (state.phase === 'won' || state.phase === 'lost') {
     const win = state.phase === 'won';
+    // render once: a room rebroadcast (join/leave/kick) mid-celebration must not
+    // restart the choreographed wash -> card -> title -> souls sequence
+    const endSig = state.phase + ':' + (state.winnerGate || '') + ':' + (room.youAreHost ? 'h' : 'g');
+    if (card.dataset.endgame === endSig) { modal.classList.remove('hidden'); return; }
+    card.dataset.endgame = endSig;
     if (win) {
       // the gate's own glyph (Ansuz for Valhalla, Fehu for Fólkvangr), the four
       // souls with the runes they bore, and the saga's numbers — a win this
@@ -1951,15 +1963,17 @@ function renderModal() {
         const mark = q.icon && TOKEN_ICONS[q.icon]
           ? sigilHTML(q.icon, '#0a100d', 16)
           : (q.name[0] || '?').toUpperCase();
-        return `<span class="vic-soul" style="animation-delay:${(0.9 + i * 0.18).toFixed(2)}s" title="${escapeHtml(q.name)}">
+        return `<span class="vic-soul" style="animation-delay:${(3.1 + i * 0.18).toFixed(2)}s" title="${escapeHtml(q.name)}">
           <span class="vic-disc" style="background:${q.color}">${mark}</span>
           <span class="vic-rune">${info ? info.g : ''}</span></span>`;
       }).join('');
+      const flavor = state.winnerGate === 'valhalla'
+        ? 'The four runes blaze as one. Valgrind swings wide, and the souls pass out of Myrkviðr to the mead-hall of the einherjar.'
+        : 'The four runes blaze as one. Freyja chooses her own — the meadow gate opens, and the souls pass out of Myrkviðr to Sessrúmnir.';
       card.innerHTML = `<div class="endgame win">
         <div class="vic-glyph">${gglyph}</div>
         <h1>${GATE_NAMES[state.winnerGate].toUpperCase()}</h1>
-        <p class="vic-sub">The four runes blaze as one. The gate swings wide,
-        and the souls pass out of Myrkviðr forever.</p>
+        <p class="vic-sub">${flavor}</p>
         <div class="vic-souls">${souls}</div>
         <p class="vic-stats">A saga of ${state.turnsTaken} turns,
         with ${state.stackCount === 0 ? 'not one tile' : state.stackCount === 1 ? 'a single tile' : state.stackCount + ' tiles'} of hope to spare.</p>

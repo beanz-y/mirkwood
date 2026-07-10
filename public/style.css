@@ -400,28 +400,49 @@ body.no-anims .ping .ring { display: none; }
 .rune-btn:disabled:hover { border-color: var(--line); }
 
 .endgame h1 { font-size: 34px; letter-spacing: 4px; margin: 6px 0; }
-.endgame.win h1 { color: var(--gold); text-shadow: 0 0 30px rgba(232,178,60,0.5); }
+/* win h1 color/glow lives in the victory-fanfare block below (per-gate --vic) */
 .endgame.loss h1 { color: var(--danger); }
 
 /* ---------------- victory fanfare ----------------
    A win is rare and hard-earned — it must never read like the loss screen at
-   a glance. Golden backdrop wash + rising embers + pulsing gate glyph. Base
-   styles stay fully visible so Animations: off still shows an unmistakably
-   golden screen (body.no-anims strips all animation). */
+   a glance. Radiant backdrop wash + rising embers + pulsing gate glyph, in
+   the winning gate's own light: Valhalla gold, Fólkvangr green (Freyja's
+   color everywhere else in the game — rune picker, rune bursts, gate glow).
+   --vic is an rgb triplet so alpha washes can be mixed from it. Base styles
+   stay fully visible so Animations: off still shows an unmistakably radiant
+   screen (body.no-anims strips all animation). */
+#modal.victory {
+  --vic: 232, 178, 60;       /* Valhalla gold */
+  --vic-solid: var(--gold);
+}
+#modal.victory.folkvangr {
+  --vic: 111, 206, 154;      /* Fólkvangr green (#6fce9a, matches the rune burst) */
+  --vic-solid: var(--good);
+}
+/* the beat of suspense: the wash + embers bloom FIRST (a slow 1.6s fade), the
+   card holds back and fades up at 2.2s, the title blazes in at 2.5s, the souls
+   file through from 3.1s. Under Animations: off everything is simply visible. */
 #modal.victory {
   background: radial-gradient(ellipse at 50% 42%,
-    rgba(232, 178, 60, 0.22), rgba(232, 178, 60, 0.06) 45%, rgba(5, 9, 7, 0.93) 78%);
+    rgba(var(--vic), 0.22), rgba(var(--vic), 0.06) 45%, rgba(5, 9, 7, 0.93) 78%);
+  animation: vic-wash 1.6s ease-in-out both;
 }
+@keyframes vic-wash { from { opacity: 0; } to { opacity: 1; } }
 #modal.victory .modal-card {
   position: relative; z-index: 1;
-  border-color: rgba(232, 178, 60, 0.65);
-  box-shadow: 0 0 90px rgba(232, 178, 60, 0.32), inset 0 0 26px rgba(232, 178, 60, 0.12);
+  border-color: rgba(var(--vic), 0.65);
+  box-shadow: 0 0 90px rgba(var(--vic), 0.32), inset 0 0 26px rgba(var(--vic), 0.12);
+  animation: vic-card-in 0.8s ease-out 2.2s both;
+}
+@keyframes vic-card-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
 }
 #victory-embers { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 #victory-embers span {
   position: absolute; bottom: -14px; border-radius: 50%;
-  background: var(--gold); opacity: 0;
-  box-shadow: 0 0 9px 2px rgba(232, 178, 60, 0.55);
+  background: var(--vic-solid, var(--gold)); opacity: 0;
+  box-shadow: 0 0 9px 2px rgba(var(--vic, 232, 178, 60), 0.55);
   animation: ember-rise 6s linear infinite;
 }
 @keyframes ember-rise {
@@ -430,15 +451,19 @@ body.no-anims .ping .ring { display: none; }
   100% { transform: translate(var(--dx, 0px), -105vh) scale(0.35); opacity: 0; }
 }
 .vic-glyph {
-  font-size: 56px; line-height: 1.1; color: var(--gold);
-  text-shadow: 0 0 26px rgba(232, 178, 60, 0.8);
+  font-size: 56px; line-height: 1.1; color: var(--vic-solid, var(--gold));
+  text-shadow: 0 0 26px rgba(var(--vic, 232, 178, 60), 0.8);
   animation: vic-glyph 2.4s ease-in-out infinite alternate;
 }
 @keyframes vic-glyph {
-  from { text-shadow: 0 0 14px rgba(232, 178, 60, 0.5); }
-  to   { text-shadow: 0 0 36px rgba(232, 178, 60, 0.95); }
+  from { text-shadow: 0 0 14px rgba(var(--vic, 232, 178, 60), 0.5); }
+  to   { text-shadow: 0 0 36px rgba(var(--vic, 232, 178, 60), 0.95); }
 }
-.endgame.win h1 { animation: vic-title 1.1s ease-out both; }
+.endgame.win h1 {
+  color: var(--vic-solid, var(--gold));
+  text-shadow: 0 0 30px rgba(var(--vic, 232, 178, 60), 0.5);
+  animation: vic-title 1.1s ease-out 2.5s both;
+}
 @keyframes vic-title {
   0%   { opacity: 0; letter-spacing: 16px; filter: blur(3px); }
   100% { opacity: 1; letter-spacing: 4px; filter: blur(0); }
@@ -458,12 +483,12 @@ body.no-anims .ping .ring { display: none; }
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid rgba(0, 0, 0, 0.5); color: #0a100d;
   font-weight: bold; font-size: 14px;
-  box-shadow: 0 0 10px rgba(232, 178, 60, 0.35);
+  box-shadow: 0 0 10px rgba(var(--vic, 232, 178, 60), 0.35);
 }
 .vic-disc svg, .vic-disc img { display: block; }
 .vic-rune {
-  font-size: 24px; color: var(--gold);
-  text-shadow: 0 0 12px rgba(232, 178, 60, 0.75);
+  font-size: 24px; color: var(--vic-solid, var(--gold));
+  text-shadow: 0 0 12px rgba(var(--vic, 232, 178, 60), 0.75);
 }
 .vic-stats { font-style: italic; }
 
