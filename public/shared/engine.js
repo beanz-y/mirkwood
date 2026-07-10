@@ -946,8 +946,11 @@ STEPS['end-turn'] = (s) => {
   if (s.niflheim) {
     const removable = [];
     for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-      const t = tileAt(s, r, c);
-      if (t && t.kind !== 'gate' && !occupantsAt(s, r, c).length) removable.push({ r, c });
+      const cl = cellAt(s, r, c);
+      // the Embrace may surrender ANY tile it still sees — Gates and Void Rifts
+      // included (playtest ruling: a tile is on the board until it is unlit) —
+      // sparing only one a soul is standing on.
+      if (cl && (cl.tile || cl.rift) && !occupantsAt(s, r, c).length) removable.push({ r, c });
     }
     if (removable.length) {
       const p = P(s, s.turn);
@@ -1432,11 +1435,17 @@ ACTIONS['niflheim'] = (s, p, payload, aw) => {
   const opt = aw.options.find(o => o.r === payload.r && o.c === payload.c);
   if (!opt) err('Cannot remove that tile.');
   s.awaiting = null;
-  const t = tileAt(s, payload.r, payload.c);
-  s.discard.push(t);
+  const cl = cellAt(s, payload.r, payload.c);
+  const t = cl && cl.tile; // a Void Rift cell has no tile
   s.grid[key(payload.r, payload.c)] = null;
-  ev(s, 'sweep', { cells: [{ r: payload.r, c: payload.c, tile: t, rift: false }] });
-  log(s, `Niflheim's cold claims ${describeTile(t)}.`, 'danger');
+  if (t) {
+    s.discard.push(t);
+    ev(s, 'sweep', { cells: [{ r: payload.r, c: payload.c, tile: t, rift: false }] });
+    log(s, `Niflheim's cold claims ${describeTile(t)}.`, 'danger');
+  } else {
+    ev(s, 'sweep', { cells: [{ r: payload.r, c: payload.c, tile: null, rift: true }] });
+    log(s, `Niflheim's cold swallows a Void Rift.`, 'danger');
+  }
 };
 
 export function concede(s) {

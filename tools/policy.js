@@ -1043,7 +1043,9 @@ export function policy(s, rnd, ctx) {
       }
       let best = aw.options[0], bestScore = -Infinity;
       for (const o of aw.options) {
-        const t = tileAt(s, o.r, o.c);
+        const cl = cellAt(s, o.r, o.c);
+        const t = cl && cl.tile;               // null for a Void Rift
+        const isRift = cl && cl.rift && !t;
         let dPlayers = 99;
         for (const q of s.players) {
           if (!q.placed) continue;
@@ -1053,6 +1055,8 @@ export function policy(s, rnd, ctx) {
         for (const [gr, gc] of gates) dGate = Math.min(dGate, Math.abs(gr - o.r) + Math.abs(gc - o.c));
         const score = dPlayers + 0.5 * dGate
           - (t && t.kind === 'rune' ? 12 : 0)
+          - (t && t.kind === 'gate' ? (t.gate === plan ? 100 : 5) : 0) // never surrender the plan gate; the spare gate is expendable
+          + (isRift ? 6 : 0)                                           // Void Rifts are the most expendable — feed them to the cold first
           - (dGate <= 1 ? 6 : 0)
           - (sacred.has(key(o.r, o.c)) ? 15 : 0)
           + rnd() * 0.2;

@@ -656,6 +656,46 @@ section('end conditions: a gate burning out from under its marked souls blames t
   check(!/Too many Rune Circles/.test(s.lossReason), 'and does NOT blame the rune circles');
 }
 
+section('Niflheim: Gates and Void Rifts are surrenderable, occupied tiles spared');
+{
+  const s = createGame({ seed: 30, stack: deck(20) });
+  doSetup(s);
+  s.stack = []; s.niflheim = true;
+  for (let i = 0; i < SIZE * SIZE; i++) s.grid[i] = null;
+  _test.setTile(s, 0, 0, _test.makeTileDef(s, 'gate', { gate: 'valhalla' }), 0);  // empty gate
+  _test.setTile(s, 5, 5, _test.makeTileDef(s, 'gate', { gate: 'folkvangr' }), 0);  // occupied gate
+  _test.setTile(s, 3, 3, _test.makeTileDef(s, 'cross'), 0);
+  s.grid[key(0, 3)] = { rift: true };                                              // a Void Rift
+  s.players[0].r = 5; s.players[0].c = 5; s.players[0].placed = true;              // soul on the folkvangr gate
+  s.players[1].r = 3; s.players[1].c = 3; s.players[1].placed = true;
+  s.players[2].placed = true; s.players[3].placed = true;
+  s.turn = 0; s.awaiting = null; s.queue.unshift({ t: 'end-turn' }); _test.run(s);
+  check(s.awaiting && s.awaiting.type === 'niflheim', 'niflheim surrender awaited');
+  const has = (r, c) => s.awaiting.options.some(o => o.r === r && o.c === c);
+  check(has(0, 0), 'the empty Gate is surrenderable');
+  check(has(0, 3), 'a Void Rift is surrenderable');
+  check(!has(5, 5), 'the Gate a soul stands on is spared');
+  applyAction(s, 0, { r: 0, c: 0 });                                              // surrender the empty gate
+  check(_test.tileAt(s, 0, 0) === null, 'the surrendered Gate is cleared from the board');
+  check(s.discard.some(t => t.kind === 'gate' && t.gate === 'valhalla'), 'the Gate went to the discard');
+}
+
+section('Niflheim: surrendering a Void Rift clears it without error');
+{
+  const s = createGame({ seed: 31, stack: deck(20) });
+  doSetup(s);
+  s.stack = []; s.niflheim = true;
+  for (let i = 0; i < SIZE * SIZE; i++) s.grid[i] = null;
+  s.grid[key(2, 2)] = { rift: true };
+  s.players.forEach((p, i) => { p.placed = true; p.r = i; p.c = 0; });
+  s.turn = 0; s.awaiting = null; s.queue.unshift({ t: 'end-turn' }); _test.run(s);
+  check(s.awaiting && s.awaiting.options.some(o => o.r === 2 && o.c === 2), 'the Rift is an option');
+  const before = s.discard.length;
+  applyAction(s, 0, { r: 2, c: 2 });
+  check(!s.grid[key(2, 2)], 'the Rift cell is cleared');
+  check(s.discard.length === before, 'a Rift adds nothing to the discard (it has no tile)');
+}
+
 section('end conditions: a lost gate is survivable while enough circles remain to re-swear');
 {
   const s = createGame({ seed: 24, stack: deck(20) });

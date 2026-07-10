@@ -279,8 +279,9 @@ When the last tile leaves the stack, the primordial cold of Niflheim closes in:
 
 - No new paths can ever be kindled.
 - At the end of **every** soul's turn (after any extra steps), the group must
-  surrender one remaining tile from the board (never a Gate, never a tile a
-  soul stands on) — unless that soul spends 1 Resolve to **Ward** the forest.
+  surrender one remaining tile still on the board — **any** tile it lights,
+  including a **Gate** or a **Void Rift**, sparing only one a soul is standing
+  on — unless that soul spends 1 Resolve to **Ward** the forest.
 - Play continues on the dwindling board until the souls win, are cut off,
   or fall.
 
@@ -299,9 +300,13 @@ When the last tile leaves the stack, the primordial cold of Niflheim closes in:
    of its turn to relight itself (TNC only relights via an adjacent lit ally).
    Its purpose is recovering from a **Draugr strike** while alone — falls now
    land lit (departure #8), so a lone faller is no longer stranded by the fall.
-4. **Gates:** exactly 2 (TNC: 4), single-doorway, permanent once placed, exempt
-   from Niflheim removal (permanence would be meaningless otherwise). They can
-   still be lost from the stack — that's the drama of the discard pile.
+4. **Gates:** exactly 2 (TNC: 4), single-doorway, permanent against the everyday
+   mist (a placed Gate is never lost to going unlit). They **can** be lost two
+   ways: burned from the stack before placement (watch the discard pile), and —
+   as of a 2026-07-09 playtest ruling — **surrendered during Niflheim's Embrace**
+   like any other board tile (a Gate/Rift is a tile until it goes unlit), except
+   one a soul is standing on. So a soul on the target Gate protects it; a spare,
+   empty Gate can be fed to the cold to save a path.
 5. **No rune passing** (TNC allows passing keys). Re-attuning at circles is
    the replacement flexibility. If playtests feel too tight, add back a
    "transfer marks between adjacent souls" action.

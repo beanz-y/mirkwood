@@ -581,7 +581,7 @@ const TUT_PAGES = [
       tutCell(tutTile('rune', 0, { fractured: true }), 0, 0)
       + tutCell(tutTile('gate', 1, { gate: 'valhalla' }), 1, 0)
       + tutCell(tutTile('gate', 1, { gate: 'folkvangr' }), 2, 0)),
-    x: `Step into a <b>Rune Circle</b> to take one mark of either gate — it replaces the mark you bear, and marks are never traded. The stones speak to each soul <b>once</b>: circles crumble behind you. The two Gates — <b>Valgrind</b> of Valhalla, and the gate to Freyja's <b>Fólkvangr</b> — have a single doorway each and are permanent once placed. Four souls, four different runes of one gate, one doorstep: that is the way out.`,
+    x: `Step into a <b>Rune Circle</b> to take one mark of either gate — it replaces the mark you bear, and marks are never traded. The stones speak to each soul <b>once</b>: circles crumble behind you. The two Gates — <b>Valgrind</b> of Valhalla, and the gate to Freyja's <b>Fólkvangr</b> — have a single doorway each and are permanent once placed (only Niflheim's Embrace can claim one, and never while a soul stands on it). Four souls, four different runes of one gate, one doorstep: that is the way out.`,
   },
   {
     t: "Niflheim's Embrace",
