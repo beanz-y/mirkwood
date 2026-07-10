@@ -281,6 +281,15 @@ input:focus { outline: 1px solid var(--gold); }
 .perk-line { color: var(--gold); opacity: 0.9; }
 #stack-meter .peek { color: var(--gold); margin-left: 8px; font-size: 12px; }
 
+/* spectators see a falling soul's landing options: their color, nobody's click */
+.watch-fall {
+  fill: rgba(255, 255, 255, 0.03);
+  stroke-width: 2.5; stroke-dasharray: 6 5;
+  pointer-events: none;
+  animation: watchpulse 1.6s ease-in-out infinite alternate;
+}
+@keyframes watchpulse { from { opacity: 0.45; } to { opacity: 0.95; } }
+
 /* ---------------- board svg ---------------- */
 .cell-mist { fill: var(--mist); }
 .cell-empty-lit { fill: #121712; }

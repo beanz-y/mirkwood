@@ -12,6 +12,8 @@ const randomRunes = args.includes('--randomRunes');
 const tail = args.includes('--tail') ? +args[args.indexOf('--tail') + 1] : 50;
 const tilesOverride = args.includes('--tiles') ? JSON.parse(args[args.indexOf('--tiles') + 1]) : null;
 const gateExits = args.includes('--gateExits') ? args[args.indexOf('--gateExits') + 1] : 'one';
+const runePerks = args.includes('--runePerks') || args.includes('--perks');
+const perkSet = args.includes('--perks') ? args[args.indexOf('--perks') + 1].split(',') : null;
 
 const rnd = mulberry(seed * 7 + 3);
 const ctx = {};
@@ -20,6 +22,9 @@ const s = createGame({
   tiles: { ...(TILE_PRESETS[preset] || normTiles({})), ...(tilesOverride || {}) },
   randomRunes,
   gateExits,
+  runePerks,
+  perkSet,
+  uruzAdjacent: preset === 'hard',
 });
 
 function boardSnap(label) {

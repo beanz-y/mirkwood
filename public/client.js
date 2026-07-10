@@ -1101,6 +1101,11 @@ function renderSoul() {
     if (state.runePerks && i.perk) {
       runeLine += `<br><small class="perk-line">✦ ${state.niflheim && i.winterPerk ? i.winterPerk : i.perk}</small>`;
     }
+    // Deep vitality consent: the bearer opens or closes their purse (worker 'lend')
+    if (state.runePerks && p.rune.k === 'uruz' && isMine(seat)) {
+      runeLine += `<br><button class="btn tiny" id="lend-toggle">${p.lendOk === false
+        ? 'Purse closed — tap to lend ◆ (ᚢ)' : 'Purse open — lending ◆ · tap to close (ᚢ)'}</button>`;
+    }
   }
   el.innerHTML = `
     <div class="soul-card ${cls}">
@@ -1125,6 +1130,8 @@ function renderSoul() {
       <button id="soul-rules" class="btn tiny">Full rules</button></p>`;
   const rb = document.getElementById('soul-rules');
   if (rb) rb.onclick = openRules;
+  const lt = document.getElementById('lend-toggle');
+  if (lt) lt.onclick = () => send({ t: 'lend', seat, on: p.lendOk === false });
 }
 
 function runeInfo(rune) {
@@ -1335,6 +1342,15 @@ function renderBoard() {
   const aw = state.awaiting;
   const myDecision = aw && isMine(aw.seat) && state.phase !== 'won' && state.phase !== 'lost';
   if (myDecision) addInteractions(parts, aw);
+  else if (aw && aw.type === 'fall-landing' && state.phase === 'play') {
+    // spectators watch the fall: the tumbling soul's landing options glow in
+    // their color for the whole table — visible to everyone, clickable by nobody
+    const fp = state.players[aw.seat];
+    for (const o of aw.options) {
+      const x = PAD + o.c * CS, y = PAD + o.r * CS;
+      parts.push(`<rect x="${x + 4}" y="${y + 4}" width="${CS - 8}" height="${CS - 8}" rx="8" class="watch-fall" style="stroke:${fp.color}"/>`);
+    }
+  }
   svg.classList.toggle('my-turn', !!myDecision);
 
   parts.push('<g id="ghost-layer" class="ghost"></g>');
@@ -2029,6 +2045,22 @@ function renderModal() {
     out.className = 'btn'; out.textContent = 'Leave the forest';
     out.onclick = () => leaveSaga();
     row.appendChild(out);
+    card.appendChild(row);
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  // Shared joy (Wunjo): the bearer names which neighbor their Stay steels
+  if (aw && aw.type === 'shared-joy' && isMine(aw.seat)) {
+    card.innerHTML = `<h2>Shared joy ᚹ</h2>
+      <p>Your Stay steels a neighbor’s Resolve — who takes heart?</p>`;
+    const row = document.createElement('div'); row.className = 'row';
+    for (const o of aw.options) {
+      const b = document.createElement('button'); b.className = 'btn primary';
+      b.innerHTML = `${escapeHtml(o.name)} <small>${'◆'.repeat(o.resolve)}${'◇'.repeat(Math.max(0, 2 - o.resolve))}</small>`;
+      b.onclick = () => act({ seat: o.seat });
+      row.appendChild(b);
+    }
     card.appendChild(row);
     modal.classList.remove('hidden');
     return;

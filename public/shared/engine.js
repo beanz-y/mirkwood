@@ -43,7 +43,7 @@ export const RUNES = {
   folkvangr: [
     { k: 'berkano', g: 'ᛒ', name: 'Berkano', gloss: 'Birch — nurture and protection',
       perk: 'New growth — fractured paths do not crumble when you leave them',
-      winterPerk: 'Grove shade — the cold takes the tiles beside you last' },
+      winterPerk: 'Grove shade — the cold can never claim the last tile standing beside you' },
     { k: 'uruz',    g: 'ᚢ', name: 'Uruz',    gloss: 'Aurochs — vitality and growth',
       perk: 'Deep vitality — your Resolve cap is 3, and your ◆ may pay for a teammate’s spend on their turn',
       winterPerk: 'Winter strength — your Stay steels +2 ◆' },
@@ -81,8 +81,22 @@ const wrapAdj = (a, b) => { // wrapped orthogonal distance ≤ 1 (0 = sharing a 
 function uruzLender(s, actor) {
   const b = perkBearer(s, 'uruz');
   if (!b || b.seat === actor.seat || b.resolve < 1 || !actor.placed) return null;
+  if (b.lendOk === false) return null; // the bearer has closed their purse
   if (s.uruzAdjacent && wrapAdj(b, actor) !== 1) return null;
   return b;
+}
+
+// Deep vitality consent: the Uruz bearer decides whether their ◆ is open to
+// the party (physical table: they simply hand the token over — or don't).
+// Standing toggle rather than a per-spend prompt: a Brace happens mid-strike,
+// and interrupting it with a second player's consent dialog would stall play.
+export function setLendConsent(s, seat, on) {
+  const p = s.players[seat];
+  if (!p) return;
+  p.lendOk = !!on;
+  log(s, on
+    ? `${p.name} opens their purse — the party may draw on their vitality. (ᚢ)`
+    : `${p.name} closes their purse — their Resolve is their own. (ᚢ)`, 'info');
 }
 function lendResolve(s, actor, what) {
   const b = uruzLender(s, actor);
@@ -1107,11 +1121,16 @@ STEPS['end-turn'] = (s) => {
         if (!removable.length) log(s, `The dawn holds at the gate — the cold finds nothing to take. (ᛞ)`, 'good');
       }
     }
-    // Grove shade (Berkano): the cold takes the tiles beside the bearer LAST
+    // Grove shade (Berkano): one tile beside the bearer is protected as if a
+    // soul stood on it. Since the party chooses its own surrenders, the choice
+    // only BINDS when the cold's last option is a single tile at her side —
+    // that one can never be taken. (No filtering otherwise: the party stays
+    // free to give up whichever tile it judges least dear.)
     const birch = perkBearer(s, 'berkano');
-    if (s.runePerks && birch && removable.length) {
-      const elsewhere = removable.filter(o => wrapAdj(birch, { r: o.r, c: o.c }) !== 1);
-      if (elsewhere.length) removable = elsewhere;
+    if (birch && removable.length === 1
+      && wrapAdj(birch, { r: removable[0].r, c: removable[0].c }) === 1) {
+      log(s, `The grove's shade holds the last path beside ${birch.name} — the cold is denied. (ᛒ)`, 'good');
+      removable = [];
     }
     if (removable.length) {
       const p = P(s, s.turn);
@@ -1282,19 +1301,36 @@ function doStay(s, p, aw) {
     const gain = (s.niflheim && hasPerk(s, p, 'uruz')) ? 2 : 1; // Winter strength
     p.resolve = Math.min(resolveCap(s, p), p.resolve + gain);
     log(s, `${p.name} stands fast and steels their Resolve (+${gain}).`, 'info');
-    // Shared joy: the Wunjo bearer's Stay also steels one adjacent teammate
+    // Shared joy: the Wunjo bearer's Stay also steels one adjacent teammate —
+    // the bearer CHOOSES when more than one stands near (physical table: they
+    // simply say who; digitally a prompt, skipped in the common 0/1 cases)
     if (hasPerk(s, p, 'wunjo')) {
       const near = s.players
         .filter(q => q.placed && q.seat !== p.seat && wrapAdj(q, p) <= 1 && q.resolve < resolveCap(s, q))
         .sort((a, b) => a.resolve - b.resolve);
-      if (near.length) {
+      if (near.length === 1) {
         near[0].resolve++;
         log(s, `${p.name}'s joy steels ${near[0].name} (+1). (ᚹ)`, 'good');
+      } else if (near.length > 1) {
+        s.queue.unshift({ t: 'stay-burn' });
+        s.awaiting = {
+          type: 'shared-joy', seat: p.seat,
+          options: near.map(q => ({ seat: q.seat, name: q.name, resolve: q.resolve })),
+        };
+        return;
       }
     }
   } else {
     log(s, `${p.name} is trapped, hopeless and unmoving.`, 'info');
   }
+  s.queue.unshift({ t: 'stay-burn' });
+}
+
+// the Stay's cost, split out so a perk prompt (Shared joy) may come first:
+// burn the top tile (unless Freyja's hearth is stocked), then check the
+// ground underfoot
+STEPS['stay-burn'] = (s) => {
+  const p = P(s, s.turn);
   // staying burns hope — unless Freyja's hearth is stocked (Fehu). Lingering
   // at a Rune Circle under Random Runes always burns: no free rerolls.
   const hearthT = tileAt(s, p.r, p.c);
@@ -1685,6 +1721,16 @@ ACTIONS['niflheim'] = (s, p, payload, aw) => {
     ev(s, 'sweep', { cells: [{ r: payload.r, c: payload.c, tile: null, rift: true }] });
     log(s, `Niflheim's cold swallows a Void Rift.`, 'danger');
   }
+};
+
+ACTIONS['shared-joy'] = (s, p, payload, aw) => {
+  // the Wunjo bearer names which neighbor their Stay steels
+  const opt = aw.options.find(o => o.seat === (payload.seat | 0));
+  if (!opt) err('They stand too far from the fire.');
+  s.awaiting = null;
+  const q = s.players[opt.seat];
+  q.resolve = Math.min(resolveCap(s, q), q.resolve + 1);
+  log(s, `${p.name}'s joy steels ${q.name} (+1). (ᚹ)`, 'good');
 };
 
 ACTIONS['winter-stores'] = (s, p, payload) => {

@@ -1144,6 +1144,10 @@ export function policy(s, rnd, ctx) {
       return { r: pick.r, c: pick.c };
     }
 
+    case 'shared-joy':
+      // steel the poorest neighbor — the old auto-pick, now an explicit answer
+      return { seat: aw.options.slice().sort((a, b) => a.resolve - b.resolve)[0].seat };
+
     case 'winter-stores': {
       // Freyja's stores (Fehu winter-form): buy back gates and circles always;
       // a plain path only if it sat on somebody's shortest road home

@@ -954,14 +954,46 @@ section('rune perks (host variant)');
   g.players[0].rune = { p: 'folkvangr', k: 'berkano' };
   doSetup(g);
   g.stack = []; g.niflheim = true;
+  // strip the board to the souls' own tiles + ONE tile beside the bearer:
+  // the cold's only claim is the last path at her side — Grove shade binds
+  const keep = new Set(g.players.map(q => key(q.r, q.c)));
+  keep.add(key(1, 2)); // bearer sits at (1,1); her start opens east
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (!keep.has(key(r, c))) g.grid[key(r, c)] = null;
+  }
+  const boardBefore = g.grid.filter(Boolean).length;
   g.awaiting = null; g.queue.length = 0; g.queue.push({ t: 'end-turn' }); _test.run(g);
-  const b = g.players[0];
-  const nearBearer = g.awaiting.options.some(o => {
-    const dr = Math.min(Math.abs(o.r - b.r), SIZE - Math.abs(o.r - b.r));
-    const dc = Math.min(Math.abs(o.c - b.c), SIZE - Math.abs(o.c - b.c));
-    return dr + dc === 1;
-  });
-  check(!nearBearer, 'winter: the cold takes the tiles beside the birch last');
+  check(!(g.awaiting && g.awaiting.type === 'niflheim'),
+    'winter: no surrender is demanded when only the shaded tile remains');
+  check(g.grid.filter(Boolean).length === boardBefore,
+    "winter: the grove's shade holds the last tile beside the birch");
+}
+{
+  // Wunjo — with two neighbors, the bearer CHOOSES who is steeled
+  const s = createGame({ seed: 54, stack: deck(40), runePerks: true });
+  s.players[0].rune = { p: 'folkvangr', k: 'wunjo' };
+  doSetup(s);
+  const t0 = _test.tileAt(s, 1, 1); if (t0) t0.fractured = false;
+  s.players[1].r = 1; s.players[1].c = 2; s.players[1].resolve = 0;
+  s.players[2].r = 0; s.players[2].c = 1; s.players[2].resolve = 1;
+  applyAction(s, 0, { kind: 'stay' });
+  check(s.awaiting && s.awaiting.type === 'shared-joy' && s.awaiting.options.length === 2,
+    'Wunjo: two neighbors — the bearer is asked');
+  applyAction(s, 0, { seat: 2 }); // choose the RICHER neighbor, against the default
+  check(s.players[2].resolve === 2 && s.players[1].resolve === 0,
+    'Wunjo: the chosen neighbor is steeled, not the auto-pick');
+}
+{
+  // Uruz — a closed purse lends nothing
+  const s = createGame({ seed: 55, stack: deck(40), runePerks: true });
+  s.players[1].rune = { p: 'folkvangr', k: 'uruz' };
+  doSetup(s);
+  s.players[1].resolve = 2;
+  s.players[1].lendOk = false; // the bearer closes their purse
+  s.players[0].hopeful = false;
+  s.players[0].resolve = 0;
+  s.awaiting = null; s.queue.unshift({ t: 'action' }); _test.run(s);
+  check(s.awaiting.rekindle !== true, 'Uruz: a closed purse lends nothing');
 }
 {
   // Winter-form: deathless roots (Eihwaz) — a fall with no stack still lands

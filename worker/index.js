@@ -6,7 +6,7 @@
  * authoritative engine state in DO storage so games survive disconnects and
  * hibernation. WebSockets use the hibernation API, so idle rooms cost nothing.
  */
-import { createGame, applyAction, publicState, concede, renameSoul, normTiles, STATE_VERSION, PLAYER_COLORS, TOKEN_ICON_KEYS } from '../public/shared/engine.js';
+import { createGame, applyAction, publicState, concede, renameSoul, setLendConsent, normTiles, STATE_VERSION, PLAYER_COLORS, TOKEN_ICON_KEYS } from '../public/shared/engine.js';
 import { logSaga, telemetryConfigured } from './firestore.js';
 
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -457,6 +457,19 @@ export class MirkwoodRoom {
         for (const w of this.ctx.getWebSockets()) {
           if (w !== ws) this.send(w, relay);
         }
+        return;
+      }
+      case 'lend': {
+        // Deep vitality consent (rune perks): the seat's owner opens or closes
+        // their purse. Standing toggle — valid any time mid-saga.
+        if (!r.state || !r.state.runePerks) return;
+        const i = msg.seat | 0;
+        if (i < 0 || i > 3) return;
+        const seat = r.seats[i];
+        if (!seat || seat.token !== token) return;
+        setLendConsent(r.state, i, !!msg.on);
+        await this.save();
+        this.broadcast();
         return;
       }
       case 'act': {
