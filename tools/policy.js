@@ -155,16 +155,35 @@ export function planPantheon(s, ctx) {
   return pick;
 }
 
-// A gate has ONE doorway: marching must aim at the cell the doorway faces,
-// or souls path to the gate's back wall and camp there forever (observed!)
+// Marching must aim at a cell a doorway faces, or souls path to the gate's
+// back wall and camp there forever (observed!). Gates normally have ONE
+// doorway; the gateExits balance variants open more — `approaches` lists them
+// all and callers steer for the NEAREST one (identical to the old single-
+// approach behaviour when there is only one).
 export function gateApproach(s, plan) {
   const gs = tilesOf(s, 'gate', plan);
   if (!gs.length) return null;
   const [gr, gc] = gs[0];
   const t = tileAt(s, gr, gc);
-  const d = t.exits.findIndex(Boolean);
-  return { gate: [gr, gc], approach: stepDir(gr, gc, d) };
+  const approaches = [];
+  for (let d = 0; d < 4; d++) if (t.exits[d]) approaches.push(stepDir(gr, gc, d));
+  return { gate: [gr, gc], approach: approaches[0], approaches };
 }
+
+// nearest doorway-approach cell to (r,c), and the crow-flies distance to it
+export function nearestApproach(ga, r, c) {
+  let best = ga.approach, bd = Infinity;
+  for (const [ar, ac] of ga.approaches) {
+    const d = wrapDist(r, c, ar, ac);
+    if (d < bd) { bd = d; best = [ar, ac]; }
+  }
+  return best;
+}
+export const approachDist = (ga, r, c) => {
+  let bd = Infinity;
+  for (const [ar, ac] of ga.approaches) bd = Math.min(bd, wrapDist(r, c, ar, ac));
+  return bd;
+};
 
 export function assemblyMode(s, plan) {
   return tilesOf(s, 'gate', plan).length > 0
@@ -213,7 +232,7 @@ function scorePlacement(s, tile, r, c, rot) {
     for (let d = 0; d < 4; d++) if (exits[d]) seen.push(...walkLane(getCell, r, c, d).line);
     return -(20 * playersOn(s, seen)) - 0.4 * seen.length;
   }
-  const exits = exitsFor(tile.kind, rot);
+  const exits = exitsFor(tile.kind, rot, s.gateExits); // gates honor the doorway variant
   let score = -laneRisk(s, r, c, exits, tile.kind);
   for (let d = 0; d < 4; d++) {
     if (!exits[d]) continue;
@@ -296,7 +315,7 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
       for (const [lr, lc] of [[mv.r, i], [i, mv.c]]) {
         if (cellAt(s, lr, lc) || lit.has(key(lr, lc))) continue;
         let v = 0;
-        if (ga) v += 0.9 * wrapDist(lr, lc, ga.approach[0], ga.approach[1]);
+        if (ga) v += 0.9 * approachDist(ga, lr, lc);
         let dm = 99;
         for (const q of s.players) {
           if (!q.placed || !q.hopeful || q.seat === p.seat) continue;
@@ -355,19 +374,18 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
     // there instead of stranding itself across a board that won't grow back
     const ga = gateApproach(s, plan);
     if (ga) {
-      const [ar, ac] = ga.approach;
       const lateness = Math.max(0, (28 - s.stack.length) / 9); // 0 early → ~2.5 as the stack empties
-      score += (P.gateFishBase + P.gateFishLate * lateness) * (wrapDist(p.r, p.c, ar, ac) - wrapDist(mv.r, mv.c, ar, ac));
+      score += (P.gateFishBase + P.gateFishLate * lateness) * (approachDist(ga, p.r, p.c) - approachDist(ga, mv.r, mv.c));
     }
   } else {
     if (dt && dt.kind === 'rune') score -= 6; // a marked soul crumbles it for nothing
     const allMarked = s.players.every(q => hasGoodMark(s, q, plan));
     if (goals.length) {
-      // aim the march at the DOORWAY cell, not the gate's back wall
+      // aim the march at the nearest DOORWAY cell, not the gate's back wall
       const ga = gateApproach(s, plan);
-      const [gr, gc] = ga ? ga.approach : goals[0];
-      const d0 = wrapDist(p.r, p.c, gr, gc);
-      const d1 = wrapDist(mv.r, mv.c, gr, gc);
+      const dApp = (r, c) => ga ? approachDist(ga, r, c) : wrapDist(r, c, goals[0][0], goals[0][1]);
+      const d0 = dApp(p.r, p.c);
+      const d1 = dApp(mv.r, mv.c);
       score += (allMarked ? P.marchAll : P.march) * (d0 - d1); // march on the gate; sprint when the set is complete
       const dmin = dt ? nearest(bfs(s, mv.r, mv.c), goals) : Infinity;
       if (dmin <= 3) score += P.nearGate / (1 + dmin);
@@ -383,7 +401,7 @@ function scoreMove(s, p, mv, plan, rnd, ctx = {}) {
           if (!dt.exits[d]) continue;
           const [nr, nc] = stepDir(mv.r, mv.c, d);
           if (cellAt(s, nr, nc)) continue;
-          const toward = wrapDist(nr, nc, gr, gc) < wrapDist(mv.r, mv.c, gr, gc);
+          const toward = dApp(nr, nc) < dApp(mv.r, mv.c);
           score += toward ? 0.7 : (s.stack.length < 25 ? -0.5 : 0.1);
         }
       }
@@ -526,6 +544,7 @@ function cloneState(s) {
     blindCtx: s.blindCtx ? { ...s.blindCtx } : null,
     movesThisTurn: s.movesThisTurn,
     randomRunes: s.randomRunes,
+    gateExits: s.gateExits, // rollout re-placements must keep the doorway variant
     tileTotals: { ...s.tileTotals },
   };
 }
@@ -637,7 +656,7 @@ export function computePlan(s, ctx) {
   // an unmarked soul with no reachable circle FISHES toward the gate region (its
   // moves open fresh mist — a chance to surface a circle — while trending home).
   for (const q of placed) if (!good(q) && !assign[q.seat]) {
-    assign[q.seat] = { goal: 'fish', target: ga ? ga.approach : null };
+    assign[q.seat] = { goal: 'fish', target: ga ? nearestApproach(ga, q.r, q.c) : null };
   }
   // a marked soul converges on the doorway — UNLESS its light is holding a circle
   // an unmarked teammate is assigned to and hasn't reached yet (guard duty).
@@ -651,7 +670,7 @@ export function computePlan(s, ctx) {
       if (Math.abs(q.r - cr) + Math.abs(q.c - cc) === 1) { guard = [cr, cc]; break; }
     }
     assign[q.seat] = guard ? { goal: 'guard', target: guard }
-      : { goal: 'gate', target: ga ? ga.approach : null };
+      : { goal: 'gate', target: ga ? nearestApproach(ga, q.r, q.c) : null };
   }
   return { plan, ga, econ, assign };
 }
@@ -662,7 +681,7 @@ export function computePlan(s, ctx) {
 function scorePlanMove(s, p, mv, P2, rnd, ctx) {
   if (mv.kind === 'jump') return scoreMove(s, p, mv, P2.plan, rnd, ctx); // rare; reuse greedy valuation
   const P = (ctx && ctx.params) || DEFAULT_PARAMS;
-  const a = P2.assign[p.seat] || { goal: 'fish', target: P2.ga ? P2.ga.approach : null };
+  const a = P2.assign[p.seat] || { goal: 'fish', target: P2.ga ? nearestApproach(P2.ga, p.r, p.c) : null };
   let score = rnd() * 0.1;
   const sim = triggerSim(s, p, mv);
   score -= 12 * sim.victims;
@@ -789,7 +808,7 @@ function plannerDecision(s, rnd, ctx) {
   const p = s.players[aw.seat];
   const P2 = computePlan(s, ctx);
   ctx.econ = P2.econ;
-  const a = P2.assign[p.seat] || { goal: 'fish', target: P2.ga ? P2.ga.approach : null };
+  const a = P2.assign[p.seat] || { goal: 'fish', target: P2.ga ? nearestApproach(P2.ga, p.r, p.c) : null };
   const good = hasGoodMark(s, p, P2.plan);
   const myTile = tileAt(s, p.r, p.c);
 
@@ -1096,8 +1115,9 @@ export function policy(s, rnd, ctx) {
         let dGate = 0;
         const ga = gateApproach(s, plan);
         if (ga) {
-          const [ar, ac] = ga.approach;
-          dGate = Math.abs(ar - o.r) + Math.abs(ac - o.c);
+          // nearest doorway (original non-wrapped manhattan kept on purpose)
+          dGate = 99;
+          for (const [ar, ac] of ga.approaches) dGate = Math.min(dGate, Math.abs(ar - o.r) + Math.abs(ac - o.c));
         }
         const score = -(standingDanger(s, o.r, o.c) ? 8 : 0) - dmin - 0.8 * dGate + rnd() * 0.3;
         if (score > bestScore) { bestScore = score; best = o; }

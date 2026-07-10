@@ -96,6 +96,15 @@ export function normTiles(cfg) {
 }
 
 // Base exits (before rotation), N,E,S,W
+// Gate doorway variants (balance experiments; 'one' is the live rule):
+// one = the classic single doorway, straight = two opposite doorways,
+// tee = three doorways. Selected per game via createGame({ gateExits }),
+// carried on state so persisted games and mixed rooms are unaffected.
+export const GATE_EXIT_STYLES = {
+  one:      [1, 0, 0, 0],
+  straight: [1, 0, 1, 0],
+  tee:      [1, 1, 0, 1],
+};
 const BASE_EXITS = {
   start:    [1, 1, 0, 0],
   straight: [1, 0, 1, 0],
@@ -106,8 +115,12 @@ const BASE_EXITS = {
   draugr:   [1, 1, 1, 1],
 };
 
-export function exitsFor(kind, rot) {
-  const base = BASE_EXITS[kind];
+export function exitsFor(kind, rot, gateExits) {
+  // gateExits (optional) picks the gate-doorway variant; omitted = 'one',
+  // so every existing caller keeps the live single-doorway geometry
+  const base = kind === 'gate'
+    ? (GATE_EXIT_STYLES[gateExits] || GATE_EXIT_STYLES.one)
+    : BASE_EXITS[kind];
   const out = [0, 0, 0, 0];
   for (let d = 0; d < 4; d++) out[d] = base[(d - rot + 4) % 4];
   return out;
@@ -206,6 +219,9 @@ export function createGame(opts = {}) {
     blindCtx: null,
     movesThisTurn: 0,
     randomRunes: !!opts.randomRunes, // host variant: the stones choose your mark
+    // gate-doorway variant (balance experiments): 'one' (live rule, default) |
+    // 'straight' | 'tee'. Old persisted states lack the field → 'one'.
+    gateExits: GATE_EXIT_STYLES[opts.gateExits] ? opts.gateExits : 'one',
   };
   const names = opts.names || DEFAULT_NAMES;
   const looks = opts.appearance || []; // per seat: {color, icon} chosen in the lobby
@@ -267,7 +283,7 @@ const riftAt = (s, r, c) => { const cl = s.grid[key(r, c)]; return !!(cl && cl.r
 const occupantsAt = (s, r, c) => s.players.filter(p => p.placed && p.r === r && p.c === c);
 
 function setTile(s, r, c, def, rot) {
-  s.grid[key(r, c)] = { tile: { ...def, rot, exits: exitsFor(def.kind, rot) } };
+  s.grid[key(r, c)] = { tile: { ...def, rot, exits: exitsFor(def.kind, rot, s.gateExits) } };
 }
 
 function err(msg) { const e = new Error(msg); e.illegal = true; throw e; }
@@ -725,7 +741,7 @@ STEPS['illum'] = (s, { forSeat, chooser }) => {
   const tile = drawTile(s);
   const withRots = targets.map(tg => ({
     r: tg.r, c: tg.c,
-    rots: [0, 1, 2, 3].filter(rot => exitsFor(tile.kind, rot)[OPP(tg.d)]),
+    rots: [0, 1, 2, 3].filter(rot => exitsFor(tile.kind, rot, s.gateExits)[OPP(tg.d)]),
   }));
   s.awaiting = { type: 'place-tile', seat: chooser, forSeat, tile, targets: withRots };
 };
@@ -1221,7 +1237,7 @@ function doMove(s, p, mv, then) {
       startHitWave(s, trig, { mover: p.seat, lateral: false });
       return;
     }
-    const rots = [0, 1, 2, 3].filter(rot => exitsFor(tile.kind, rot)[OPP(d)]);
+    const rots = [0, 1, 2, 3].filter(rot => exitsFor(tile.kind, rot, s.gateExits)[OPP(d)]);
     s.blindCtx = { origin: [or_, oc], d, then, originFractured };
     s.awaiting = { type: 'place-blind', seat: p.seat, tile, r: nr, c: nc, rots };
     return;
@@ -1407,7 +1423,7 @@ ACTIONS['scramble'] = (s, p, { r, c }, aw) => {
   }
   const rots = aw.free
     ? [0, 1, 2, 3]
-    : [0, 1, 2, 3].filter(rot => exitsFor(tile.kind, rot)[OPP(opt.d)]);
+    : [0, 1, 2, 3].filter(rot => exitsFor(tile.kind, rot, s.gateExits)[OPP(opt.d)]);
   s.blindCtx = { scramble: true, then, from: [aw.from.r, aw.from.c], banish: !!aw.banish };
   s.awaiting = { type: 'place-scramble', seat: p.seat, tile, r, c, rots };
 };
@@ -1518,6 +1534,7 @@ export function publicState(s) {
     events: s.events,
     lastTurn: s.lastTurn || null,
     randomRunes: !!s.randomRunes,
+    gateExits: s.gateExits || 'one',
     tileTotals: s.tileTotals || null,
     turnsTaken: s.turnsTaken || 0,
     seq: s.seq || 0,

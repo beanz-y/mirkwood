@@ -75,6 +75,8 @@ function parseTiles(str) {
   return out;
 }
 const TILE_OVERRIDE = parseTiles(opt('tiles', null));
+// gate doorway variant: one (live rule) | straight | tee — balance experiments
+const GATE_EXITS = opt('gateExits', 'one');
 
 // policy + shared helpers live in tools/policy.js — tune the party there
 import { policy, hasGoodMark, mulberry, tileAt, tilesOf, DEFAULT_PARAMS } from './policy.js';
@@ -101,6 +103,7 @@ function playGame(seed) {
     seed,
     tiles: { ...(TILE_PRESETS[PRESET] || normTiles({})), ...(TILE_OVERRIDE || {}) },
     randomRunes: RANDOM_RUNES,
+    gateExits: GATE_EXITS,
   });
   let steps = 0, emptyStackSteps = 0;
   let circlesRevealed = 0, attunes = 0;
@@ -160,7 +163,7 @@ function report(results, errors, ms) {
     reasons[short] = (reasons[short] || 0) + 1;
   }
   const summary = {
-    policy: 'v2-cooperative', preset: PRESET, randomRunes: RANDOM_RUNES,
+    policy: 'v2-cooperative', preset: PRESET, randomRunes: RANDOM_RUNES, gateExits: GATE_EXITS,
     games: results.length, errors, jobs: JOBS, wins: wins.length,
     winRate: +(100 * wins.length / Math.max(1, results.length)).toFixed(2),
     avgTurns: +avg(results, r => r.turns), avgStackLeft: +avg(results, r => r.stackLeft),
@@ -168,7 +171,7 @@ function report(results, errors, ms) {
     msPerGame: +(ms / Math.max(1, results.length)).toFixed(2),
   };
   console.log('\n=== Mirkwood self-play (policy v2 — cooperative) ===');
-  console.log(`preset=${PRESET} randomRunes=${RANDOM_RUNES} games=${results.length} errors=${errors} (${ms}ms, ${summary.msPerGame}ms/game${JOBS > 1 ? `, ${JOBS} jobs` : ''})`);
+  console.log(`preset=${PRESET} randomRunes=${RANDOM_RUNES}${GATE_EXITS !== 'one' ? ` gateExits=${GATE_EXITS}` : ''} games=${results.length} errors=${errors} (${ms}ms, ${summary.msPerGame}ms/game${JOBS > 1 ? `, ${JOBS} jobs` : ''})`);
   console.log(`wins: ${wins.length}  (${summary.winRate}%)`);
   console.log(`avg turns: ${summary.avgTurns}   avg stack left: ${summary.avgStackLeft}   avg matching marks at end: ${summary.avgGoodMarks}`);
   console.log(`circle economy: revealed ${avg(results, r => r.circlesRevealed)}/6 · attuned ${avg(results, r => r.attunes)} · burned in stack ${avg(results, r => r.circlesBurnedInStack)} · plan flips ${avg(results, r => r.planFlips)}`);

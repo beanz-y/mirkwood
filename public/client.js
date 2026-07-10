@@ -1900,6 +1900,29 @@ function renderModal() {
   const card = $('modal-card');
   const aw = state && state.awaiting;
 
+  // VICTORY FANFARE: winning is rare and hard-earned — it must never read like
+  // the loss screen at a glance. A golden backdrop wash (#modal.victory) +
+  // rising embers behind the card; both drop instantly on any other modal
+  // (incl. the leave-confirm) and under Animations: off the static gold
+  // styling still carries the message.
+  const isWin = !modalLock && state && state.phase === 'won';
+  modal.classList.toggle('victory', !!isWin);
+  const oldEmbers = modal.querySelector('#victory-embers');
+  if (!isWin && oldEmbers) oldEmbers.remove();
+  if (isWin && anims && !oldEmbers) {
+    const em = document.createElement('div');
+    em.id = 'victory-embers';
+    for (let i = 0; i < 26; i++) {
+      const sp = document.createElement('span');
+      const sz = (3 + Math.random() * 4).toFixed(1);
+      sp.style.cssText = `left:${(Math.random() * 100).toFixed(1)}%;width:${sz}px;height:${sz}px;`
+        + `--dx:${(Math.random() * 120 - 60).toFixed(0)}px;`
+        + `animation-duration:${(4 + Math.random() * 5).toFixed(1)}s;animation-delay:${(Math.random() * 6).toFixed(1)}s`;
+      em.appendChild(sp);
+    }
+    modal.insertBefore(em, card);
+  }
+
   // custom confirm has priority
   if (modalLock) {
     card.innerHTML = `<p style="font-size:16px;color:var(--text)">${escapeHtml(modalLock.text)}</p>`;
@@ -1918,13 +1941,36 @@ function renderModal() {
   // endgame
   if (state.phase === 'won' || state.phase === 'lost') {
     const win = state.phase === 'won';
-    card.innerHTML = `<div class="endgame ${win ? 'win' : 'loss'}">
-      <div style="font-size:44px">${win ? 'ᚹ' : 'ᛁ'}</div>
-      <h1>${win ? GATE_NAMES[state.winnerGate].toUpperCase() : 'THE MIST TAKES ALL'}</h1>
-      <p>${win
-        ? 'The four runes blaze as one. The gate swings wide, and the souls pass out of Myrkviðr forever.'
-        : escapeHtml(state.lossReason || 'The souls are lost.')}</p>
-    </div>`;
+    if (win) {
+      // the gate's own glyph (Ansuz for Valhalla, Fehu for Fólkvangr), the four
+      // souls with the runes they bore, and the saga's numbers — a win this
+      // hard deserves to be shown, not implied
+      const gglyph = state.winnerGate === 'valhalla' ? 'ᚨ' : 'ᚠ';
+      const souls = state.players.map((q, i) => {
+        const info = q.rune && RUNES[q.rune.p] ? RUNES[q.rune.p].find(rn => rn.k === q.rune.k) : null;
+        const mark = q.icon && TOKEN_ICONS[q.icon]
+          ? sigilHTML(q.icon, '#0a100d', 16)
+          : (q.name[0] || '?').toUpperCase();
+        return `<span class="vic-soul" style="animation-delay:${(0.9 + i * 0.18).toFixed(2)}s" title="${escapeHtml(q.name)}">
+          <span class="vic-disc" style="background:${q.color}">${mark}</span>
+          <span class="vic-rune">${info ? info.g : ''}</span></span>`;
+      }).join('');
+      card.innerHTML = `<div class="endgame win">
+        <div class="vic-glyph">${gglyph}</div>
+        <h1>${GATE_NAMES[state.winnerGate].toUpperCase()}</h1>
+        <p class="vic-sub">The four runes blaze as one. The gate swings wide,
+        and the souls pass out of Myrkviðr forever.</p>
+        <div class="vic-souls">${souls}</div>
+        <p class="vic-stats">A saga of ${state.turnsTaken} turns,
+        with ${state.stackCount === 0 ? 'not one tile' : state.stackCount === 1 ? 'a single tile' : state.stackCount + ' tiles'} of hope to spare.</p>
+      </div>`;
+    } else {
+      card.innerHTML = `<div class="endgame loss">
+        <div style="font-size:44px">ᛁ</div>
+        <h1>THE MIST TAKES ALL</h1>
+        <p>${escapeHtml(state.lossReason || 'The souls are lost.')}</p>
+      </div>`;
+    }
     const row = document.createElement('div'); row.className = 'row';
     if (room.youAreHost) {
       const again = document.createElement('button');

@@ -768,6 +768,26 @@ section('burn events name the loss; a lost gate seals its runes');
   check(s.phase === 'play', 'an empty pool does not wedge or end the game');
 }
 
+// ---------------------------------------------------------------- gate doorway variants
+section('gate doorway variants (balance experiments)');
+{
+  const j = a => JSON.stringify(a);
+  check(j(exitsFor('gate', 0)) === j([1, 0, 0, 0]), 'default gate keeps the single doorway');
+  check(j(exitsFor('gate', 0, 'one')) === j([1, 0, 0, 0]), "explicit 'one' matches the default");
+  check(j(exitsFor('gate', 1, 'straight')) === j([0, 1, 0, 1]), 'straight gate: two opposite doorways, rotated');
+  check(exitsFor('gate', 0, 'tee').filter(Boolean).length === 3, 'tee gate opens three ways');
+  const s = createGame({ seed: 31, stack: deck(40), gateExits: 'straight' });
+  check(s.gateExits === 'straight', 'the variant rides on the state');
+  doSetup(s);
+  _test.setTile(s, 3, 3, _test.makeTileDef(s, 'gate', { gate: 'valhalla' }), 0);
+  const t = _test.tileAt(s, 3, 3);
+  check(t.exits[0] === 1 && t.exits[2] === 1 && t.exits[1] === 0 && t.exits[3] === 0,
+    'a placed gate carries the variant doorways');
+  check(createGame({ seed: 32, stack: deck(10) }).gateExits === 'one', 'default games keep one doorway');
+  check(createGame({ seed: 33, stack: deck(10), gateExits: 'nonsense' }).gateExits === 'one',
+    'unknown variants fall back to the live rule');
+}
+
 // ---------------------------------------------------------------- full random game smoke test
 section('smoke: random self-play (200 games)');
 {

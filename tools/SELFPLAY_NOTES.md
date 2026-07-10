@@ -6,6 +6,42 @@ memory; this file is the technical detail a coding session needs.*
 
 ---
 
+## UPDATE (2026-07-10 — GATE DOORWAY experiment: the biggest balance lever yet)
+
+Dan + wife's test idea: gates currently have ONE doorway (a big departure);
+measure two-doorway ("straight") and three-doorway ("tee") gates.
+
+Engine grew `createGame({ gateExits: 'one'|'straight'|'tee' })` (state-carried,
+default 'one', additive — no STATE_VERSION bump; `GATE_EXIT_STYLES` export;
+`exitsFor(kind, rot, gateExits)` optional 3rd param). Run via
+`node tools/selfplay.js --gateExits straight|tee ...` (also on trace.js).
+Policy was made multi-doorway aware FIRST (gateApproach → `approaches[]` +
+`nearestApproach`/`approachDist`; march/fish/jump/landing/plan targets steer
+for the nearest doorway) — byte-identical at one doorway, verified by a full
+bench checksum (+0.00 every cell) before measuring. policy `cloneState` carries
+`gateExits` (rollout re-placements would silently revert otherwise).
+
+**Results (Normal preset, seed 1000, 20k games; plan4 = 2k games):**
+
+| gateExits | greedy | planner | planner+rollouts4 | Hard planner |
+|---|---|---|---|---|
+| one (live) | 0.42% | 0.65% | 1.00% | 0.06% |
+| straight | 1.01% (2.4×) | 1.47% (2.3×) | 1.65% | 0.11% (~2×) |
+| tee | 2.23% (5.3×) | 2.58% (4.0×) | 2.60% | 0.31% (~5×) |
+
+- **Consistent multiplier across bot strengths and presets: straight ≈ 2–2.5×,
+  tee ≈ 4–5×.** The strongest single balance lever measured to date (compare:
+  rune 6→8 was 2.6×, +16 tiles 5× — but those change the game's economy;
+  doorways only relax the endgame funnel).
+- Loss split confirms the mechanism: scarcity stays ~56% and avg marks stay
+  2.8 under every variant — the wins come ENTIRELY out of the assembly/severed
+  losses. Doorways don't make circles; they make the last 5 turns survivable.
+- Planner at tee (2.58%) lands in the ~2% human band (TNC-calibrated); straight
+  lands ~1.5%.
+- NOT live: engine option + tools only. To ship: gate ART draws one doorway
+  (client tileSVG), walkthrough/rules text say "one doorway", RULES.md
+  departure #4 wording, host toggle (or new default) — none touched.
+
 ## UPDATE (2026-07-09 session 4 — bench.js + the tactical pass: planner 23.8→37.6%)
 
 **Measure with `tools/bench.js` from now on.** It runs the fixed config×mode
