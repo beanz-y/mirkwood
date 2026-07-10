@@ -1,0 +1,123 @@
+{
+  "meta": {
+    "date": "2026-07-10T02:30:22.449Z",
+    "label": "post-session (tactical pass + search tweaks)",
+    "args": "--compare tools/bench-baseline.json --label post-session (tactical pass + search tweaks) --out tools/bench-current.json"
+  },
+  "cells": {
+    "control/greedy": {
+      "games": 2000,
+      "errors": 0,
+      "wins": 457,
+      "winRate": 22.85,
+      "sigma": 0.94,
+      "avgGoodMarks": 3.9,
+      "avgStackLeft": 2.1,
+      "avgTurns": 50.9,
+      "msPerGame": 0.84,
+      "buckets": {
+        "severed": 1444,
+        "gatesLost": 5,
+        "fall": 33,
+        "gateOrphan": 17,
+        "scarcity": 42,
+        "stalemate": 2
+      }
+    },
+    "control/planner": {
+      "games": 2000,
+      "errors": 0,
+      "wins": 751,
+      "winRate": 37.55,
+      "sigma": 1.08,
+      "avgGoodMarks": 3.9,
+      "avgStackLeft": 2.7,
+      "avgTurns": 53.7,
+      "msPerGame": 0.78,
+      "buckets": {
+        "fall": 47,
+        "severed": 1105,
+        "scarcity": 68,
+        "stalemate": 14,
+        "gateOrphan": 12,
+        "gatesLost": 3
+      }
+    },
+    "mid/greedy": {
+      "games": 6000,
+      "errors": 0,
+      "wins": 50,
+      "winRate": 0.83,
+      "sigma": 0.12,
+      "avgGoodMarks": 2.9,
+      "avgStackLeft": 7.4,
+      "avgTurns": 31.7,
+      "msPerGame": 0.42,
+      "buckets": {
+        "fall": 310,
+        "scarcity": 2540,
+        "severed": 2627,
+        "gateOrphan": 309,
+        "gatesLost": 115,
+        "stalemate": 49
+      }
+    },
+    "mid/planner": {
+      "games": 6000,
+      "errors": 0,
+      "wins": 108,
+      "winRate": 1.8,
+      "sigma": 0.17,
+      "avgGoodMarks": 2.9,
+      "avgStackLeft": 8.5,
+      "avgTurns": 29.4,
+      "msPerGame": 0.39,
+      "buckets": {
+        "scarcity": 2954,
+        "gatesLost": 117,
+        "fall": 286,
+        "severed": 2278,
+        "gateOrphan": 245,
+        "stalemate": 12
+      }
+    },
+    "normal/greedy": {
+      "games": 6000,
+      "errors": 0,
+      "wins": 26,
+      "winRate": 0.43,
+      "sigma": 0.08,
+      "avgGoodMarks": 2.8,
+      "avgStackLeft": 6.9,
+      "avgTurns": 27.6,
+      "msPerGame": 0.39,
+      "buckets": {
+        "scarcity": 2649,
+        "severed": 2511,
+        "fall": 354,
+        "gateOrphan": 304,
+        "gatesLost": 125,
+        "stalemate": 31
+      }
+    },
+    "normal/planner": {
+      "games": 6000,
+      "errors": 0,
+      "wins": 43,
+      "winRate": 0.72,
+      "sigma": 0.11,
+      "avgGoodMarks": 2.8,
+      "avgStackLeft": 8.2,
+      "avgTurns": 25.5,
+      "msPerGame": 0.38,
+      "buckets": {
+        "severed": 2157,
+        "scarcity": 3047,
+        "fall": 330,
+        "gateOrphan": 300,
+        "gatesLost": 121,
+        "stalemate": 2
+      }
+    }
+  }
+}

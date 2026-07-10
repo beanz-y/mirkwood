@@ -55,7 +55,14 @@ button, input, select, textarea, a,
   text-align: center;
 }
 .title {
-  font-size: 44px; letter-spacing: 10px; margin: 0;
+  /* scale with the viewport so the letter-spaced wordmark never overflows the
+     lobby card on narrow phones; text-indent mirrors the letter-spacing because
+     the spacing also trails the LAST glyph — without it the word sits ~5px
+     off-center even when it fits */
+  font-size: clamp(24px, 9vw, 44px);
+  letter-spacing: clamp(3px, 2vw, 10px);
+  text-indent: clamp(3px, 2vw, 10px);
+  margin: 0;
   color: var(--gold);
   text-shadow: 0 0 24px rgba(232,178,60,0.35);
 }
@@ -302,6 +309,37 @@ input:focus { outline: 1px solid var(--gold); }
 /* the live ghost shown to out-of-turn players & watchers (another soul's move) */
 .live-ghost { pointer-events: none; opacity: 0.7; }
 
+/* burn reveal: chips naming what the mist takes when stack tiles burn (draugr
+   strikes, notable stillness losses). A burned GATE gets a big lingering
+   banner — players kept missing it in the log and swearing to a dead gate.
+   Base styles are fully visible: body.no-anims strips the animation and the
+   JS removal timer handles cleanup, so the info still shows with motion off. */
+#burn-overlay {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  z-index: 30; pointer-events: none; width: max-content; max-width: 94%;
+}
+.burn-chip {
+  padding: 5px 14px; border-radius: 8px; font-size: 14px; text-align: center;
+  background: rgba(16, 11, 9, 0.93); border: 1px solid #5a4632; color: var(--dim);
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+  animation: burnchip 3s ease-out both;
+}
+.burn-chip.rune { color: #d99a5f; border-color: #7a5a38; }
+.burn-chip.gate {
+  font-size: 17px; font-weight: bold; padding: 9px 20px;
+  color: var(--danger); border: 1px solid var(--gold);
+  text-shadow: 0 0 14px rgba(220, 90, 70, 0.5);
+  box-shadow: 0 0 26px rgba(232, 178, 60, 0.25), 0 2px 14px rgba(0, 0, 0, 0.6);
+  animation-duration: 4.6s;
+}
+@keyframes burnchip {
+  0%   { opacity: 0; transform: translateY(10px); }
+  8%   { opacity: 1; transform: translateY(0); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-16px); }
+}
+
 /* ping: a transient "look here" sonar marker anyone can drop on a cell */
 #ping-overlay { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 25; }
 .ping { position: absolute; width: 0; height: 0; }
@@ -358,6 +396,12 @@ body.no-anims .ping .ring { display: none; }
 .rune-col.folkvangr .glyph { color: var(--good); }
 .rune-btn .taken { margin-left: auto; font-size: 11px; color: var(--danger); }
 .rune-btn.mine { border-color: var(--gold); }
+/* a wholly lost gate seals its runes: greyed column, dead buttons */
+.rune-col.lost { opacity: 0.45; }
+.rune-col.lost h4 { color: var(--danger); }
+.gate-lost-tag { display: block; font-size: 10px; letter-spacing: 0; color: var(--danger); font-weight: normal; }
+.rune-btn:disabled { cursor: not-allowed; }
+.rune-btn:disabled:hover { border-color: var(--line); }
 
 .endgame h1 { font-size: 34px; letter-spacing: 4px; margin: 6px 0; }
 .endgame.win h1 { color: var(--gold); text-shadow: 0 0 30px rgba(232,178,60,0.5); }

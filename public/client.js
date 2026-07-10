@@ -99,7 +99,7 @@ function buildTimeline(events, cap = 2.8) {
   const T = {
     moves: {}, dims: {}, brights: {}, shakes: {},
     falls: [], collapses: [], fades: [], reveals: {}, attacks: [],
-    banishes: [], runes: [], blooms: [], stays: [], burn: false, total: 0,
+    banishes: [], runes: [], blooms: [], stays: [], burnFx: [], burn: false, total: 0,
   };
   let t = 0;
   // token movement is kept as ordered segments per soul so a whole replayed
@@ -148,7 +148,11 @@ function buildTimeline(events, cap = 2.8) {
         T.stays.push({ seat: e.seat, at: t });
         t += 0.25; break;
       case 'burn':
-        T.burn = true; break;
+        T.burn = true;
+        T.burnFx.push({ tiles: e.tiles || [], at: t });
+        // a notable loss (a gate, a circle) earns its own beat in the sequence
+        if ((e.tiles || []).some(x => x.kind === 'gate' || x.kind === 'rune')) t += 0.45;
+        break;
     }
   }
   // long chains stay snappy: compress the whole sequence into the cap
@@ -160,7 +164,7 @@ function buildTimeline(events, cap = 2.8) {
     Object.values(T.reveals).forEach(sc);
     for (const s of Object.keys(T.dims)) T.dims[s] *= k;
     for (const s of Object.keys(T.brights)) T.brights[s] *= k;
-    [T.falls, T.collapses, T.fades, T.attacks, T.banishes, T.runes, T.blooms, T.stays]
+    [T.falls, T.collapses, T.fades, T.attacks, T.banishes, T.runes, T.blooms, T.stays, T.burnFx]
       .forEach(arr => arr.forEach(sc));
     t = cap;
   }
@@ -280,6 +284,7 @@ function handle(msg) {
           : null;
       } else if (seq !== lastAnimatedSeq) {
         transientFx = buildTimeline(state.events); // a fresh action: animate it live
+        showBurnReveal(state.events, transientFx); // name what the mist took (works anims-off too)
       } else {
         transientFx = null; // a room-change rebroadcast: nothing new to show
       }
@@ -415,6 +420,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 $('replay-btn').onclick = () => {
   if (!state || !state.lastTurn || !state.lastTurn.events.length || !anims) return;
   transientFx = buildTimeline(state.lastTurn.events, 5);
+  showBurnReveal(state.lastTurn.events, transientFx);
   render();
 };
 
@@ -461,6 +467,46 @@ function showPing({ r, c, name, color }) {
     + `<span class="lbl">${escapeHtml((name || '').slice(0, 14))}</span>`;
   overlay.appendChild(el);
   setTimeout(() => el.remove(), 2400);
+}
+
+// Show WHAT the mist takes when stack tiles burn — players kept missing a
+// gate's burning in the log and swearing runes to a dead gate. Chips stack in
+// an HTML overlay above the board; a burned GATE gets a big lingering banner.
+// Ordinary single path-tile burns (every Stay) stay chip-free — the discard
+// tracker flash covers those; chips are for strikes and notable losses.
+// Shows even with animations off (static chips, timed removal).
+function showBurnReveal(events, T) {
+  const overlay = $('burn-overlay');
+  if (!overlay || !events || !events.length) return;
+  const fx = (T && T.burnFx && T.burnFx.length)
+    ? T.burnFx
+    : events.filter(e => e.e === 'burn').map(e => ({ tiles: e.tiles || [], at: 0 }));
+  for (const b of fx) {
+    const tiles = b.tiles || [];
+    const notable = tiles.some(x => x.kind === 'gate' || x.kind === 'rune');
+    if (!notable && tiles.length <= 1) continue;
+    const chips = [];
+    let paths = 0, runes = 0, draugar = 0;
+    for (const x of tiles) {
+      if (x.kind === 'gate') chips.push({ cls: 'gate', text: `The Gate of ${GATE_NAMES[x.gate]} is lost to the mist!` });
+      else if (x.kind === 'rune') runes++;
+      else if (x.kind === 'draugr') draugar++;
+      else paths++;
+    }
+    if (runes) chips.push({ cls: 'rune', text: runes > 1 ? `${runes} Rune Circles are lost to the mist` : 'A Rune Circle is lost to the mist' });
+    if (draugar) chips.push({ cls: 'path', text: draugar > 1 ? `${draugar} draugar sink back into the mist` : 'A Draugr sinks back into the mist' });
+    if (paths) chips.push({ cls: 'path', text: paths > 1 ? `${paths} path tiles burn away` : 'A path tile burns away' });
+    chips.forEach((ch, i) => {
+      const el = document.createElement('div');
+      el.className = 'burn-chip ' + ch.cls;
+      el.textContent = ch.text;
+      const delay = anims ? b.at + i * 0.15 : 0;
+      const dur = ch.cls === 'gate' ? 4.6 : 3.0;
+      if (anims) el.style.animationDelay = delay + 's';
+      overlay.appendChild(el);
+      setTimeout(() => el.remove(), (delay + dur) * 1000);
+    });
+  }
 }
 
 // coming back to a tab left sleeping: if turns passed while away, replay the
@@ -1893,10 +1939,12 @@ function renderModal() {
       const info = RUNES[t.p].find(rn => rn.k === t.k);
       return `<span class="prune ${t.p}" style="display:inline-block;margin:0 3px" title="${escapeHtml(seatName(t.seat))}">${info.g}</span>`;
     }).join('');
+    const oneGate = aw.gates && aw.gates.length === 1
+      ? `<p class="hint">Only the Gate of ${GATE_NAMES[aw.gates[0]]} still stands — the stones choose from its runes alone.</p>` : '';
     card.innerHTML = `<h2>The Rune Circle</h2>
       <p>The stones do not ask — they <b>choose</b>. ${escapeHtml(p.name)} may accept a random
       unclaimed mark (it replaces any they bear), or leave fate untested.</p>
-      ${held ? `<p class="hint">Marks already borne: ${held}</p>` : ''}`;
+      ${oneGate}${held ? `<p class="hint">Marks already borne: ${held}</p>` : ''}`;
     const row = document.createElement('div'); row.className = 'row';
     const draw = document.createElement('button');
     draw.className = 'btn primary'; draw.textContent = 'Let the stones choose';
@@ -1915,16 +1963,21 @@ function renderModal() {
     card.innerHTML = `<h2>The Rune Circle</h2>
       <p>Ancient marks wait in the stones. ${escapeHtml(p.name)} may take one — it replaces any mark they bear. All four souls need <b>different</b> runes of the <b>same</b> gate.</p>`;
     const grid = document.createElement('div'); grid.className = 'rune-grid';
+    const attainable = aw.gates || ['valhalla', 'folkvangr']; // older states: all
     for (const pantheon of ['valhalla', 'folkvangr']) {
-      const col = document.createElement('div'); col.className = 'rune-col ' + pantheon;
-      col.innerHTML = `<h4>${GATE_NAMES[pantheon].toUpperCase()}</h4>`;
+      // a wholly lost gate seals its runes — show them, but greyed and dead,
+      // so nobody swears a mark that can never open a way
+      const lost = !attainable.includes(pantheon);
+      const col = document.createElement('div'); col.className = 'rune-col ' + pantheon + (lost ? ' lost' : '');
+      col.innerHTML = `<h4>${GATE_NAMES[pantheon].toUpperCase()}${lost ? '<small class="gate-lost-tag">lost to the mist</small>' : ''}</h4>`;
       RUNES[pantheon].forEach(rn => {
         const holder = aw.taken.find(t => t.p === pantheon && t.k === rn.k);
         const b = document.createElement('button');
         b.className = 'rune-btn' + (holder && holder.seat === aw.seat ? ' mine' : '');
         b.innerHTML = `<span class="glyph">${rn.g}</span><span>${rn.name}<br><small style="color:var(--dim)">${rn.gloss}</small></span>
           ${holder ? `<span class="taken">${escapeHtml(seatName(holder.seat))}</span>` : ''}`;
-        b.onclick = () => act({ p: pantheon, k: rn.k });
+        if (lost) { b.disabled = true; b.title = 'This gate is lost — its runes hold no power now.'; }
+        else b.onclick = () => act({ p: pantheon, k: rn.k });
         col.appendChild(b);
       });
       grid.appendChild(col);

@@ -366,3 +366,14 @@ When the last tile leaves the stack, the primordial cold of Niflheim closes in:
     rare survivable rift-crossing whose row and column are fully tiled or
     lit). The board only shrinks once the stack dies, so the first failure
     of this check is final.
+17. **A lost gate seals its runes** (2026-07-09, from playtest): once a
+    pantheon's gate is wholly lost — burned from the stack with none standing
+    on the board — the Rune Circles no longer offer that pantheon's marks.
+    The picker shows them greyed ("lost to the mist"), and in Random Runes
+    the stones choose only among attainable runes (if every attainable rune
+    is already borne, the stones stay silent). Marks already borne are kept
+    (their doom is called by the auto-loss checks above). Rationale: players
+    missed a gate's burning in the log and swore worthless marks; the tile
+    counts were public all along, so this reveals nothing — it only spares
+    the table a bookkeeping trap. The burn of a gate or circle is also now
+    announced on the board itself, not just in the log.

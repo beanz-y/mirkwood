@@ -6,6 +6,59 @@ memory; this file is the technical detail a coding session needs.*
 
 ---
 
+## UPDATE (2026-07-09 session 4 — bench.js + the tactical pass: planner 23.8→37.6%)
+
+**Measure with `tools/bench.js` from now on.** It runs the fixed config×mode
+matrix (same seeds every time → directly comparable), buckets losses into
+scarcity/severed/fall, prints binomial σ and `--compare` deltas:
+
+```
+node tools/bench.js                                   # greedy+planner, all 3 configs (~15s)
+node tools/bench.js --modes planner --games 10000 --compare <ref.json> --out <new.json>
+node tools/bench.js --modes plan4 --configs control --games 2000    # rollout milestone (~3-4min)
+```
+
+Configs: `control` (cross:40,rune:10,draugr:0, seed 30000) · `mid` (cross:24,
+seed 20000) · `normal` (live preset, seed 1000). `tools/bench-baseline.json` =
+pre-session state, `tools/bench-current.json` = post-session. Greedy cells
+double as a CHECKSUM: they must stay +0.00 unless shared code changed.
+
+**Result: the planner's tactical gap vs greedy is CLOSED and then some.** Ported
+greedy's proven terms into `scorePlanMove` one A/B'd term at a time (10k
+games/config per probe, ~9s each). Post-session: **control 37.6% (+13.8, 9.6σ)
+· mid 1.80% (+0.75, 3.5σ — now >2× greedy) · normal 0.72% (+0.22)**, and
+**plan4 (rollouts) on control: ~31% → 45.4%**. Greedy untouched. Tests 136 green.
+
+KEPT (in scorePlanMove unless noted):
+- **BFS-aware progress — THE big one (+8.4 pts control, 13σ).** Progress toward
+  a.target now uses real road distance when both ends are on the network;
+  crow-flies wrapDist only when carving mist. Crow-flies was systematically
+  walking souls into walls/dead-end pockets that "point at" the goal.
+- **Anti-dither (+2.3 pts, 3.3σ; mid +2σ).** ctx.lastCell was recorded in the
+  planner path but never read — souls could oscillate, burning a tile/shuffle.
+- **March leak suppression (+2.3 pts, 3.4σ).** Gate-goal moves now score
+  destination mouths: toward-gate = road, sideways = stack leak (ported).
+- **Rescue/cohesion** (hopeful→dark rescue pull, dark→light pull; +0.5σ mid,
+  flat where draugr are absent) and **scarcity-gated guard-light** (only when
+  econ.slack < 4 — unconditional was −1.4σ on the circle-rich control) and the
+  **hopeless dead-end penalty** (neutral, kept as cheap edge-case cover).
+- Rollout branch: **candidate width 3→4** (+0.9σ) and a **stall-breaker**
+  (consecutive rollout-chosen Stays get −0.2 each; stalemate concessions 47→13
+  per 2000, win-neutral — the bot no longer freezes for 600 turns).
+
+REJECTED — measured red or noise, each has a "don't re-try" note in policy.js:
+general no-suicide stay port (−1σ mid, freezes), lateness-scaled fish pull
+(−3.1σ control), caravan/mate-proximity (−1.3σ — fights the joint assignment),
+assignment hysteresis (−0.9σ — paths evaporate, eager re-solve wins), rollout
+weight 0.06→0.10 (noise, slower), fractured-bridge choke-point term (both
+signs: noise fast-mode, −1σ in rollout mode — the plan-following rollouts
+already price the severed future; if revisited, try it in PLACEMENT).
+
+Everything below this section predates the pass — the planner numbers quoted
+there are stale (kept for the reasoning, not the values).
+
+---
+
 ## UPDATE (2026-07-09 session 3b — preset + lookahead depth; charge dead)
 
 - **New `normal` preset** (Dan's call, live): straight12/tee32/teeFractured2/

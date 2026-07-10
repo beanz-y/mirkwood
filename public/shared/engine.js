@@ -422,14 +422,16 @@ function startHitWave(s, trig, ctx) {
 
 function discardN(s, n) {
   let burned = 0;
+  const tiles = []; // what the mist takes — public info (the discard is open)
   for (let i = 0; i < n && s.stack.length; i++) {
     const t = s.stack.pop();
     s.discard.push(t);
     burned++;
+    tiles.push({ kind: t.kind, gate: t.gate });
     if (t.kind === 'gate') log(s, `The Gate of ${GATE_NAMES[t.gate]} is lost to the mist!`, 'danger');
     else if (t.kind === 'rune') log(s, 'A Rune Circle is lost from the path stack.', 'danger');
   }
-  if (burned) ev(s, 'burn', { n: burned });
+  if (burned) ev(s, 'burn', { n: burned, tiles });
 }
 
 function drawTile(s) { return s.stack.pop() || null; }
@@ -801,6 +803,7 @@ STEPS['stay-fracture'] = (s) => {
       s.awaiting = {
         type: 'attune', seat: p.seat, random: true,
         taken: s.players.filter(q => q.rune).map(q => ({ seat: q.seat, ...q.rune })),
+        gates: [...new Set(gatesLeft(s))], // only these pantheons' runes can still open a way
       };
       return;
     }
@@ -868,6 +871,7 @@ STEPS['arrive'] = (s, { seat, then }) => {
       type: 'attune', seat,
       random: !!s.randomRunes,
       taken: s.players.filter(q => q.rune).map(q => ({ seat: q.seat, ...q.rune })),
+      gates: [...new Set(gatesLeft(s))], // only these pantheons' runes can still open a way
     };
     return;
   }
@@ -1139,11 +1143,11 @@ function doStay(s, p, aw) {
         return;
       }
       s.discard.push(t);
-      ev(s, 'burn', { n: 1 });
+      ev(s, 'burn', { n: 1, tiles: [{ kind: t.kind, gate: t.gate }] });
       log(s, 'A Draugr stirs in the mist, finds no path, and sinks away.', 'info');
     } else {
       s.discard.push(t);
-      ev(s, 'burn', { n: 1 });
+      ev(s, 'burn', { n: 1, tiles: [{ kind: t.kind, gate: t.gate }] });
       if (t.kind === 'gate') log(s, `The Gate of ${GATE_NAMES[t.gate]} is lost to the mist!`, 'danger');
       else if (t.kind === 'rune') log(s, 'A Rune Circle is lost from the path stack.', 'danger');
       else log(s, 'Hope gutters in the stillness — a path tile is lost.', 'info');
@@ -1265,6 +1269,19 @@ ACTIONS['block'] = (s, p, { block }) => {
 };
 
 ACTIONS['attune'] = (s, p, payload) => {
+  // validate BEFORE consuming the prompt — a refused pick must leave the
+  // decision open and the circle unspent, not wedge the game
+  if (!s.randomRunes && !payload.skip) {
+    const set = RUNES[payload.p];
+    if (!set || !set.some(r => r.k === payload.k)) err('No such rune.');
+    // a rune only opens a gate that can still be reached: once a pantheon's
+    // gate is wholly lost (burned from the stack with none on the board), its
+    // marks are ash — the stones no longer offer them (playtest rule: players
+    // missed the gate's burning and swore to it anyway)
+    if (!gatesLeft(s).includes(payload.p)) {
+      err(`The Gate of ${GATE_NAMES[payload.p]} is lost to the mist — its runes hold no power now.`);
+    }
+  }
   s.awaiting = null;
   // in the base game the circle is spent either way: the prompt never comes
   // again (leaving crumbles it, and no one else can enter while they stand)
@@ -1278,19 +1295,25 @@ ACTIONS['attune'] = (s, p, payload) => {
   }
   let pantheon, k;
   if (s.randomRunes) {
-    // the stones choose: a random rune not currently borne by any soul
-    // (4 souls hold at most 4 of the 8 runes, so the pool is never empty)
+    // the stones choose: a random rune of an ATTAINABLE gate not currently
+    // borne by any soul
+    const attainable = new Set(gatesLeft(s));
     const held = new Set();
     for (const q of s.players) if (q.rune) held.add(q.rune.p + ':' + q.rune.k);
     const pool = [];
     for (const pn of ['valhalla', 'folkvangr']) {
+      if (!attainable.has(pn)) continue;
       for (const rn of RUNES[pn]) if (!held.has(pn + ':' + rn.k)) pool.push([pn, rn.k]);
+    }
+    if (!pool.length) {
+      // possible once a gate is lost: the surviving gate's four runes may all
+      // be borne already — the stones have nothing left worth giving
+      log(s, `The stones are silent — no rune remains that ${p.name} could bear.`, 'info');
+      return;
     }
     [pantheon, k] = pool[Math.floor(rand(s) * pool.length)];
   } else {
     ({ p: pantheon, k } = payload);
-    const set = RUNES[pantheon];
-    if (!set || !set.some(r => r.k === k)) err('No such rune.');
   }
   p.rune = { p: pantheon, k };
   const r = RUNES[pantheon].find(rn => rn.k === k);

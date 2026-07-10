@@ -707,6 +707,67 @@ section('end conditions: a lost gate is survivable while enough circles remain t
   check(s.phase === 'play', 'four circles remain: the party can still swear anew to Valhalla');
 }
 
+// ---------------------------------------------------------------- burn reveal + lost gates seal runes
+section('burn events name the loss; a lost gate seals its runes');
+{
+  const s = createGame({ seed: 27, stack: deck(40) });
+  doSetup(s); // (setup's illumination draws come off the top — reorder AFTER it)
+  // move the Fólkvangr gate to the top of the stack: the next burn takes it
+  const gi = s.stack.findIndex(t => t.kind === 'gate' && t.gate === 'folkvangr');
+  s.stack.push(...s.stack.splice(gi, 1));
+  applyAction(s, 0, { kind: 'stay' }); // stillness burns the gate off the top
+  const burnEv = s.events.find(e => e.e === 'burn');
+  check(!!burnEv && Array.isArray(burnEv.tiles), 'burn events carry the tiles the mist takes');
+  check(burnEv && burnEv.tiles[0] && burnEv.tiles[0].kind === 'gate' && burnEv.tiles[0].gate === 'folkvangr',
+    'the burned gate is named in the event');
+  check(s.phase === 'play', 'with four circles left the saga survives the gate');
+  // soul 1 steps onto a circle: only the surviving pantheon may be sworn
+  _test.setTile(s, 1, 5, _test.makeTileDef(s, 'rune', { fractured: true }), 0);
+  applyAction(s, 1, { kind: 'move', d: 1 });
+  check(s.awaiting.type === 'attune' && s.awaiting.seat === 1, 'attune prompt on arrival');
+  check(Array.isArray(s.awaiting.gates) && s.awaiting.gates.includes('valhalla')
+    && !s.awaiting.gates.includes('folkvangr'), 'the prompt names only attainable gates');
+  let threw = null;
+  try { applyAction(s, 1, { p: 'folkvangr', k: RUNES.folkvangr[0].k }); } catch (e) { threw = e; }
+  check(threw && /lost to the mist/.test(threw.message), 'swearing to the lost gate is refused');
+  check(s.awaiting && s.awaiting.type === 'attune', 'a refused pick leaves the decision open');
+  const circle = _test.tileAt(s, 1, 5);
+  check(circle && !circle.spent, 'a refused pick leaves the circle unspent');
+  applyAction(s, 1, { p: 'valhalla', k: RUNES.valhalla[0].k });
+  check(s.players[1].rune && s.players[1].rune.p === 'valhalla', 'the surviving gate still marks');
+}
+{
+  // Random Runes: the stones never choose a lost gate's rune...
+  const s = createGame({ seed: 28, stack: deck(40), randomRunes: true });
+  const gi = s.stack.findIndex(t => t.kind === 'gate' && t.gate === 'folkvangr');
+  s.discard.push(...s.stack.splice(gi, 1));
+  // three valhalla runes already borne: exactly one attainable rune remains
+  for (let i = 1; i < 4; i++) s.players[i].rune = { p: 'valhalla', k: RUNES.valhalla[i - 1].k };
+  doSetup(s);
+  _test.setTile(s, 1, 2, _test.makeTileDef(s, 'rune', { fractured: true }), 0);
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  check(s.awaiting.type === 'attune' && s.awaiting.random === true, 'random attune prompt');
+  check(!s.awaiting.gates.includes('folkvangr'), 'random prompt also names only attainable gates');
+  applyAction(s, 0, { draw: true });
+  check(s.players[0].rune && s.players[0].rune.p === 'valhalla'
+    && s.players[0].rune.k === RUNES.valhalla[3].k,
+    'the stones give the one attainable unclaimed rune');
+}
+{
+  // ...and stay silent when nothing attainable remains (no crash, no mark)
+  const s = createGame({ seed: 29, stack: deck(40), randomRunes: true });
+  const gi = s.stack.findIndex(t => t.kind === 'gate' && t.gate === 'folkvangr');
+  s.discard.push(...s.stack.splice(gi, 1));
+  for (let i = 0; i < 4; i++) s.players[i].rune = { p: 'valhalla', k: RUNES.valhalla[i].k };
+  doSetup(s);
+  _test.setTile(s, 1, 2, _test.makeTileDef(s, 'rune', { fractured: true }), 0);
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  applyAction(s, 0, { draw: true });
+  check(s.players[0].rune && s.players[0].rune.k === RUNES.valhalla[0].k,
+    'silent stones leave the borne mark untouched');
+  check(s.phase === 'play', 'an empty pool does not wedge or end the game');
+}
+
 // ---------------------------------------------------------------- full random game smoke test
 section('smoke: random self-play (200 games)');
 {
@@ -747,7 +808,9 @@ section('smoke: random self-play (200 games)');
           case 'post-move': applyAction(s, seat, { kind: 'end' }); break;
           case 'block': applyAction(s, seat, { block: rnd() < 0.5 }); break;
           case 'attune': {
-            const pn = rnd() < 0.5 ? 'valhalla' : 'folkvangr';
+            // only attainable gates: a lost gate's runes are refused (by design)
+            const pool = aw.gates && aw.gates.length ? aw.gates : ['valhalla', 'folkvangr'];
+            const pn = pick(pool);
             applyAction(s, seat, { p: pn, k: pick(RUNES[pn]).k });
             break;
           }

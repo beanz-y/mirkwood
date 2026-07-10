@@ -614,6 +614,10 @@ export function computePlan(s, ctx) {
   // JOINT 1:1 assignment: give each reachable circle to the nearest unmarked soul,
   // shortest treks first, so no two souls chase the same stone and the marks come
   // off circles closest to the party (near the connected road, not far corners).
+  // NB: assignment HYSTERESIS (hold your circle unless another is ≥2 closer) was
+  // tried and measured RED (control −0.9σ, mid −0.5σ): paths evaporate every
+  // turn, so eager re-solving beats loyalty, and anti-dither already taxes
+  // literal backtracking. Don't re-add.
   const cands = [];
   for (const q of placed) {
     if (good(q)) continue;
@@ -657,6 +661,7 @@ export function computePlan(s, ctx) {
 // home; don't crumble a circle you don't need).
 function scorePlanMove(s, p, mv, P2, rnd, ctx) {
   if (mv.kind === 'jump') return scoreMove(s, p, mv, P2.plan, rnd, ctx); // rare; reuse greedy valuation
+  const P = (ctx && ctx.params) || DEFAULT_PARAMS;
   const a = P2.assign[p.seat] || { goal: 'fish', target: P2.ga ? P2.ga.approach : null };
   let score = rnd() * 0.1;
   const sim = triggerSim(s, p, mv);
@@ -665,14 +670,36 @@ function scorePlanMove(s, p, mv, P2, rnd, ctx) {
   if (sim.triggered && !sim.meHit && sim.victims === 0 && p.resolve < 2) score += 1.0; // clean evade
   if (!sim.meHit && standingDanger(s, mv.r, mv.c)) score -= 3;
   const dt = tileAt(s, mv.r, mv.c);
+  const dist = dt ? bfs(s, mv.r, mv.c) : null; // shared by the terms below
   if (a.target) {
     const [tr, tc] = a.target;
-    score += 3.0 * (wrapDist(p.r, p.c, tr, tc) - wrapDist(mv.r, mv.c, tr, tc)); // progress toward goal
+    // NB: greedy's lateness-scaled fish pull was tried here and measured RED
+    // (control −3.1σ): the joint assignment already reserves fishing for truly
+    // idle souls, so the flat firm pull is right — don't re-port it.
+    const w = 3.0;
+    // progress by the REAL road when one exists (BFS over passages — walls and
+    // detours count); the crow-flies pull is for carving through mist toward a
+    // target the network doesn't reach yet
+    const bNow = bfs(s, p.r, p.c).get(key(tr, tc));
+    const bNew = dist ? dist.get(key(tr, tc)) : undefined;
+    if (bNow !== undefined && bNew !== undefined) score += w * (bNow - bNew);
+    else score += w * (wrapDist(p.r, p.c, tr, tc) - wrapDist(mv.r, mv.c, tr, tc)); // progress toward goal
     if (a.goal === 'rune' && mv.r === tr && mv.c === tc) score += 20;           // step onto my circle
     if (a.goal === 'gate') {
       if (dt && dt.kind === 'gate' && dt.gate === P2.plan) score += 20;
       const dmin = dt ? nearest(bfs(s, mv.r, mv.c), tilesOf(s, 'gate', P2.plan)) : Infinity;
       if (dmin <= 3) score += 10 / (1 + dmin);
+      // during the march every open passage at the destination forces a draw:
+      // mouths that face the gate are road, the rest leak stack (ported)
+      if (dt) {
+        for (let d = 0; d < 4; d++) {
+          if (!dt.exits[d]) continue;
+          const [nr, nc] = stepDir(mv.r, mv.c, d);
+          if (cellAt(s, nr, nc)) continue;
+          const toward = wrapDist(nr, nc, tr, tc) < wrapDist(mv.r, mv.c, tr, tc);
+          score += toward ? 0.7 : (s.stack.length < 25 ? -0.5 : 0.1);
+        }
+      }
     }
   }
   if (a.goal === 'fish' || a.goal === 'rune') {
@@ -683,12 +710,66 @@ function scorePlanMove(s, p, mv, P2, rnd, ctx) {
   }
   // VIABILITY: stay on the gate-connected component — the anti-fragmentation term
   if (P2.ga && dt && dt.kind !== 'gate') {
-    const conn = bfs(s, mv.r, mv.c).get(key(P2.ga.gate[0], P2.ga.gate[1])) !== undefined;
+    const conn = dist.get(key(P2.ga.gate[0], P2.ga.gate[1])) !== undefined;
     if (conn) score += 1.5; else if (s.stack.length < 30) score -= 6;
   }
+  // NB: greedy's caravan (mate-proximity) term was tried here and measured RED
+  // (control −1.3σ): the joint assignment deliberately splits souls across
+  // circles, and a blanket stay-together penalty fights the plan. Don't re-port.
+  // cohesion/rescue (ported from scoreMove): the plan's roles say WHERE to go but
+  // not WHO keeps the party lit — hopeful souls drift toward the hopeless to
+  // relight them (a sprint once the stack thins), hopeless souls seek the light
+  if (dist) {
+    if (p.hopeful) {
+      const dark = s.players.filter(q => q.placed && !q.hopeful && q.seat !== p.seat).map(q => [q.r, q.c]);
+      if (dark.length) score += (s.stack.length < 15 ? P.rescueLate : 2.5) / (1 + nearest(dist, dark));
+    } else {
+      const lit = s.players.filter(q => q.placed && q.hopeful).map(q => [q.r, q.c]);
+      if (lit.length) score += 3.5 / (1 + nearest(dist, lit));
+    }
+  }
   if (dt && dt.kind === 'rune' && hasGoodMark(s, p, P2.plan)) score -= 6; // don't crumble a spare circle
+  // NB: fractured-bridge CHOKE-POINT awareness (BFS the gate component with the
+  // tile removed; penalize crossings that sever teammates, optionally refund
+  // harmless ones) was tried BOTH ways 2026-07-09 and measured noise in fast mode
+  // and −1σ in rollout mode — the plan-following rollouts already price the
+  // severed future, so a static term double-counts it. Don't re-add here; if
+  // revisited, put it in PLACEMENT (avoid creating fractured chokes at all).
   if (dt && dt.fractured && dt.kind !== 'rune') score -= 2 + (s.stack.length < 15 ? 5 : 0);
   if (mv.kind === 'blind') score -= 2 * pDraugr(s);
+  // anti-dither (ported from scoreMove): shuffling back to last turn's tile burns
+  // the forest for nothing (lastCell was recorded here but never read — a soul
+  // could oscillate between two tiles at a stack tile per shuffle)
+  const last = ctx.lastCell && ctx.lastCell[p.seat];
+  if (last && last[0] === mv.r && last[1] === mv.c && !(dt && dt.kind === 'gate')) score -= 1.6;
+  // a hopeless soul on a dead end is one forced Stay from tumbling forever (ported)
+  if (!p.hopeful && dt && dt.exits.filter(Boolean).length <= 1) score -= 3;
+  // guard the light (ported from scoreMove): if my light alone keeps a live circle
+  // on the board and a teammate still needs a mark, don't let it fade into the mist.
+  // Only when the rune budget is TIGHT — with circles to spare, letting one fade
+  // beats warping the march (measured: unconditional −1.4σ on the circle-rich control)
+  if (p.hopeful && P2.econ.slack < 4) {
+    const myTile = tileAt(s, p.r, p.c);
+    const someoneNeeds = s.players.some(q => q.placed && !hasGoodMark(s, q, P2.plan));
+    if (myTile && someoneNeeds) {
+      for (let d = 0; d < 4; d++) {
+        if (!myTile.exits[d]) continue;
+        const [nr, nc] = stepDir(p.r, p.c, d);
+        const nt = tileAt(s, nr, nc);
+        if (!nt || nt.kind !== 'rune' || nt.spent) continue;
+        if (mv.r === nr && mv.c === nc) continue; // stepping ONTO it is fine
+        const othersLight = s.players.some(q => {
+          if (!q.placed || !q.hopeful || q.seat === p.seat) return false;
+          if (Math.abs(q.r - nr) + Math.abs(q.c - nc) !== 1) return false;
+          const qt = tileAt(s, q.r, q.c);
+          return qt && [0, 1, 2, 3].some(dd => qt.exits[dd]
+            && stepDir(q.r, q.c, dd)[0] === nr && stepDir(q.r, q.c, dd)[1] === nc);
+        });
+        const stillLitAfter = Math.abs(mv.r - nr) + Math.abs(mv.c - nc) <= 1;
+        if (!othersLight && !stillLitAfter) score -= 6;
+      }
+    }
+  }
   return score;
 }
 
@@ -740,17 +821,25 @@ function plannerDecision(s, rnd, ctx) {
       // genuine anticipation of where the party's plan ends up.
       const cands = [];
       for (const m of aw.moves) { if (m.kind === 'charge') continue; cands.push({ m, base: scorePlanMove(s, p, m, P2, rnd, ctx) }); }
-      if (aw.stay) cands.push({ m: { kind: 'stay' }, base: a.goal === 'guard' ? 0.5 : -0.5 });
+      // STALL-BREAKER: the Stay candidate can win the rollout evaluation forever
+      // (souls froze until the harness conceded — ~2.4% of control losses were
+      // stalemates). Each consecutive rollout-chosen Stay makes the next one less
+      // attractive; deliberate holds (beachhead/guard/linger) early-return above
+      // and never pay this. Rollout sub-games use a fresh ctx, so it only shapes
+      // real decisions.
+      const stayRun = (ctx.stayRun = ctx.stayRun || {});
+      if (aw.stay) cands.push({ m: { kind: 'stay' }, base: (a.goal === 'guard' ? 0.5 : -0.5) - 0.2 * (stayRun[p.seat] || 0) });
       if (!cands.length) return aw.stay ? { kind: 'stay' } : { kind: 'move', d: aw.moves[0].d };
       cands.sort((x, y) => y.base - x.base);
       let best = cands[0].m, bestVal = -Infinity;
-      for (let i = 0; i < Math.min(cands.length, 3); i++) {
+      for (let i = 0; i < Math.min(cands.length, 4); i++) {
         const c = cands[i];
         const action = c.m.kind === 'stay' ? { kind: 'stay' } : { kind: 'move', d: c.m.d };
-        const val = c.base + 0.06 * rolloutValue(s, rnd, { ...ctx, plan: P2.plan }, action) + rnd() * 0.05;
+        const val = c.base + 0.06 * rolloutValue(s, rnd, { ...ctx, plan: P2.plan }, action) + rnd() * 0.05; // 0.10 probed 2026-07-09: noise, worse scarcity — keep 0.06
         if (val > bestVal) { bestVal = val; best = c.m; }
       }
-      if (best.kind === 'stay') return { kind: 'stay' };
+      if (best.kind === 'stay') { stayRun[p.seat] = (stayRun[p.seat] || 0) + 1; return { kind: 'stay' }; }
+      stayRun[p.seat] = 0;
       (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
       return { kind: 'move', d: best.d };
     }
@@ -762,6 +851,10 @@ function plannerDecision(s, rnd, ctx) {
       const sc = scorePlanMove(s, p, m, P2, rnd, ctx);
       if (sc > bestScore) { bestScore = sc; best = m; }
     }
+    // no-suicide guard: jump-only ON PURPOSE. Porting greedy's general
+    // "bestScore <= -10 → stand fast" rule was measured RED here (mid −1σ,
+    // stalemate concessions up): scorePlanMove's scale differs from scoreMove's,
+    // and freezing beats fighting through less often than greedy's threshold says.
     if (best && best.kind === 'jump' && aw.stay && bestScore <= -10) return { kind: 'stay' };
     if (best) { (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c]; return { kind: 'move', d: best.d }; }
     return aw.stay ? { kind: 'stay' } : { kind: 'move', d: aw.moves[0].d };
