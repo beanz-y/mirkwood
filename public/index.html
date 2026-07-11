@@ -18,6 +18,7 @@
     <div id="lobby-entry">
       <label>Your name
         <input id="name-input" maxlength="16" placeholder="Wanderer" autocomplete="off">
+        <small class="hint name-hint">any name works — no need for your real one</small>
       </label>
       <div class="row">
         <button id="create-btn" class="btn primary">Begin a new saga</button>
@@ -92,6 +93,29 @@
     <div class="row">
       <button id="rules-btn-lobby" class="btn tiny">Runes &amp; rules</button>
       <button id="tut-btn-lobby" class="btn tiny">Walkthrough</button>
+      <button id="privacy-btn" class="btn tiny">Privacy</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= PRIVACY ======================= -->
+<div id="privacy" class="overlay hidden">
+  <div class="modal-card rules-card" style="width:min(480px,94vw)">
+    <h2>Privacy</h2>
+    <p>Mirkwood is a free fan project with no accounts, no ads, no analytics, and
+    no tracking. Your chosen display name and game state live on the server only
+    while your saga is active and are deleted after about a day of inactivity.
+    Anonymous gameplay statistics (difficulty, result, turn count — never names)
+    are kept to help balance the game. Your browser stores only what the game
+    needs to reconnect you. There is no chat, and nothing you type is shared
+    beyond your game room. Hosting is provided by Cloudflare, which processes
+    connection data (like IP addresses) to serve the site.</p>
+    <p>Mirkwood is intended for players 14 and up. We do not sell or share
+    personal information, and what little is processed is only what is
+    necessary to run the game you choose to join.</p>
+    <p class="hint">Data questions: <a href="mailto:mirkwood@beanz-y.com" style="color:var(--gold)">mirkwood@beanz-y.com</a></p>
+    <div class="row">
+      <button id="privacy-close" class="btn primary">Back to the forest</button>
     </div>
   </div>
 </div>
@@ -297,6 +321,7 @@
     <div class="row">
       <button id="rules-close" class="btn primary">Back to the forest</button>
       <button id="tut-btn-rules" class="btn small">Open the walkthrough</button>
+      <button id="privacy-btn-rules" class="btn tiny">Privacy</button>
     </div>
   </div>
 </div>

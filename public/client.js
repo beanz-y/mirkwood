@@ -588,6 +588,17 @@ document.addEventListener('visibilitychange', () => {
     <table class="rune-table">${perkRows}</table>`;
 })();
 
+// privacy notice overlay (lobby footer + rules screen; backdrop click closes)
+{
+  const openPrivacy = () => $('privacy').classList.remove('hidden');
+  const closePrivacy = () => $('privacy').classList.add('hidden');
+  $('privacy-btn').onclick = openPrivacy;
+  const pr = $('privacy-btn-rules');
+  if (pr) pr.onclick = openPrivacy;
+  $('privacy-close').onclick = closePrivacy;
+  $('privacy').addEventListener('click', (e) => { if (e.target === $('privacy')) closePrivacy(); });
+}
+
 // rules overlay
 function openRules() { $('rules').classList.remove('hidden'); }
 $('rules-btn').onclick = openRules;
