@@ -563,6 +563,31 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// the Lobby-variants section of the rules screen is built from the engine's
+// own rune table, so the perk text can never drift from what the game does
+(function buildVariantRules() {
+  const el = $('rules-variants');
+  if (!el) return;
+  const perkRows = ['valhalla', 'folkvangr'].map(pn => RUNES[pn].map(rn =>
+    `<tr><td style="color:${pn === 'valhalla' ? 'var(--gold)' : 'var(--good)'}">${rn.g}</td>
+     <td><b>${rn.name}</b> — ${rn.perk}<br><small class="hint">❄ Embrace: ${rn.winterPerk}</small></td></tr>`
+  ).join('')).join('');
+  el.innerHTML = `
+    <p><b>Random runes</b> — at a Rune Circle the stones choose an unclaimed mark for you
+    (decline allowed), and you may <b>linger</b> to draw again (see Runes &amp; Gates above).</p>
+    <p><b>Gate doorways</b> — how many ways each Gate opens: <b>one</b> (the classic rule),
+    <b>two</b> (opposite sides) or <b>three</b>. More doorways make the final gathering kinder;
+    an experiment until one becomes the rule.</p>
+    <p><b>Turn timer</b> — a visible countdown for each decision. A nudge, not an enforcer.
+    (Separate, and always on: a soul who has already moved but forgets <i>End turn</i> rests
+    on its own after half a minute of stillness.)</p>
+    <p><b>Rune perks</b> — every mark carries a boon while you bear it (re-attuning swaps it),
+    and each boon takes a second, stronger form once Niflheim's Embrace begins. On a
+    <b>Hard</b> telling, Uruz lends to adjacent souls only. Tap any rune mark on a soul's
+    card to read its boon mid-game.</p>
+    <table class="rune-table">${perkRows}</table>`;
+})();
+
 // rules overlay
 function openRules() { $('rules').classList.remove('hidden'); }
 $('rules-btn').onclick = openRules;
@@ -1000,7 +1025,7 @@ function renderPlayers() {
     div.title = "View this soul's status card";
     const runeFlash = transientFx && transientFx.runes.some(rn => rn.seat === p.seat) ? ' flash' : '';
     const rune = p.rune
-      ? `<div class="prune ${p.rune.p}${runeFlash}" title="${runeInfo(p.rune).name} (${GATE_NAMES[p.rune.p]})">${runeInfo(p.rune).g}</div>`
+      ? `<div class="prune ${p.rune.p}${runeFlash} tappable" title="${runeInfo(p.rune).name} (${GATE_NAMES[p.rune.p]}) — tap to read">${runeInfo(p.rune).g}</div>`
       : `<div class="prune none" title="No rune mark yet">·</div>`;
     const status = p.falling
       ? '<span class="falling-tag">falling into the void</span>'
@@ -1026,6 +1051,9 @@ function renderPlayers() {
       </div>
       ${admin}${rune}`;
     div.onclick = () => { soulSeat = p.seat; selectTab('soul'); renderSoul(); };
+    // tapping the rune mark reads it instead of opening the soul tab
+    const pr = div.querySelector('.prune.tappable');
+    if (pr) pr.onclick = (e) => { e.stopPropagation(); showRuneInfo(p.rune); };
     const ab = div.querySelector('.seat-admin');
     if (ab) ab.onclick = (e) => {
       e.stopPropagation();
@@ -1131,11 +1159,46 @@ function renderSoul() {
   const rb = document.getElementById('soul-rules');
   if (rb) rb.onclick = openRules;
   const lt = document.getElementById('lend-toggle');
-  if (lt) lt.onclick = () => send({ t: 'lend', seat, on: p.lendOk === false });
+  if (lt) lt.onclick = (e) => { e.stopPropagation(); send({ t: 'lend', seat, on: p.lendOk === false }); };
+  // the "Marked with ..." line is a tap target too — read the rune's boon
+  const rl = el.querySelector('.soul-rune-line');
+  if (rl && p.rune) {
+    rl.classList.add('tappable');
+    rl.onclick = () => showRuneInfo(p.rune);
+  }
 }
 
 function runeInfo(rune) {
   return RUNES[rune.p].find(r => r.k === rune.k);
+}
+
+// tap a rune mark anywhere it appears to read its meaning and boon — no
+// hovering required (mobile playtest ask). Backdrop or Close dismisses.
+function showRuneInfo(rune) {
+  const i = runeInfo(rune);
+  if (!i) return;
+  let ov = $('rune-pop');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'rune-pop'; ov.className = 'overlay';
+    document.body.appendChild(ov);
+  }
+  const col = rune.p === 'valhalla' ? 'var(--gold)' : 'var(--good)';
+  const perks = state && state.runePerks
+    ? `<p class="perk-line" style="text-align:left">✦ ${i.perk}</p>
+       <p class="perk-line" style="text-align:left">❄ In the Embrace: ${i.winterPerk}</p>
+       ${state.niflheim ? '<p class="hint">The Embrace holds — the winter form is in effect.</p>' : ''}`
+    : '<p class="hint">Rune perks are not enabled in this saga.</p>';
+  ov.innerHTML = `<div class="modal-card rune-pop-card">
+    <div style="font-size:42px;line-height:1.1;color:${col}">${i.g}</div>
+    <h2 style="color:${col};margin:4px 0 2px">${i.name}</h2>
+    <p>${i.gloss} — a rune of <b>${GATE_NAMES[rune.p]}</b>.</p>
+    ${perks}
+    <div class="row"><button class="btn primary" id="rune-pop-close">Close</button></div>
+  </div>`;
+  ov.classList.remove('hidden');
+  ov.onclick = (e) => { if (e.target === ov) ov.classList.add('hidden'); };
+  document.getElementById('rune-pop-close').onclick = () => ov.classList.add('hidden');
 }
 // resolve cap: Deep vitality (Uruz, rune perks) lifts the bearer's to 3
 const capOf = p => (state && state.runePerks && p.rune && p.rune.k === 'uruz' ? 3 : 2);
