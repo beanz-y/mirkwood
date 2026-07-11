@@ -839,6 +839,46 @@ section('rune perks (host variant)');
   check(s.players[0].r === 1 && s.players[0].c === 3, 'Raido: the bearer stands beyond the rift');
   check(s.players[0].resolve === 0, 'Raido: the toll was paid');
   check(s.grid[key(1, 2)] && s.grid[key(1, 2)].rift, 'Raido: the rift remains for the unwary');
+  // the road answers once a turn: after a crossing, no second crossing (and
+  // no turning) is offered this turn even with ◆ to spend
+  s.players[0].resolve = 2;
+  if (s.awaiting && s.awaiting.type === 'post-move') {
+    check(!s.awaiting.moves.some(m => m.kind === 'cross') || s.wayfarerUsed === true,
+      'Raido: the crossing shares the once-a-turn road-craft');
+    check(!(s.awaiting.turns && s.awaiting.turns.length), 'Raido: no turning after the crossing');
+  } else check(s.wayfarerUsed === true, 'Raido: the road-craft is spent for the turn');
+}
+{
+  // Raido — Wayfarer: turning an adjacent misaligned path (1 ◆, once a turn)
+  const s = createGame({ seed: 42, stack: deck(40), runePerks: true });
+  s.players[0].rune = { p: 'valhalla', k: 'raido' };
+  doSetup(s);
+  _test.setTile(s, 0, 1, _test.makeTileDef(s, 'straight'), 1); // E/W: a wall toward the bearer
+  s.players[0].resolve = 2;
+  s.awaiting = null; s.queue.unshift({ t: 'action' }); _test.run(s);
+  check(Array.isArray(s.awaiting.turns) && s.awaiting.turns.some(o => o.r === 0 && o.c === 1),
+    'Raido: the misaligned path is offered for turning');
+  check(!s.awaiting.moves.some(m => m.d === 0 && m.kind === 'move'),
+    'Raido: the walled mouth blocks the road north');
+  applyAction(s, 0, { kind: 'turn', r: 0, c: 1, rot: 0 }); // N/S — opens to the bearer
+  const t = _test.tileAt(s, 0, 1);
+  check(t.rot === 0 && t.exits[2] === 1, 'Raido: the path turns to meet the road');
+  check(s.players[0].resolve === 1, 'Raido: turning cost 1 ◆');
+  check(s.awaiting && s.awaiting.type === 'action', 'Raido: turning is not a move — the action still waits');
+  check(s.awaiting.moves.some(m => m.d === 0), 'Raido: the road north is open after the turning');
+  check(!(s.awaiting.turns && s.awaiting.turns.length), 'Raido: the road answers only once a turn');
+  let threw = false;
+  try { applyAction(s, 0, { kind: 'turn', r: 0, c: 1, rot: 1 }); } catch (e) { threw = !!e.illegal; }
+  check(threw, 'Raido: a second turning this turn is refused');
+  // an occupied tile may never be turned (souls are not furniture)
+  const s2 = createGame({ seed: 42, stack: deck(40), runePerks: true });
+  s2.players[0].rune = { p: 'valhalla', k: 'raido' };
+  doSetup(s2);
+  _test.setTile(s2, 1, 2, _test.makeTileDef(s2, 'straight'), 1);
+  s2.players[1].r = 1; s2.players[1].c = 2; // a soul stands on it
+  s2.awaiting = null; s2.queue.unshift({ t: 'action' }); _test.run(s2);
+  check(!(s2.awaiting.turns || []).some(o => o.r === 1 && o.c === 2),
+    'Raido: an occupied path cannot be turned');
 }
 {
   // Ansuz — Raven-counsel: the next two tiles are known on the bearer's turn
@@ -854,14 +894,38 @@ section('rune perks (host variant)');
     'no peek without the variant');
 }
 {
-  // Berkano — New growth: the fractured start does not crumble behind her
+  // Berkano — New growth: holding the cracked path is a CHOICE (hold flag on
+  // the move) and costs 1 ◆; the tile stays, still fractured
+  const s = createGame({ seed: 45, stack: deck(40), runePerks: true });
+  s.players[0].rune = { p: 'folkvangr', k: 'berkano' };
+  doSetup(s);
+  check(s.awaiting.type === 'action' && s.awaiting.canHold === true,
+    'Berkano: the hold is offered on the fractured start');
+  s.players[0].resolve = 1;
+  applyAction(s, 0, { kind: 'move', d: 1, hold: true });
+  const behind = s.grid[key(1, 1)];
+  check(behind && behind.tile && behind.tile.fractured === true,
+    'Berkano: the paid hold keeps the cracked path, still fractured');
+  check(s.players[0].resolve === 0, 'Berkano: the hold cost 1 ◆');
+}
+{
+  // Berkano without the hold: the path crumbles as for anyone; and a hold
+  // she cannot afford is refused up front (not silently dropped)
   const s = createGame({ seed: 45, stack: deck(40), runePerks: true });
   s.players[0].rune = { p: 'folkvangr', k: 'berkano' };
   doSetup(s);
   applyAction(s, 0, { kind: 'move', d: 1 });
   const behind = s.grid[key(1, 1)];
-  check(behind && behind.tile && behind.tile.fractured === true,
-    'Berkano: the cracked path holds, still fractured, for those who follow');
+  check(behind && behind.rift === true, 'Berkano: no hold asked — the path crumbles');
+
+  const s2 = createGame({ seed: 45, stack: deck(40), runePerks: true });
+  s2.players[0].rune = { p: 'folkvangr', k: 'berkano' };
+  doSetup(s2);
+  s2.players[0].resolve = 0;
+  let threw = false;
+  try { applyAction(s2, 0, { kind: 'move', d: 1, hold: true }); } catch (e) { threw = !!e.illegal; }
+  check(threw, 'Berkano: a hold with no ◆ is refused before the move');
+  check(s2.awaiting && s2.awaiting.type === 'action', 'Berkano: the refused hold leaves the action open');
 }
 {
   // Uruz — Deep vitality: cap 3, and ◆ lent across the board (any distance)
@@ -920,6 +984,117 @@ section('rune perks (host variant)');
   const stackBefore = f.stack.length;
   applyAction(f, 0, { kind: 'stay' });
   check(f.stack.length === stackBefore, 'Fehu: the stocked hearth burns nothing');
+}
+{
+  // Wunjo — joy flows both ways: a teammate's Stay beside the bearer
+  const s = createGame({ seed: 56, stack: deck(40), runePerks: true });
+  s.players[1].rune = { p: 'folkvangr', k: 'wunjo' };
+  doSetup(s);
+  const t0 = _test.tileAt(s, 1, 1); if (t0) t0.fractured = false;
+  s.players[1].r = 1; s.players[1].c = 2; // the bearer stands beside soul 0
+  s.players[1].resolve = 0;
+  applyAction(s, 0, { kind: 'stay' });
+  check(s.players[1].resolve === 1, 'Wunjo: a teammate’s Stay beside the bearer gladdens her (+1)');
+}
+{
+  // Fehu — Stocked hearth ransom: a Gate burned by a Stay is bought back,
+  // shuffled into the stack, before the turn passes
+  const s = createGame({ seed: 53, stack: deck(40), runePerks: true });
+  s.players[1].rune = { p: 'folkvangr', k: 'fehu' };
+  doSetup(s);
+  const t0 = _test.tileAt(s, 1, 1); if (t0) t0.fractured = false;
+  s.players[1].resolve = 1;
+  const gi = s.stack.findIndex(t => t.kind === 'gate');
+  const [gate] = s.stack.splice(gi, 1);
+  s.stack.push(gate); // the stillness will burn it
+  const stackBefore = s.stack.length;
+  applyAction(s, 0, { kind: 'stay' });
+  check(s.awaiting && s.awaiting.type === 'stocked-hearth' && s.awaiting.seat === 1,
+    'Fehu: the ransom is offered to the bearer when a treasure burns');
+  check(s.awaiting.options.some(o => o.kind === 'gate'), 'Fehu: the burned Gate is the ransom option');
+  const opt = s.awaiting.options.find(o => o.kind === 'gate');
+  applyAction(s, 1, { restore: true, id: opt.id });
+  check(s.stack.length === stackBefore && s.stack.some(t => t.id === gate.id),
+    'Fehu: the Gate returns to the stack');
+  check(!s.discard.some(t => t.id === gate.id), 'Fehu: the Gate no longer lies in the discard');
+  check(s.players[1].resolve === 0 && s.perkUse.hearth === 1, 'Fehu: the ransom was paid');
+  check(s.turn === 1, 'Fehu: the turn then passes as normal');
+}
+{
+  // Fehu ransom can avert the last-gate doom — the loss check waits for the
+  // bearer's answer; a declined ransom lets the doom fall
+  const mk = (seed) => {
+    const s = createGame({ seed, stack: deck(40), runePerks: true });
+    s.players[1].rune = { p: 'folkvangr', k: 'fehu' };
+    doSetup(s);
+    const t0 = _test.tileAt(s, 1, 1); if (t0) t0.fractured = false;
+    s.players[1].resolve = 1;
+    s.stack = s.stack.filter(t => t.kind !== 'gate'); // one gate left in the saga…
+    s.stack.push(_test.makeTileDef(s, 'gate', { gate: 'valhalla' })); // …on top
+    return s;
+  };
+  const a = mk(54);
+  applyAction(a, 0, { kind: 'stay' });
+  check(a.phase === 'play' && a.awaiting && a.awaiting.type === 'stocked-hearth',
+    'Fehu: the last Gate burns — the ransom is offered before the doom');
+  applyAction(a, 1, { restore: true, id: a.awaiting.options[0].id });
+  check(a.phase === 'play' && a.stack.some(t => t.kind === 'gate'),
+    'Fehu: the ransomed Gate averts the loss');
+  const b = mk(54);
+  applyAction(b, 0, { kind: 'stay' });
+  // a stray racing payload must BOUNCE (the ransom can avert a loss — only an
+  // explicit decline may wave it off), leaving the prompt open
+  let bounced = false;
+  try { applyAction(b, 1, { kind: 'move', d: 1 }); } catch (e) { bounced = !!e.illegal; }
+  check(bounced && b.awaiting && b.awaiting.type === 'stocked-hearth',
+    'Fehu: a stray payload bounces off the ransom prompt');
+  applyAction(b, 1, { decline: true }); // let it go, said out loud
+  check(b.phase === 'lost' && /Both gates are lost/.test(b.lossReason),
+    'Fehu: a declined ransom lets the doom fall');
+}
+{
+  // A strike's burn batch with a Rune Circle buried in it: the bearer picks
+  // THE treasure out of the batch — not merely the top tile
+  const s = createGame({ seed: 55, stack: deck(40), runePerks: true });
+  s.players[1].rune = { p: 'folkvangr', k: 'fehu' };
+  doSetup(s);
+  s.players[1].resolve = 1;
+  s.players[0].resolve = 0; // no brace prompt: the strike lands at once
+  const ri = s.stack.findIndex(t => t.kind === 'rune');
+  const [rune] = s.stack.splice(ri, 1);
+  s.stack.splice(s.stack.length - 1, 0, rune); // second from the top: mid-batch
+  s.awaiting = null; s.queue.length = 0;
+  s.queue.push({ t: 'hit', seat: 0, m: [0, 0] }, { t: 'after-hits' });
+  _test.run(s);
+  check(s.awaiting && s.awaiting.type === 'stocked-hearth', 'Fehu: the strike’s burn batch offers a ransom');
+  const opt = s.awaiting.options.find(o => o.kind === 'rune');
+  check(!!opt, 'Fehu: the buried Rune Circle is pickable from the batch');
+  const before = s.stack.length;
+  applyAction(s, 1, { restore: true, id: opt.id });
+  check(s.stack.length === before + 1 && s.stack.some(t => t.id === rune.id),
+    'Fehu: the circle is shuffled back among the paths');
+}
+{
+  // Ansuz — the dawn peek does not slide: tiles drawn during the turn consume
+  // the report, and nothing new is revealed until the next dawn
+  const s = createGame({ seed: 57, stack: deck(40), runePerks: true });
+  s.players[0].rune = { p: 'valhalla', k: 'ansuz' };
+  doSetup(s);
+  const known = publicState(s).stackPeek;
+  check(known && known.length === 2, 'Ansuz: two tiles known at dawn');
+  const secondKind = known[1].kind;
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  let placed = 0;
+  while (s.awaiting && s.awaiting.type === 'place-tile') {
+    placed++;
+    const tg = s.awaiting.targets[0];
+    applyAction(s, s.awaiting.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+  }
+  const after = publicState(s).stackPeek;
+  if (placed >= 2) check(after === null, 'Ansuz: the report is spent after two draws');
+  else if (placed === 1) check(after && after.length === 1 && after[0].kind === secondKind,
+    'Ansuz: one draw leaves one known tile — never a fresh peek');
+  else check(true, 'Ansuz: (no draws this move — skipped)');
 }
 {
   // Winter-forms: the refusal (Ansuz), winter stores (Fehu), grove shade (Berkano)

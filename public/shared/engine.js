@@ -34,24 +34,24 @@ export const RUNES = {
       perk: 'Tireless — your first Press On each turn costs no Resolve',
       winterPerk: 'Deathless roots — a fall never dooms you: land on any tile in the rift’s row or column' },
     { k: 'raido',  g: 'ᚱ', name: 'Raido',  gloss: 'Ride — the righteous path',
-      perk: 'Wayfarer — spend 1 ◆ to step across a Void Rift',
-      winterPerk: 'The last road — crossing a Void Rift costs nothing' },
+      perk: 'Wayfarer — once a turn, 1 ◆: turn an adjacent unoccupied path, or stride across a Void Rift',
+      winterPerk: 'The last road — the Wayfarer’s road-craft costs nothing' },
     { k: 'ansuz',  g: 'ᚨ', name: 'Ansuz',  gloss: "God — wisdom and Odin's insight",
-      perk: 'Raven-counsel — on your turn, the next two stack tiles are known',
+      perk: 'Raven-counsel — at your turn’s dawn, the next two stack tiles are known',
       winterPerk: 'The refusal — once per Embrace, the party skips one surrender' },
   ],
   folkvangr: [
     { k: 'berkano', g: 'ᛒ', name: 'Berkano', gloss: 'Birch — nurture and protection',
-      perk: 'New growth — fractured paths do not crumble when you leave them',
+      perk: 'New growth — 1 ◆: the fractured path you leave does not crumble',
       winterPerk: 'Grove shade — the cold can never claim the last tile standing beside you' },
     { k: 'uruz',    g: 'ᚢ', name: 'Uruz',    gloss: 'Aurochs — vitality and growth',
       perk: 'Deep vitality — Resolve cap 3; your ◆ may pay a teammate’s spend',
       winterPerk: 'Winter strength — your Stay steels +2 ◆' },
     { k: 'wunjo',   g: 'ᚹ', name: 'Wunjo',   gloss: 'Joy — harmony and fulfilment',
-      perk: 'Shared joy — your Stay also steels an adjacent teammate +1 ◆',
+      perk: 'Shared joy — your Stay steels an adjacent teammate +1 ◆, and theirs steels you',
       winterPerk: 'Heartened — teammates who begin their move beside you take one free extra step' },
     { k: 'fehu',    g: 'ᚠ', name: 'Fehu',    gloss: "Cattle — wealth, Freyja's plenty",
-      perk: 'Stocked hearth — your Stay burns no stack tile (lingering still burns)',
+      perk: 'Stocked hearth — your Stay burns nothing; twice a saga, 1 ◆ buys back a just-burned Gate or Rune Circle',
       winterPerk: 'Winter stores — twice per Embrace, spend 1 ◆ to return a tile the cold has just taken' },
   ],
 };
@@ -298,8 +298,11 @@ export function createGame(opts = {}) {
     runePerks: !!opts.runePerks,
     uruzAdjacent: !!opts.uruzAdjacent, // Hard telling: Uruz lends to neighbors only
     perkSet: Array.isArray(opts.perkSet) ? opts.perkSet : null,
-    perkUse: { refusal: false, stores: 0 }, // per-Embrace bookkeeping
+    perkUse: { refusal: false, stores: 0, hearth: 0 }, // limited-use bookkeeping
     freeSteps: 0, // free Press Ons this turn (Eihwaz; +Wunjo's Heartened in winter)
+    wayfarerUsed: false, // Raido's road-craft (turn a path / cross a rift), once a turn
+    peekLen: null,       // stack length when the Ansuz bearer's turn began (peek snapshot)
+    hearthPending: null, // Gate/Rune tiles of the current burn batch, for Fehu's ransom
   };
   const names = opts.names || DEFAULT_NAMES;
   const looks = opts.appearance || []; // per seat: {color, icon} chosen in the lobby
@@ -522,10 +525,32 @@ function discardN(s, n) {
     s.discard.push(t);
     burned++;
     tiles.push({ kind: t.kind, gate: t.gate });
+    hearthNote(s, t);
     if (t.kind === 'gate') log(s, `The Gate of ${GATE_NAMES[t.gate]} is lost to the mist!`, 'danger');
     else if (t.kind === 'rune') log(s, 'A Rune Circle is lost from the path stack.', 'danger');
   }
   if (burned) ev(s, 'burn', { n: burned, tiles });
+}
+
+// Stocked hearth (Fehu): note each treasure the current burn batch takes from
+// the stack — the bearer may ransom ONE of them back before the loss is final
+function hearthNote(s, t) {
+  if (!s.runePerks || (t.kind !== 'gate' && t.kind !== 'rune')) return;
+  if (!s.hearthPending) s.hearthPending = [];
+  s.hearthPending.push({ id: t.id, kind: t.kind, gate: t.gate || undefined });
+}
+
+// offer the ransom (if it applies) and return true if a prompt now waits;
+// callers queue their own continuation step before calling
+function maybeHearth(s) {
+  const pend = s.hearthPending;
+  s.hearthPending = null;
+  if (!pend || !pend.length || s.phase !== 'play') return false;
+  const f = perkBearer(s, 'fehu');
+  if (!f || f.resolve < 1) return false;
+  if (((s.perkUse && s.perkUse.hearth) || 0) >= 2) return false;
+  s.awaiting = { type: 'stocked-hearth', seat: f.seat, options: pend };
+  return true;
 }
 
 function drawTile(s) { return s.stack.pop() || null; }
@@ -543,15 +568,72 @@ function fractureCell(s, r, c) {
 }
 
 // a fractured tile crumbles when its occupant departs — unless the departing
-// soul bears Berkano (New growth): the birch holds the cracked path together,
-// still fractured, for those who follow
-function crumbleBehind(s, p, r, c, fractured) {
+// soul bears Berkano (New growth) and CHOOSES to spend 1 ◆ holding it (the
+// hold intent rides the move payload; the birch's strength is not free).
+// The held tile stays fractured for those who follow.
+function crumbleBehind(s, p, r, c, fractured, hold) {
   if (!fractured) return;
-  if (hasPerk(s, p, 'berkano')) {
-    log(s, `The birch holds the cracked path together behind ${p.name}. (ᛒ)`, 'good');
+  if (hold && hasPerk(s, p, 'berkano') && p.resolve >= 1) {
+    p.resolve--;
+    log(s, `${p.name} spends Resolve — the birch holds the cracked path together. (ᛒ)`, 'good');
     return;
   }
   fractureCell(s, r, c);
+}
+
+// New growth (Berkano): may the mover pay 1 ◆ to hold the fractured tile
+// they stand on as they leave it? (surfaced on the action/post-move awaiting
+// so the client knows to ask; the intent itself rides the move payload)
+function canHoldPath(s, p) {
+  if (!p.placed || !hasPerk(s, p, 'berkano') || p.resolve < 1) return false;
+  const t = tileAt(s, p.r, p.c);
+  return !!(t && t.fractured);
+}
+
+// Wayfarer (Raido): tiles the bearer may turn — orthogonally beside them
+// (no open passage required: turning is how a blocked mouth gets fixed),
+// standing, unoccupied, and of a kind whose exits rotation can change.
+// Gates are monuments and Draugr are not road; cross/rune tiles open every
+// way already. 1 ◆ (free in the Embrace), once a turn, shared with the
+// rift-crossing.
+const TURNABLE = { straight: 1, tee: 1, start: 1 };
+function turnTargets(s, p) {
+  const out = [];
+  if (!p.placed || !hasPerk(s, p, 'raido') || s.wayfarerUsed) return out;
+  if (p.resolve < (s.niflheim ? 0 : 1)) return out;
+  for (let d = 0; d < 4; d++) {
+    const [nr, nc] = stepDir(p.r, p.c, d);
+    const t = tileAt(s, nr, nc);
+    if (!t || !TURNABLE[t.kind]) continue;
+    if (occupantsAt(s, nr, nc).length) continue;
+    out.push({ r: nr, c: nc });
+  }
+  return out;
+}
+
+function doTurnTile(s, p, payload, then) {
+  // validate fully BEFORE consuming the prompt — a bad pick must not wedge
+  if (!hasPerk(s, p, 'raido')) err('Only the Wayfarer may turn the road.');
+  if (s.wayfarerUsed) err('The road has already answered this turn.');
+  validCell(payload.r, payload.c); validRot(payload.rot);
+  if (!turnTargets(s, p).some(o => o.r === payload.r && o.c === payload.c)) err('That path cannot be turned.');
+  const t = tileAt(s, payload.r, payload.c);
+  const newExits = exitsFor(t.kind, payload.rot, s.gateExits);
+  if (newExits.every((v, i) => v === t.exits[i])) err('It already lies so.');
+  const cost = s.niflheim ? 0 : 1;
+  if (p.resolve < cost) err('No Resolve.');
+  s.awaiting = null;
+  p.resolve -= cost;
+  s.wayfarerUsed = true;
+  t.rot = payload.rot;
+  t.exits = newExits;
+  ev(s, 'turn', { r: payload.r, c: payload.c, rot: payload.rot });
+  log(s, `${p.name} turns the path to suit the road${cost ? ', spending Resolve' : ''}. (ᚱ)`, 'good');
+  // connectivity just changed by hand: in the Embrace a severed road can
+  // decide the saga at once (the network never heals once the stack is spent)
+  if (s.niflheim) lossCheck(s);
+  if (s.phase !== 'play') return;
+  s.queue.unshift({ t: then });
 }
 
 // ---------------------------------------------------------------- options
@@ -568,9 +650,10 @@ export function computeMoves(s, p) {
     if (cl && cl.rift) {
       moves.push({ d, kind: 'jump', r: nr, c: nc });
       // Wayfarer (Raido): step ACROSS the rift to solid ground beyond —
-      // 1 ◆ normally, free once the Embrace holds (The last road)
+      // 1 ◆ normally, free once the Embrace holds (The last road). The
+      // road-craft answers once a turn, shared with turning a path.
       const cost = s.niflheim ? 0 : 1;
-      if (hasPerk(s, p, 'raido') && p.resolve >= cost) {
+      if (hasPerk(s, p, 'raido') && !s.wayfarerUsed && p.resolve >= cost) {
         const [rr, cc] = stepDir(nr, nc, d);
         const ft = tileAt(s, rr, cc);
         if (ft && ft.exits[OPP(d)] && ft.kind !== 'draugr'
@@ -600,7 +683,7 @@ function actionOptions(s, p) {
   const moves = computeMoves(s, p);
   const stay = p.hopeful || p.resolve > 0 || moves.length === 0;
   const rekindle = !p.hopeful && (p.resolve > 0 || !!uruzLender(s, p));
-  return { moves, stay, rekindle };
+  return { moves, stay, rekindle, turns: turnTargets(s, p), canHold: canHoldPath(s, p) };
 }
 
 // ---------------------------------------------------------------- win / loss
@@ -871,6 +954,13 @@ STEPS['begin-turn'] = (s) => {
   // Wunjo's Heartened (beginning your move beside the bearer, or on their gate)
   s.freeSteps = 0;
   if (hasPerk(s, p, 'eihwaz')) s.freeSteps++;
+  // Wayfarer (Raido): the road answers once each turn
+  s.wayfarerUsed = false;
+  // Raven-counsel (Ansuz): the ravens report at the turn's dawn — a single
+  // physical peek at the top of the stack, not a running watch. publicState
+  // shows the snapshot's tiles until they are drawn.
+  s.peekLen = hasPerk(s, p, 'ansuz') ? s.stack.length : null;
+  s.hearthPending = null; // any unclaimed ransom window has closed
   if (s.niflheim) {
     const w = perkBearer(s, 'wunjo');
     if (w && w.seat !== p.seat && p.placed && wrapAdj(w, p) <= 1) {
@@ -1012,8 +1102,13 @@ STEPS['after-hits'] = (s) => {
     }
   }
   sweep(s);
+  // Stocked hearth (Fehu): a treasure burned by the strikes may be ransomed
+  // back BEFORE the loss check — the rescue must be able to avert the doom
+  if (maybeHearth(s)) { s.queue.unshift({ t: 'loss-check' }); return; }
   lossCheck(s);
 };
+
+STEPS['loss-check'] = (s) => { lossCheck(s); };
 
 STEPS['arrive'] = (s, { seat, then }) => {
   const p = P(s, seat);
@@ -1093,7 +1188,10 @@ STEPS['post-move'] = (s) => {
   const moves = computeMoves(s, p);
   const canMoveAgain = (p.resolve > 0 || s.freeSteps > 0 || !!uruzLender(s, p))
     && s.movesThisTurn < 3 && moves.length > 0;
-  s.awaiting = { type: 'post-move', seat: s.turn, canMoveAgain, moves, freeStep: s.freeSteps > 0 };
+  s.awaiting = {
+    type: 'post-move', seat: s.turn, canMoveAgain, moves, freeStep: s.freeSteps > 0,
+    turns: turnTargets(s, p), canHold: canHoldPath(s, p),
+  };
 };
 
 STEPS['end-turn'] = (s) => {
@@ -1148,6 +1246,10 @@ STEPS['end-turn'] = (s) => {
 };
 
 STEPS['end-turn2'] = (s) => {
+  // Stocked hearth (Fehu): a treasure burned this turn (a Stay's stillness)
+  // may be ransomed back before the loss check; maybeHearth clears the
+  // pending batch, so the re-entry below cannot loop
+  if (maybeHearth(s)) { s.queue.unshift({ t: 'end-turn2' }); return; }
   lossCheck(s);
   if (s.phase !== 'play') return;
   s.turn = (s.turn + 1) % 4;
@@ -1283,9 +1385,21 @@ ACTIONS['action'] = (s, p, payload, aw) => {
   if (kind === 'move') {
     const mv = aw.moves.find(m => m.d === payload.d && (payload.cross ? m.kind === 'cross' : m.kind !== 'cross'));
     if (!mv) err('Not a legal move.');
+    if (payload.hold) {
+      // the hold's 1 ◆ comes AFTER the move's own tolls (rift toll, berserk):
+      // demand the whole purse up front so the hold can't silently fail
+      const ownCost = 1 + (mv.cost || 0) + (mv.kind === 'charge' ? 1 : 0);
+      if (!canHoldPath(s, p) || p.resolve < ownCost) err('Not enough Resolve to hold the path as well.');
+    }
     s.awaiting = null;
     s.movesThisTurn = (s.movesThisTurn || 0) + 1;
-    doMove(s, p, mv, 'post-move');
+    doMove(s, p, mv, 'post-move', !!payload.hold);
+    return;
+  }
+  if (kind === 'turn') {
+    // Wayfarer (Raido): turn an adjacent path, then choose the turn's action
+    // afresh — the roads (and so the legal moves) have changed
+    doTurnTile(s, p, payload, 'action');
     return;
   }
   err('Unknown action.');
@@ -1301,6 +1415,13 @@ function doStay(s, p, aw) {
     const gain = (s.niflheim && hasPerk(s, p, 'uruz')) ? 2 : 1; // Winter strength
     p.resolve = Math.min(resolveCap(s, p), p.resolve + gain);
     log(s, `${p.name} stands fast and steels their Resolve (+${gain}).`, 'info');
+    // Shared joy flows both ways: a teammate's Stay beside the Wunjo bearer
+    // gladdens the bearer too (+1) — joy shared is joy returned
+    const w = perkBearer(s, 'wunjo');
+    if (w && w.seat !== p.seat && wrapAdj(w, p) <= 1 && w.resolve < resolveCap(s, w)) {
+      w.resolve++;
+      log(s, `${p.name}'s steadfastness gladdens ${w.name} (+1). (ᚹ)`, 'good');
+    }
     // Shared joy: the Wunjo bearer's Stay also steels one adjacent teammate —
     // the bearer CHOOSES when more than one stands near (physical table: they
     // simply say who; digitally a prompt, skipped in the common 0/1 cases)
@@ -1364,6 +1485,7 @@ STEPS['stay-burn'] = (s) => {
     } else {
       s.discard.push(t);
       ev(s, 'burn', { n: 1, tiles: [{ kind: t.kind, gate: t.gate }] });
+      hearthNote(s, t);
       if (t.kind === 'gate') log(s, `The Gate of ${GATE_NAMES[t.gate]} is lost to the mist!`, 'danger');
       else if (t.kind === 'rune') log(s, 'A Rune Circle is lost from the path stack.', 'danger');
       else log(s, 'Hope gutters in the stillness — a path tile is lost.', 'info');
@@ -1383,7 +1505,7 @@ ACTIONS['swap-draugr'] = (s, p, { r, c }, aw) => {
   // continuation (stay-fracture) is already queued
 };
 
-function doMove(s, p, mv, then) {
+function doMove(s, p, mv, then, hold) {
   const { d, kind } = mv;
   const [or_, oc] = [p.r, p.c];
   const originKey = key(or_, oc);
@@ -1396,6 +1518,7 @@ function doMove(s, p, mv, then) {
     // Wayfarer (Raido): pay the toll and stride the gap; the rift remains.
     // Falls through to the ordinary arrival below — mv.r/mv.c is the far side.
     if (mv.cost) p.resolve -= mv.cost;
+    s.wayfarerUsed = true; // the road answers once a turn
     log(s, `${p.name} strides across the Void Rift${mv.cost ? ', spending Resolve' : ''}. (ᚱ)`, 'good');
   }
 
@@ -1403,7 +1526,7 @@ function doMove(s, p, mv, then) {
     log(s, `${p.name} leaps into the Void Rift.`, 'info');
     const trig = triggeredBy(s, [originKey]);
     ev(s, 'fall', { seat: p.seat, from: [or_, oc], r: nr, c: nc });
-    crumbleBehind(s, p, or_, oc, originFractured);
+    crumbleBehind(s, p, or_, oc, originFractured, hold);
     p.placed = false; p.r = null; p.c = null;
     p.falling = { r: nr, c: nc };
     fallDoomCheck(s, p);
@@ -1420,7 +1543,7 @@ function doMove(s, p, mv, then) {
     const trig = triggeredBy(s, [originKey, destKey]);
     p.r = nr; p.c = nc;
     ev(s, 'move', { seat: p.seat, from: [or_, oc], to: [nr, nc] });
-    crumbleBehind(s, p, or_, oc, originFractured);
+    crumbleBehind(s, p, or_, oc, originFractured, hold);
     // the charger always stands in the draugr's sight, so its strike always
     // lands on them; once the attack concludes and they scramble off it,
     // the draugr is banished (banish flag on the scramble)
@@ -1439,13 +1562,13 @@ function doMove(s, p, mv, then) {
       p.r = nr; p.c = nc;
       ev(s, 'reveal', { r: nr, c: nc });
       ev(s, 'move', { seat: p.seat, from: [or_, oc], to: [nr, nc] });
-      crumbleBehind(s, p, or_, oc, originFractured);
+      crumbleBehind(s, p, or_, oc, originFractured, hold);
       s.queue.unshift({ t: 'scramble', seat: p.seat, from: [nr, nc], free: false, then });
       startHitWave(s, trig, { mover: p.seat, lateral: false });
       return;
     }
     const rots = [0, 1, 2, 3].filter(rot => exitsFor(tile.kind, rot, s.gateExits)[OPP(d)]);
-    s.blindCtx = { origin: [or_, oc], d, then, originFractured };
+    s.blindCtx = { origin: [or_, oc], d, then, originFractured, hold: !!hold };
     s.awaiting = { type: 'place-blind', seat: p.seat, tile, r: nr, c: nc, rots };
     return;
   }
@@ -1455,7 +1578,7 @@ function doMove(s, p, mv, then) {
   const trig = triggeredBy(s, [originKey, destKey]);
   p.r = nr; p.c = nc;
   ev(s, 'move', { seat: p.seat, from: [or_, oc], to: [nr, nc] });
-  crumbleBehind(s, p, or_, oc, originFractured);
+  crumbleBehind(s, p, or_, oc, originFractured, hold);
   s.queue.unshift({ t: 'arrive', seat: p.seat, then });
   startHitWave(s, trig, { mover: p.seat, lateral: true });
 }
@@ -1463,7 +1586,7 @@ function doMove(s, p, mv, then) {
 ACTIONS['place-blind'] = (s, p, { rot }, aw) => {
   if (!aw.rots.includes(rot)) err('That rotation does not connect.');
   s.awaiting = null;
-  const { origin, then, originFractured } = s.blindCtx;
+  const { origin, then, originFractured, hold } = s.blindCtx;
   s.blindCtx = null;
   setTile(s, aw.r, aw.c, aw.tile, rot);
   const originKey = key(origin[0], origin[1]);
@@ -1472,7 +1595,7 @@ ACTIONS['place-blind'] = (s, p, { rot }, aw) => {
   p.r = aw.r; p.c = aw.c;
   ev(s, 'reveal', { r: aw.r, c: aw.c });
   ev(s, 'move', { seat: p.seat, from: origin, to: [aw.r, aw.c] });
-  crumbleBehind(s, p, origin[0], origin[1], originFractured);
+  crumbleBehind(s, p, origin[0], origin[1], originFractured, hold);
   log(s, `${p.name} feels their way onto ${describeTile(aw.tile)}.`, 'info');
   s.queue.unshift({ t: 'arrive', seat: p.seat, then });
   startHitWave(s, trig, { mover: p.seat, lateral: true });
@@ -1656,11 +1779,22 @@ ACTIONS['post-move'] = (s, p, payload, aw) => {
     s.queue.unshift({ t: 'end-turn' });
     return;
   }
+  if (payload.kind === 'turn') {
+    // Wayfarer (Raido): the road may still be turned between steps
+    doTurnTile(s, p, payload, 'post-move');
+    return;
+  }
   if (payload.kind === 'move') {
     if (!aw.canMoveAgain) err('Cannot press on.');
     const mv = aw.moves.find(m => m.d === payload.d && (payload.cross ? m.kind === 'cross' : m.kind !== 'cross'));
     if (!mv) err('Not a legal move.');
     const free = s.freeSteps > 0;
+    if (payload.hold) {
+      // press-on (when not free), rift toll and berserk all draw from the
+      // bearer's own purse before the hold's 1 ◆ — demand the total up front
+      const ownCost = 1 + (free ? 0 : 1) + (mv.cost || 0) + (mv.kind === 'charge' ? 1 : 0);
+      if (!canHoldPath(s, p) || p.resolve < ownCost) err('Not enough Resolve to hold the path as well.');
+    }
     if (!free && p.resolve < 1 && !uruzLender(s, p)) err('No Resolve.');
     s.awaiting = null;
     if (free) {
@@ -1674,7 +1808,7 @@ ACTIONS['post-move'] = (s, p, payload, aw) => {
       log(s, `${p.name} presses on.`, 'info');
     }
     s.movesThisTurn = (s.movesThisTurn || 0) + 1;
-    doMove(s, p, mv, 'post-move');
+    doMove(s, p, mv, 'post-move', !!payload.hold);
     return;
   }
   err('Unknown choice.');
@@ -1734,10 +1868,14 @@ ACTIONS['shared-joy'] = (s, p, payload, aw) => {
 };
 
 ACTIONS['winter-stores'] = (s, p, payload) => {
-  // validate BEFORE consuming the prompt — a refused restore must not wedge
+  // validate BEFORE consuming the prompt — a refused restore must not wedge.
+  // As with the hearth-ransom, declining must be explicit (restore:false):
+  // a stray racing payload bounces instead of silently letting the tile go
   if (payload.restore) {
     if (!s.storesCtx) err('Nothing to restore.');
     if (p.resolve < 1 || s.perkUse.stores >= 2) err('The stores are spent.');
+  } else if (payload.restore !== false && !payload.decline) {
+    err('The stores await an answer.');
   }
   const ctx = s.storesCtx;
   s.awaiting = null;
@@ -1749,6 +1887,41 @@ ACTIONS['winter-stores'] = (s, p, payload) => {
   s.grid[key(ctx.r, ctx.c)] = { tile: t };
   ev(s, 'reveal', { r: ctx.r, c: ctx.c });
   log(s, `${p.name} opens Freyja's stores — ${describeTile(t)} is returned to the forest. (ᚠ)`, 'good');
+};
+
+ACTIONS['stocked-hearth'] = (s, p, payload, aw) => {
+  // validate BEFORE consuming the prompt — a refused ransom must not wedge.
+  // The decline must be EXPLICIT: this prompt can avert a loss, so a stray
+  // payload racing in from a click meant for the previous decision must
+  // bounce (err leaves the prompt open), never silently wave the treasure off
+  let di = -1;
+  if (payload.restore) {
+    const opt = aw.options.find(o => o.id === payload.id);
+    if (!opt) err('That treasure was not just burned.');
+    if (p.resolve < 1 || ((s.perkUse && s.perkUse.hearth) || 0) >= 2) err('The hearth is spent.');
+    for (let i = s.discard.length - 1; i >= 0; i--) {
+      if (s.discard[i].id === payload.id) { di = i; break; }
+    }
+    if (di < 0) err('The mist keeps it.');
+  } else if (!payload.decline) {
+    err('The hearth awaits an answer — ransom the tile, or let the cold keep it.');
+  }
+  s.awaiting = null;
+  if (!payload.restore) {
+    log(s, `${p.name} lets the cold keep its prize.`, 'info');
+    return; // continuation is queued
+  }
+  const t = s.discard.splice(di, 1)[0];
+  p.resolve--;
+  if (!s.perkUse) s.perkUse = { refusal: false, stores: 0, hearth: 0 };
+  s.perkUse.hearth = (s.perkUse.hearth || 0) + 1;
+  // shuffled back among the paths — the party may not steer WHERE it returns
+  const idx = Math.floor(rand(s) * (s.stack.length + 1));
+  s.stack.splice(idx, 0, t);
+  // the pile has been disturbed: the raven's dawn report no longer holds
+  if (s.peekLen != null) s.peekLen = s.stack.length + 2;
+  ev(s, 'ransom', { tile: { kind: t.kind, gate: t.gate || undefined } });
+  log(s, `${p.name} opens the stocked hearth — ${describeTile(t)} is ransomed from the mist and shuffled back among the paths. (ᚠ)`, 'good');
 };
 
 export function concede(s) {
@@ -1782,6 +1955,18 @@ function validRot(rot) {
 
 // ---------------------------------------------------------------- public view
 
+// Raven-counsel snapshot: how much of the turn-dawn peek is still ahead of the
+// stack top. s.peekLen is the stack length when the bearer's turn began; each
+// draw consumes one known tile, and a hearth-ransom reshuffle voids the rest.
+// Old persisted states (no peekLen) show the top two until the next turn dawn.
+function stackPeekView(s) {
+  if (!(s.runePerks && s.phase === 'play' && s.players[s.turn] && hasPerk(s, s.players[s.turn], 'ansuz'))) return null;
+  const snapLen = (s.peekLen == null) ? s.stack.length : s.peekLen;
+  const known = Math.max(0, Math.min(2 - (snapLen - s.stack.length), 2));
+  if (!known) return null;
+  return s.stack.slice(-known).reverse().map(t => ({ kind: t.kind, gate: t.gate || undefined }));
+}
+
 export function publicState(s) {
   return {
     phase: s.phase,
@@ -1802,12 +1987,11 @@ export function publicState(s) {
     runePerks: !!s.runePerks,
     uruzAdjacent: !!s.uruzAdjacent,
     perkUse: s.perkUse || null,
-    // Raven-counsel (Ansuz): on the bearer's turn the next two stack tiles are
-    // known — surfaced to the whole table, exactly as a physical peek-and-tell
-    // would be at a co-op table
-    stackPeek: (s.runePerks && s.phase === 'play' && s.players[s.turn] && hasPerk(s, s.players[s.turn], 'ansuz'))
-      ? s.stack.slice(-2).reverse().map(t => ({ kind: t.kind, gate: t.gate || undefined }))
-      : null,
+    // Raven-counsel (Ansuz): the ravens report ONCE at the bearer's turn dawn —
+    // surfaced to the whole table, exactly as a physical peek-and-tell would be.
+    // Tiles drawn since the snapshot are spent knowledge; the peek never slides
+    // forward to newer tiles (that would out-see a real table's single look).
+    stackPeek: stackPeekView(s),
     tileTotals: s.tileTotals || null,
     turnsTaken: s.turnsTaken || 0,
     seq: s.seq || 0,

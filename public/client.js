@@ -21,6 +21,8 @@ let reconnectTimer = null;
 let previewRot = 0;
 let awaitingSig = '';
 let moveAgainArmed = false;
+let holdArmed = false; // Berkano: pay 1 ◆ to hold the fractured tile you leave
+let turnArmed = false; // Raido: pick an adjacent path to turn
 let clickMap = new Map(); // "r,c" -> handler
 let transientFx = null;   // choreographed one-shot animation timeline
 let decisionDeadline = null; // soft turn-timer deadline for the current decision
@@ -193,6 +195,10 @@ function buildTimeline(events, cap = 2.8) {
         // a notable loss (a gate, a circle) earns its own beat in the sequence
         if ((e.tiles || []).some(x => x.kind === 'gate' || x.kind === 'rune')) t += 0.45;
         break;
+      case 'turn':
+        // a turned path re-enters with the reveal pulse — the road has changed
+        T.reveals[e.r * SIZE + e.c] = { at: t };
+        t += 0.3; break;
     }
   }
   // long chains stay snappy: compress the whole sequence into the cap
@@ -248,6 +254,7 @@ function leaveRoom(message) {
   localStorage.removeItem('mk-code');
   room = null; state = null;
   soulSeat = null; transientFx = null; moveAgainArmed = false; modalLock = null;
+  holdArmed = false; turnArmed = false;
   clearTimeout(reconnectTimer);
   if (ws) { ws.onclose = null; try { ws.close(); } catch { /* gone */ } }
   $('lobby').classList.remove('hidden');
@@ -850,6 +857,7 @@ function render() {
   if (sig !== awaitingSig) {
     awaitingSig = sig;
     moveAgainArmed = false;
+    holdArmed = false; turnArmed = false; // each hold/turning is its own 1 ◆ decision
     armedCell = null; armedAction = null; hoverCell = null;
     livePreview = null; lastPreviewSent = ''; // a finalized/changed decision clears the live ghost
     const rots = legalRots(aw);
@@ -1585,33 +1593,52 @@ function addInteractions(parts, aw) {
       break;
     }
     case 'action': {
+      // Wayfarer's turning armed: the marked paths take the clicks; ordinary
+      // moves stand down until the turning is done or cancelled
+      if (turnArmed && aw.turns && aw.turns.length) {
+        aw.turns.forEach(o => clickRect(parts, o.r, o.c, 'place', () => {
+          modalLock = { turnPick: { r: o.r, c: o.c } };
+          renderModal();
+        }));
+        break;
+      }
       aw.moves.forEach(m => {
+        // Berkano's armed hold rides the move payload (1 ◆, spent as you leave)
+        const mv = extra => act({ kind: 'move', d: m.d, ...extra, ...(holdArmed && aw.canHold ? { hold: true } : {}) });
         clickRect(parts, m.r, m.c, m.kind, () => {
           if (m.kind === 'charge') {
-            confirmModal('Go berserk and rush the Draugr? Its strike WILL land on you — but with its spite spent, it is banished from the forest. (1 Resolve)', () => act({ kind: 'move', d: m.d }));
+            confirmModal('Go berserk and rush the Draugr? Its strike WILL land on you — but with its spite spent, it is banished from the forest. (1 Resolve)', () => mv({}));
           } else if (m.kind === 'cross') {
-            confirmModal(`Stride across the Void Rift to the far side?${m.cost ? ' (1 Resolve — Wayfarer ᚱ)' : ' (The last road ᚱ)'}`, () => act({ kind: 'move', d: m.d, cross: true }));
+            confirmModal(`Stride across the Void Rift to the far side?${m.cost ? ' (1 Resolve — Wayfarer ᚱ)' : ' (The last road ᚱ)'}`, () => mv({ cross: true }));
           } else if (m.kind === 'jump') {
-            confirmModal('Leap into the Void Rift? You will fall, and land next turn with your ember still lit.', () => act({ kind: 'move', d: m.d }));
+            confirmModal('Leap into the Void Rift? You will fall, and land next turn with your ember still lit.', () => mv({}));
           } else {
-            act({ kind: 'move', d: m.d });
+            mv({});
           }
         });
       });
       break;
     }
     case 'post-move': {
+      if (turnArmed && aw.turns && aw.turns.length) {
+        aw.turns.forEach(o => clickRect(parts, o.r, o.c, 'place', () => {
+          modalLock = { turnPick: { r: o.r, c: o.c } };
+          renderModal();
+        }));
+        break;
+      }
       if (moveAgainArmed && aw.canMoveAgain) {
         aw.moves.forEach(m => {
+          const mv = extra => act({ kind: 'move', d: m.d, ...extra, ...(holdArmed && aw.canHold ? { hold: true } : {}) });
           clickRect(parts, m.r, m.c, m.kind, () => {
             if (m.kind === 'charge') {
-              confirmModal('Go berserk and rush the Draugr? Its strike WILL land on you, then it is banished. (2 Resolve in total)', () => act({ kind: 'move', d: m.d }));
+              confirmModal('Go berserk and rush the Draugr? Its strike WILL land on you, then it is banished. (2 Resolve in total)', () => mv({}));
             } else if (m.kind === 'cross') {
-              confirmModal(`Stride across the Void Rift?${m.cost ? ' (1 Resolve — Wayfarer ᚱ)' : ''}`, () => act({ kind: 'move', d: m.d, cross: true }));
+              confirmModal(`Stride across the Void Rift?${m.cost ? ' (1 Resolve — Wayfarer ᚱ)' : ''}`, () => mv({ cross: true }));
             } else if (m.kind === 'jump') {
-              confirmModal('Leap into the Void Rift?', () => act({ kind: 'move', d: m.d }));
+              confirmModal('Leap into the Void Rift?', () => mv({}));
             } else {
-              act({ kind: 'move', d: m.d });
+              mv({});
             }
           });
         });
@@ -1872,6 +1899,26 @@ function renderActionBar() {
     b.className = 'btn small ' + cls; b.innerHTML = label; b.onclick = fn;
     bar.appendChild(b); return b;
   };
+  // perk side-actions shared by the action and post-move prompts:
+  // Raido's turning (arms a pick, like Press On) and Berkano's hold toggle
+  const perkBtns = a => {
+    if (a.turns && a.turns.length) {
+      const toll = state.niflheim ? 'free — ᚱ' : '1 ◆ — ᚱ';
+      btn(turnArmed ? 'Cancel turning' : `Turn a path <small>(${toll})</small>`, () => {
+        turnArmed = !turnArmed;
+        if (turnArmed) moveAgainArmed = false;
+        render();
+      });
+    }
+    if (a.canHold) {
+      btn(holdArmed
+        ? 'Holding the path behind you <small>(1 ◆ — ᛒ)</small>'
+        : 'Hold the path? <small>(1 ◆ — ᛒ)</small>', () => {
+        holdArmed = !holdArmed;
+        render();
+      }, holdArmed ? 'primary' : '');
+    }
+  };
 
   switch (aw.type) {
     case 'place-start':
@@ -1912,7 +1959,9 @@ function renderActionBar() {
         const label = p.hopeful ? 'Stay <small>(+1 ◆, burn a tile)</small>' : 'Stay <small>(1 ◆)</small>';
         btn(label, () => act({ kind: 'stay' }));
       }
-      if (aw.moves.length) note('or click a glowing space to move');
+      perkBtns(aw);
+      if (turnArmed) note('tap a marked path to turn it');
+      else if (aw.moves.length) note('or click a glowing space to move');
       else note('no paths lead onward');
       break;
     }
@@ -1923,8 +1972,10 @@ function renderActionBar() {
           moveAgainArmed = !moveAgainArmed;
           render();
         });
-        if (moveAgainArmed) note('click a glowing space');
       }
+      perkBtns(aw);
+      if (turnArmed) note('tap a marked path to turn it');
+      else if (moveAgainArmed && aw.canMoveAgain) note('click a glowing space');
       break;
     }
     case 'swap-draugr': note('The Draugr must take a connected path — choose which'); break;
@@ -2049,6 +2100,34 @@ function renderModal() {
     modal.insertBefore(em, card);
   }
 
+  // Wayfarer's turning (Raido): pick how the chosen path should lie
+  if (modalLock && modalLock.turnPick) {
+    const { r, c } = modalLock.turnPick;
+    const cl = state.grid[key(r, c)];
+    const t = cl && cl.tile;
+    if (!t) { modalLock = null; modal.classList.add('hidden'); return; }
+    card.innerHTML = `<h2>Turn the path ᚱ</h2>
+      <p>How should it lie? The road obeys the Wayfarer${state.niflheim ? ' — freely, in the cold' : ' (1 ◆)'}.</p>`;
+    const row = document.createElement('div'); row.className = 'row';
+    const seen = new Set([(t.exits || exitsFor(t.kind, t.rot || 0)).join('')]);
+    for (let rot = 0; rot < 4; rot++) {
+      const ex = exitsFor(t.kind, rot);
+      const sig = ex.join('');
+      if (seen.has(sig)) continue; // its current lie (and duplicates) offer nothing
+      seen.add(sig);
+      const b = document.createElement('button');
+      b.className = 'btn turn-opt';
+      b.innerHTML = `<svg width="72" height="72" viewBox="0 0 92 92">${tileSVG({ ...t, rot, exits: ex }, 1, 1)}${exitMarkers(ex, 1, 1)}</svg>`;
+      b.onclick = () => { modalLock = null; turnArmed = false; act({ kind: 'turn', r, c, rot }); };
+      row.appendChild(b);
+    }
+    const no = document.createElement('button'); no.className = 'btn'; no.textContent = 'Leave it';
+    no.onclick = () => { modalLock = null; renderModal(); };
+    row.appendChild(no); card.appendChild(row);
+    modal.classList.remove('hidden');
+    return;
+  }
+
   // custom confirm has priority
   if (modalLock) {
     card.innerHTML = `<p style="font-size:16px;color:var(--text)">${escapeHtml(modalLock.text)}</p>`;
@@ -2154,6 +2233,28 @@ function renderModal() {
     const no = document.createElement('button'); no.className = 'btn'; no.textContent = 'Let it go';
     no.onclick = () => act({ restore: false });
     row.append(yes, no); card.appendChild(row);
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  // Stocked hearth (Fehu): ransom a just-burned treasure back into the stack
+  if (aw && aw.type === 'stocked-hearth' && isMine(aw.seat)) {
+    const name = o => (o.kind === 'gate' ? `the Gate of ${GATE_NAMES[o.gate]}` : 'a Rune Circle');
+    const left = 2 - ((state.perkUse && state.perkUse.hearth) || 0);
+    card.innerHTML = `<h2>The stocked hearth ᚠ</h2>
+      <p>The mist has just burned ${escapeHtml(aw.options.map(name).join(' and '))} from the
+      path stack. Ransom one back? It is shuffled in among the remaining paths.</p>
+      <p class="hint">${left} of 2 ransoms left this saga.</p>`;
+    const row = document.createElement('div'); row.className = 'row';
+    for (const o of aw.options) {
+      const b = document.createElement('button'); b.className = 'btn primary';
+      b.innerHTML = `Ransom ${escapeHtml(name(o))} <small>(1 ◆)</small>`;
+      b.onclick = () => act({ restore: true, id: o.id });
+      row.appendChild(b);
+    }
+    const no2 = document.createElement('button'); no2.className = 'btn'; no2.textContent = 'Let the cold keep it';
+    no2.onclick = () => act({ decline: true });
+    row.appendChild(no2); card.appendChild(row);
     modal.classList.remove('hidden');
     return;
   }

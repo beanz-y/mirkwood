@@ -7,8 +7,19 @@ import {
   losFor, litSet, RUNES, SIZE, key, OPP, exitsFor, stepDir, applyAction,
 } from '../public/shared/engine.js';
 
-// payload for a chosen move option (cross = Raido's rift-stride needs its flag)
-const moveAct = m => (m.kind === 'cross' ? { kind: 'move', d: m.d, cross: true } : { kind: 'move', d: m.d });
+// payload for a chosen move option (cross = Raido's rift-stride needs its flag;
+// hold = Berkano's paid bridge-hold rides the same payload)
+const moveAct = (m, hold) => {
+  const act = m.kind === 'cross' ? { kind: 'move', d: m.d, cross: true } : { kind: 'move', d: m.d };
+  if (hold) act.hold = true;
+  return act;
+};
+// Berkano's hold heuristic: spend spare ◆ keeping the fractured bridge behind
+// us — road fragmentation is the dominant loss, a held bridge is cheap
+// insurance when the purse allows. pressCost covers a post-move step's own ◆.
+const wantHold = (aw, p, m, pressCost) =>
+  !!(aw && aw.canHold && m && (m.kind === 'move' || m.kind === 'jump' || m.kind === 'blind')
+    && p.resolve >= 2 + (pressCost || 0));
 const wrapDist = (r1, c1, r2, c2) =>
   Math.min(Math.abs(r1 - r2), SIZE - Math.abs(r1 - r2))
   + Math.min(Math.abs(c1 - c2), SIZE - Math.abs(c1 - c2));
@@ -555,6 +566,9 @@ function cloneState(s) {
     perkUse: s.perkUse ? { ...s.perkUse } : s.perkUse,
     freeSteps: s.freeSteps,
     storesCtx: s.storesCtx ? { ...s.storesCtx } : null,
+    wayfarerUsed: s.wayfarerUsed, // Raido's once-a-turn road-craft budget
+    peekLen: s.peekLen,           // Ansuz dawn-peek snapshot marker
+    hearthPending: s.hearthPending ? s.hearthPending.map(o => ({ ...o })) : null,
     tileTotals: { ...s.tileTotals },
   };
 }
@@ -871,7 +885,7 @@ function plannerDecision(s, rnd, ctx) {
       if (best.kind === 'stay') { stayRun[p.seat] = (stayRun[p.seat] || 0) + 1; return { kind: 'stay' }; }
       stayRun[p.seat] = 0;
       (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
-      return moveAct(best);
+      return moveAct(best, wantHold(aw, p, best, 0));
     }
     // greedy plan path: drive toward the goal (souls keep moving — Staying just
     // burns the tile budget; guard/beachhead Stays are handled explicitly above).
@@ -886,7 +900,7 @@ function plannerDecision(s, rnd, ctx) {
     // stalemate concessions up): scorePlanMove's scale differs from scoreMove's,
     // and freezing beats fighting through less often than greedy's threshold says.
     if (best && best.kind === 'jump' && aw.stay && bestScore <= -10) return { kind: 'stay' };
-    if (best) { (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c]; return moveAct(best); }
+    if (best) { (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c]; return moveAct(best, wantHold(aw, p, best, 0)); }
     return aw.stay ? { kind: 'stay' } : moveAct(aw.moves[0]);
   }
 
@@ -897,7 +911,7 @@ function plannerDecision(s, rnd, ctx) {
     for (const m of aw.moves) { if (m.kind !== 'move') continue; const sc = scorePlanMove(s, p, m, P2, rnd, ctx); if (sc > bestScore) { bestScore = sc; best = m; } }
     if (best && (standingDanger(s, p.r, p.c) || p.resolve === 2 || a.goal === 'gate')) {
       (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
-      return moveAct(best);
+      return moveAct(best, wantHold(aw, p, best, aw.freeStep ? 0 : 1));
     }
   }
   return { kind: 'end' };
@@ -1052,7 +1066,7 @@ export function policy(s, rnd, ctx) {
       }
       if (best) {
         (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
-        return moveAct(best);
+        return moveAct(best, wantHold(aw, p, best, 0));
       }
       return aw.stay ? { kind: 'stay' } : moveAct(aw.moves[0]);
     }
@@ -1078,7 +1092,7 @@ export function policy(s, rnd, ctx) {
         }
         if (best && (inDanger || p.resolve === 2 || (kind === 'gate' && goals.length))) {
           (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
-          return moveAct(best);
+          return moveAct(best, wantHold(aw, p, best, aw.freeStep ? 0 : 1));
         }
       }
       return { kind: 'end' };
@@ -1153,6 +1167,20 @@ export function policy(s, rnd, ctx) {
       // a plain path only if it sat on somebody's shortest road home
       const t = aw.tile;
       return { restore: !!t && (t.kind === 'gate' || t.kind === 'rune') };
+    }
+
+    case 'stocked-hearth': {
+      // Fehu's ransom (base form): a Gate is always bought back — half the
+      // ways home just burned. A Rune Circle takes the FIRST use only; the
+      // second is held in reserve for a Gate, unless none remain in the
+      // stack to protect.
+      const gate = aw.options.find(o => o.kind === 'gate');
+      if (gate) return { restore: true, id: gate.id };
+      const rune = aw.options.find(o => o.kind === 'rune');
+      const used = (s.perkUse && s.perkUse.hearth) || 0;
+      const gatesInStack = s.stack.some(t => t.kind === 'gate');
+      if (rune && (used < 1 || !gatesInStack)) return { restore: true, id: rune.id };
+      return { decline: true };
     }
 
     case 'niflheim': {
