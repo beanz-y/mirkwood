@@ -59,15 +59,26 @@ async function getAccessToken(sa) {
   return tokenCache.token;
 }
 
-function toFields(obj) {
+// recursive: plain objects become mapValue and arrays arrayValue, so the saga
+// doc can carry structured detail (tile counts, perk usage) that groups
+// legibly in the Firestore console
+function toValue(v) {
+  if (typeof v === 'boolean') return { booleanValue: v };
+  if (typeof v === 'number') {
+    return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  }
+  if (v instanceof Date) return { timestampValue: v.toISOString() };
+  if (Array.isArray(v)) {
+    return { arrayValue: { values: v.filter(x => x !== null && x !== undefined).map(toValue) } };
+  }
+  if (typeof v === 'object') return { mapValue: { fields: toFields(v) } };
+  return { stringValue: String(v).slice(0, 500) };
+}
+export function toFields(obj) { // exported for the encoder self-test
   const fields = {};
   for (const [k, v] of Object.entries(obj)) {
     if (v === null || v === undefined) continue;
-    if (typeof v === 'boolean') fields[k] = { booleanValue: v };
-    else if (typeof v === 'number') {
-      fields[k] = Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
-    } else if (v instanceof Date) fields[k] = { timestampValue: v.toISOString() };
-    else fields[k] = { stringValue: String(v).slice(0, 500) };
+    fields[k] = toValue(v);
   }
   return fields;
 }

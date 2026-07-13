@@ -216,6 +216,14 @@ export class MirkwoodRoom {
     try {
       const cfg = r.config || {};
       const humans = new Set(r.seats.filter(Boolean).map(s => s.token)).size;
+      // the tile mix actually played: the host's config when one was set,
+      // otherwise the engine's own defaults (an untouched lobby = Normal)
+      const tileKeys = ['straight', 'tee', 'teeFractured', 'cross', 'rune', 'draugr', 'gateValhalla', 'gateFolkvangr'];
+      const tileSrc = cfg.straight !== undefined ? cfg : normTiles({});
+      const tiles = {};
+      for (const k of tileKeys) tiles[k] = tileSrc[k] | 0;
+      const gateExits = st.gateExits || 'one';
+      const runePerks = !!st.runePerks;
       await logSaga(this.env, {
         code: r.code,
         result: st.phase,
@@ -227,6 +235,18 @@ export class MirkwoodRoom {
         difficulty: cfg.label || 'Normal',
         randomRunes: !!cfg.randomRunes,
         turnTimer: cfg.turnTimer || 0,
+        // customizations, so wins can be read in context (state = authoritative)
+        runePerks,
+        gateExits,
+        uruzAdjacent: !!st.uruzAdjacent,
+        tiles,
+        // one query-friendly flag: did this saga deviate from plain Normal rules?
+        customized: runePerks || !!cfg.randomRunes || gateExits !== 'one' || (cfg.label || 'Normal') === 'Custom',
+        // winter-form usage (perks games): was the refusal spoken / stores opened?
+        perkUse: runePerks && st.perkUse
+          ? { refusal: !!st.perkUse.refusal, stores: st.perkUse.stores | 0 } : null,
+        // the marks borne at the end, anonymously — which runes carried the day
+        finalRunes: st.players ? st.players.filter(p => p.rune).map(p => `${p.rune.p}:${p.rune.k}`) : null,
         humans,
         durationSec: st.startedAt ? Math.round((Date.now() - st.startedAt) / 1000) : null,
         endedAt: new Date(),
