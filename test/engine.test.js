@@ -503,8 +503,12 @@ section('random runes: the stones choose an unclaimed mark');
     }
     applyAction(sl, seat, { kind: 'end' });
   }
+  // the Stay forks on a circle: lingering is EXPLICIT (playtest refinement —
+  // the implied linger stole the fall as an option)
+  check(sl.awaiting.type === 'action' && sl.awaiting.canLinger === true,
+    'the fork is offered: canLinger on the circle');
   const stackBeforeStay = sl.stack.length;
-  applyAction(sl, 0, { kind: 'stay' }); // lingering on the circle
+  applyAction(sl, 0, { kind: 'stay', linger: true }); // lingering, said out loud
   check(sl.awaiting.type === 'attune' && sl.awaiting.random === true, 'lingering re-offers the stones');
   check(stackBeforeStay - sl.stack.length === 1, 'lingering still burns a tile');
   const tCircle = _test.tileAt(sl, 1, 2);
@@ -522,6 +526,55 @@ section('random runes: the stones choose an unclaimed mark');
   applyAction(s2, 0, { kind: 'move', d: 1 });
   applyAction(s2, 0, { skip: true });
   check(s2.players[0].rune === null, 'declining the stones leaves no mark');
+
+  // a PLAIN Stay on the circle is the ordinary fractured-ground rule: the
+  // cracked circle gives way and the soul falls
+  const sf = createGame({ seed: 22, stack: deck(40), randomRunes: true });
+  doSetup(sf);
+  _test.setTile(sf, 1, 2, _test.makeTileDef(sf, 'rune', { fractured: true }), 0);
+  applyAction(sf, 0, { kind: 'move', d: 1 });
+  applyAction(sf, 0, { skip: true });
+  while (sf.awaiting && sf.awaiting.type === 'place-tile') {
+    const tg = sf.awaiting.targets[0];
+    applyAction(sf, sf.awaiting.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+  }
+  if (sf.awaiting && sf.awaiting.type === 'post-move') applyAction(sf, 0, { kind: 'end' });
+  for (let seat = 1; seat <= 3; seat++) {
+    if (sf.awaiting && sf.awaiting.type === 'action' && sf.awaiting.seat === seat) {
+      applyAction(sf, seat, { kind: 'move', d: 1 });
+      while (sf.awaiting && sf.awaiting.type === 'place-tile') {
+        const tg = sf.awaiting.targets[0];
+        applyAction(sf, sf.awaiting.seat, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+      }
+      if (sf.awaiting && sf.awaiting.type === 'post-move') applyAction(sf, seat, { kind: 'end' });
+    }
+  }
+  if (sf.awaiting && sf.awaiting.type === 'action' && sf.awaiting.seat === 0) {
+    applyAction(sf, 0, { kind: 'stay' }); // no linger flag: the ordinary Stay
+    check(sf.players[0].falling !== null, 'a plain Stay drops the soul through the circle');
+    const cl = sf.grid[key(1, 2)];
+    check(!cl || !cl.tile || cl.tile.kind !== 'rune', 'the circle crumbles under the plain Stay');
+  } else check(true, '(plain-stay fall skipped — turn order drifted)');
+
+  // random attunes are explicit too: a stray payload (a click meant for the
+  // previous decision) bounces instead of quietly accepting the stones' rune
+  const sr = createGame({ seed: 25, stack: deck(40), randomRunes: true });
+  doSetup(sr);
+  _test.setTile(sr, 1, 2, _test.makeTileDef(sr, 'rune', { fractured: true }), 0);
+  applyAction(sr, 0, { kind: 'move', d: 1 });
+  let strayed = false;
+  try { applyAction(sr, 0, { kind: 'move', d: 1 }); } catch (e) { strayed = !!e.illegal; }
+  check(strayed && sr.awaiting && sr.awaiting.type === 'attune' && sr.players[0].rune === null,
+    'a stray payload bounces off the stones — no unchosen mark');
+
+  // and the linger flag means nothing off the stones
+  const sx = createGame({ seed: 23, stack: deck(40), randomRunes: true });
+  doSetup(sx);
+  const tx = _test.tileAt(sx, 1, 1); if (tx) tx.fractured = false;
+  let refused = false;
+  try { applyAction(sx, 0, { kind: 'stay', linger: true }); } catch (e) { refused = !!e.illegal; }
+  check(refused && sx.awaiting && sx.awaiting.type === 'action',
+    'lingering off a Rune Circle is refused, prompt left open');
 }
 
 // ---------------------------------------------------------------- appearance

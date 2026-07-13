@@ -256,11 +256,15 @@ Ancient stone rings where the old marks can still be taken.
 - **Random Runes** (host variant, toggled in the lobby): the stones choose —
   instead of picking, you receive a random rune **not currently borne by any
   soul** (you may still decline and leave the circle untouched). Fate decides
-  whether Valhalla or Fólkvangr calls you. To temper fate, a soul may
-  **linger**: Staying on a Rune Circle does *not* crumble it in this variant —
-  the turn passes and a tile burns from the stack as with any Stay, but the
-  stones choose again, letting you fish for a mark that matches the party.
-  The circle still crumbles into a Void Rift when you finally leave it.
+  whether Valhalla or Fólkvangr calls you. To temper fate, a soul standing on
+  a Rune Circle chooses between **two explicit Stays** *(playtest refinement:
+  the linger used to be implied, stealing the fall as an option)*:
+  - **Linger** — the circle does *not* crumble: the turn passes and a tile
+    burns from the stack as with any Stay, but the stones choose again,
+    letting you fish for a mark that matches the party. The circle still
+    crumbles into a Void Rift when you finally leave it.
+  - **Stay** — the ordinary rule for Fractured ground: the cracked circle
+    gives way beneath you and you fall, leaving a Void Rift.
 
 ## The Gates
 

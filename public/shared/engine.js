@@ -683,7 +683,13 @@ function actionOptions(s, p) {
   const moves = computeMoves(s, p);
   const stay = p.hopeful || p.resolve > 0 || moves.length === 0;
   const rekindle = !p.hopeful && (p.resolve > 0 || !!uruzLender(s, p));
-  return { moves, stay, rekindle, turns: turnTargets(s, p), canHold: canHoldPath(s, p) };
+  // Random Runes: on a Rune Circle the Stay forks into two EXPLICIT choices —
+  // linger (tile burns, the circle holds, the stones choose again) or a plain
+  // stay (the cracked circle gives way beneath you, as any fractured tile).
+  // The linger intent rides the stay payload; it is never implied.
+  const here = p.placed ? tileAt(s, p.r, p.c) : null;
+  const canLinger = !!(stay && s.randomRunes && here && here.kind === 'rune' && here.fractured);
+  return { moves, stay, rekindle, canLinger, turns: turnTargets(s, p), canHold: canHoldPath(s, p) };
 }
 
 // ---------------------------------------------------------------- win / loss
@@ -1033,15 +1039,15 @@ STEPS['action'] = (s) => {
   s.awaiting = { type: 'action', seat: s.turn, ...opts };
 };
 
-STEPS['stay-fracture'] = (s) => {
+STEPS['stay-fracture'] = (s, step) => {
   const p = P(s, s.turn);
   const t = tileAt(s, p.r, p.c);
   if (t && t.fractured) {
-    // Random Runes: a soul may linger at a Rune Circle without it crumbling —
-    // each turn spent Staying burns a tile as usual, but the stones choose
-    // again, letting them fish for a mark that matches the party. The circle
-    // still crumbles when they finally leave.
-    if (s.randomRunes && t.kind === 'rune') {
+    // Random Runes: a soul may CHOOSE to linger at a Rune Circle — the tile
+    // burns as any Stay, the circle holds, and the stones choose again. It is
+    // never implied: a plain Stay on the circle lets it give way beneath them
+    // like any fractured tile (playtest ask — the fall is a real option).
+    if (step && step.linger && s.randomRunes && t.kind === 'rune') {
       log(s, `${p.name} lingers in the Rune Circle — the stones stir again.`, 'info');
       s.queue.unshift({ t: 'relight', chooser: s.turn }, { t: 'end-turn' });
       s.awaiting = {
@@ -1378,8 +1384,9 @@ ACTIONS['action'] = (s, p, payload, aw) => {
   }
   if (kind === 'stay') {
     if (!aw.stay) err('Cannot stay.');
+    if (payload.linger && !aw.canLinger) err('There is nothing here to linger over.');
     s.awaiting = null;
-    doStay(s, p, aw);
+    doStay(s, p, aw, !!payload.linger);
     return;
   }
   if (kind === 'move') {
@@ -1405,7 +1412,7 @@ ACTIONS['action'] = (s, p, payload, aw) => {
   err('Unknown action.');
 };
 
-function doStay(s, p, aw) {
+function doStay(s, p, aw, linger) {
   ev(s, 'stay', { seat: p.seat });
   const forced = !p.hopeful && aw.moves.length === 0 && p.resolve === 0;
   if (!p.hopeful && !forced) {
@@ -1433,7 +1440,7 @@ function doStay(s, p, aw) {
         near[0].resolve++;
         log(s, `${p.name}'s joy steels ${near[0].name} (+1). (ᚹ)`, 'good');
       } else if (near.length > 1) {
-        s.queue.unshift({ t: 'stay-burn' });
+        s.queue.unshift({ t: 'stay-burn', linger: !!linger });
         s.awaiting = {
           type: 'shared-joy', seat: p.seat,
           options: near.map(q => ({ seat: q.seat, name: q.name, resolve: q.resolve })),
@@ -1444,19 +1451,19 @@ function doStay(s, p, aw) {
   } else {
     log(s, `${p.name} is trapped, hopeless and unmoving.`, 'info');
   }
-  s.queue.unshift({ t: 'stay-burn' });
+  s.queue.unshift({ t: 'stay-burn', linger: !!linger });
 }
 
 // the Stay's cost, split out so a perk prompt (Shared joy) may come first:
 // burn the top tile (unless Freyja's hearth is stocked), then check the
-// ground underfoot
-STEPS['stay-burn'] = (s) => {
+// ground underfoot. `linger` (Random Runes, chosen explicitly by the player)
+// rides the step through to stay-fracture.
+STEPS['stay-burn'] = (s, step) => {
   const p = P(s, s.turn);
-  // staying burns hope — unless Freyja's hearth is stocked (Fehu). Lingering
-  // at a Rune Circle under Random Runes always burns: no free rerolls.
-  const hearthT = tileAt(s, p.r, p.c);
-  const lingering = s.randomRunes && hearthT && hearthT.kind === 'rune';
-  if (hasPerk(s, p, 'fehu') && !lingering && s.stack.length) {
+  const linger = !!(step && step.linger);
+  // staying burns hope — unless Freyja's hearth is stocked (Fehu). A chosen
+  // linger always burns: no free rerolls at the stones.
+  if (hasPerk(s, p, 'fehu') && !linger && s.stack.length) {
     log(s, `${p.name}'s hearth is stocked — the forest keeps its hope. (ᚠ)`, 'good');
   } else if (s.stack.length) {
     const t = drawTile(s);
@@ -1475,7 +1482,7 @@ STEPS['stay-burn'] = (s) => {
       }
       if (options.length) {
         log(s, `${p.name} hears something move in the mist...`, 'danger');
-        s.queue.unshift({ t: 'stay-fracture' });
+        s.queue.unshift({ t: 'stay-fracture', linger });
         s.awaiting = { type: 'swap-draugr', seat: p.seat, tile: t, options };
         return;
       }
@@ -1491,7 +1498,7 @@ STEPS['stay-burn'] = (s) => {
       else log(s, 'Hope gutters in the stillness — a path tile is lost.', 'info');
     }
   }
-  s.queue.unshift({ t: 'stay-fracture' });
+  s.queue.unshift({ t: 'stay-fracture', linger });
 }
 
 ACTIONS['swap-draugr'] = (s, p, { r, c }, aw) => {
@@ -1617,7 +1624,13 @@ ACTIONS['block'] = (s, p, { block }) => {
 
 ACTIONS['attune'] = (s, p, payload) => {
   // validate BEFORE consuming the prompt — a refused pick must leave the
-  // decision open and the circle unspent, not wedge the game
+  // decision open and the circle unspent, not wedge the game.
+  // Random mode: accepting fate must be EXPLICIT (draw:true) — a stray
+  // payload racing in from a click meant for the previous decision must
+  // bounce, never quietly mark the soul with a rune nobody chose
+  if (s.randomRunes && !payload.skip && !payload.draw) {
+    err('The stones await an answer — accept their choice, or leave the runes untouched.');
+  }
   if (!s.randomRunes && !payload.skip) {
     const set = RUNES[payload.p];
     if (!set || !set.some(r => r.k === payload.k)) err('No such rune.');

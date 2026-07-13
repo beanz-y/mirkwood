@@ -581,7 +581,9 @@ document.addEventListener('visibilitychange', () => {
   ).join('')).join('');
   el.innerHTML = `
     <p><b>Random runes</b> — at a Rune Circle the stones choose an unclaimed mark for you
-    (decline allowed), and you may <b>linger</b> to draw again (see Runes &amp; Gates above).</p>
+    (decline allowed). Standing there, your Stay forks: <b>Linger</b> (a tile burns, the
+    circle holds, the stones choose again) or a plain <b>Stay</b> — the cracked circle
+    gives way beneath you like any fractured tile, and you fall.</p>
     <p><b>Gate doorways</b> — how many ways each Gate opens: <b>one</b> (the classic rule),
     <b>two</b> (opposite sides) or <b>three</b>. More doorways make the final gathering kinder;
     an experiment until one becomes the rule.</p>
@@ -1956,8 +1958,17 @@ function renderActionBar() {
       const p = state.players[aw.seat];
       if (aw.rekindle) btn('Rekindle hope <small>(1 ◆)</small>', () => act({ kind: 'rekindle' }));
       if (aw.stay) {
-        const label = p.hopeful ? 'Stay <small>(+1 ◆, burn a tile)</small>' : 'Stay <small>(1 ◆)</small>';
-        btn(label, () => act({ kind: 'stay' }));
+        if (aw.canLinger) {
+          // Random Runes, standing in a Rune Circle: the Stay forks — say
+          // exactly what each choice does, because one of them is a fall
+          btn('Linger at the stones <small>(burn a tile — the stones choose again)</small>',
+            () => act({ kind: 'stay', linger: true }), 'primary');
+          btn('Stay <small>(burn a tile — the cracked circle gives way, you fall)</small>',
+            () => act({ kind: 'stay' }));
+        } else {
+          const label = p.hopeful ? 'Stay <small>(+1 ◆, burn a tile)</small>' : 'Stay <small>(1 ◆)</small>';
+          btn(label, () => act({ kind: 'stay' }));
+        }
       }
       perkBtns(aw);
       if (turnArmed) note('tap a marked path to turn it');

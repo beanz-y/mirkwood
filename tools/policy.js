@@ -20,6 +20,13 @@ const moveAct = (m, hold) => {
 const wantHold = (aw, p, m, pressCost) =>
   !!(aw && aw.canHold && m && (m.kind === 'move' || m.kind === 'jump' || m.kind === 'blind')
     && p.resolve >= 2 + (pressCost || 0));
+// a Stay payload: under Random Runes on a Rune Circle the engine now demands
+// an explicit choice — the bot always LINGERS (a reroll beats a fall; this is
+// the old implicit behavior, said out loud)
+const stayAct = (s, p) => {
+  const t = p && p.placed ? tileAt(s, p.r, p.c) : null;
+  return (s.randomRunes && t && t.kind === 'rune') ? { kind: 'stay', linger: true } : { kind: 'stay' };
+};
 const wrapDist = (r1, c1, r2, c2) =>
   Math.min(Math.abs(r1 - r2), SIZE - Math.abs(r1 - r2))
   + Math.min(Math.abs(c1 - c2), SIZE - Math.abs(c1 - c2));
@@ -846,8 +853,8 @@ function plannerDecision(s, rnd, ctx) {
   }
 
   if (aw.type === 'action') {
-    if (myTile && myTile.kind === 'gate' && myTile.gate === P2.plan && good && aw.stay) return { kind: 'stay' };
-    if (aw.stay && s.randomRunes && myTile && myTile.kind === 'rune' && !good && s.stack.length > 6) return { kind: 'stay' };
+    if (myTile && myTile.kind === 'gate' && myTile.gate === P2.plan && good && aw.stay) return stayAct(s, p);
+    if (aw.stay && s.randomRunes && myTile && myTile.kind === 'rune' && !good && s.stack.length > 6) return stayAct(s, p);
     if (aw.rekindle) {
       const adj = myTile && [0, 1, 2, 3].some(d => {
         if (!myTile.exits[d]) return false; const [nr, nc] = stepDir(p.r, p.c, d); const nt = tileAt(s, nr, nc);
@@ -856,7 +863,7 @@ function plannerDecision(s, rnd, ctx) {
       if (!adj) return { kind: 'rekindle' };
     }
     // GUARD DUTY: my role is to hold a circle lit for an incoming teammate → stand fast
-    if (a.goal === 'guard' && aw.stay && myTile && !myTile.fractured && !standingDanger(s, p.r, p.c)) return { kind: 'stay' };
+    if (a.goal === 'guard' && aw.stay && myTile && !myTile.fractured && !standingDanger(s, p.r, p.c)) return stayAct(s, p);
     // score every option toward my goal; Stay is a real candidate (the plan may
     // want me to hold position). With --rollouts, the top few are rolled out
     // PLAN-FOLLOWING — genuine anticipation of where the party's plan ends up.
@@ -872,17 +879,17 @@ function plannerDecision(s, rnd, ctx) {
       // and never pay this. Rollout sub-games use a fresh ctx, so it only shapes
       // real decisions.
       const stayRun = (ctx.stayRun = ctx.stayRun || {});
-      if (aw.stay) cands.push({ m: { kind: 'stay' }, base: (a.goal === 'guard' ? 0.5 : -0.5) - 0.2 * (stayRun[p.seat] || 0) });
-      if (!cands.length) return aw.stay ? { kind: 'stay' } : moveAct(aw.moves[0]);
+      if (aw.stay) cands.push({ m: stayAct(s, p), base: (a.goal === 'guard' ? 0.5 : -0.5) - 0.2 * (stayRun[p.seat] || 0) });
+      if (!cands.length) return aw.stay ? stayAct(s, p) : moveAct(aw.moves[0]);
       cands.sort((x, y) => y.base - x.base);
       let best = cands[0].m, bestVal = -Infinity;
       for (let i = 0; i < Math.min(cands.length, 4); i++) {
         const c = cands[i];
-        const action = c.m.kind === 'stay' ? { kind: 'stay' } : moveAct(c.m);
+        const action = c.m.kind === 'stay' ? stayAct(s, p) : moveAct(c.m);
         const val = c.base + 0.06 * rolloutValue(s, rnd, { ...ctx, plan: P2.plan }, action) + rnd() * 0.05; // 0.10 probed 2026-07-09: noise, worse scarcity — keep 0.06
         if (val > bestVal) { bestVal = val; best = c.m; }
       }
-      if (best.kind === 'stay') { stayRun[p.seat] = (stayRun[p.seat] || 0) + 1; return { kind: 'stay' }; }
+      if (best.kind === 'stay') { stayRun[p.seat] = (stayRun[p.seat] || 0) + 1; return stayAct(s, p); }
       stayRun[p.seat] = 0;
       (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
       return moveAct(best, wantHold(aw, p, best, 0));
@@ -899,9 +906,9 @@ function plannerDecision(s, rnd, ctx) {
     // "bestScore <= -10 → stand fast" rule was measured RED here (mid −1σ,
     // stalemate concessions up): scorePlanMove's scale differs from scoreMove's,
     // and freezing beats fighting through less often than greedy's threshold says.
-    if (best && best.kind === 'jump' && aw.stay && bestScore <= -10) return { kind: 'stay' };
+    if (best && best.kind === 'jump' && aw.stay && bestScore <= -10) return stayAct(s, p);
     if (best) { (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c]; return moveAct(best, wantHold(aw, p, best, 0)); }
-    return aw.stay ? { kind: 'stay' } : moveAct(aw.moves[0]);
+    return aw.stay ? stayAct(s, p) : moveAct(aw.moves[0]);
   }
 
   // post-move: press on toward the goal when it helps and resolve is spare
@@ -980,11 +987,11 @@ export function policy(s, rnd, ctx) {
       // BEACHHEAD: a soul already on the gate never leaves — their light keeps
       // the doorway tile alive for everyone still walking in
       if (myTile && myTile.kind === 'gate' && myTile.gate === plan && good && aw.stay) {
-        return { kind: 'stay' };
+        return stayAct(s, p);
       }
       // random-runes linger: reroll on the circle until the mark serves the plan
       if (aw.stay && s.randomRunes && myTile && myTile.kind === 'rune' && !good && s.stack.length > 6) {
-        return { kind: 'stay' };
+        return stayAct(s, p);
       }
       if (aw.rekindle) {
         // a hopeful neighbor relights us for free — only pay when alone
@@ -1009,7 +1016,7 @@ export function policy(s, rnd, ctx) {
           cands.push({ action: moveAct(m), greedy: scoreMove(s, p, m, plan, rnd, ctx) });
         }
         // a Stay's greedy value ≈ a mediocre-but-safe move; the rollout decides
-        if (aw.stay) cands.push({ action: { kind: 'stay' }, greedy: onFrac ? -8 : 0.4 });
+        if (aw.stay) cands.push({ action: stayAct(s, p), greedy: onFrac ? -8 : 0.4 });
         if (!cands.length) return moveAct(aw.moves[0]);
         // only roll out the plausible options — greedy already ranks them, so
         // the top few are where lookahead actually earns its cost
@@ -1047,7 +1054,7 @@ export function policy(s, rnd, ctx) {
             return dd >= 1 && dd <= 5;
           });
         });
-        if (guarding) return { kind: 'stay' };
+        if (guarding) return stayAct(s, p);
       }
       // staying burns a random stack tile — an ~8% chance of eating a rune
       // circle — so only stand fast when broke, truly idle, AND circles are
@@ -1056,19 +1063,19 @@ export function policy(s, rnd, ctx) {
       if (aw.stay && !onFractured && !inDanger && p.hopeful
         && p.resolve === 0 && s.stack.length > 12 && ctx.econ.slack >= 3
         && (best === null || bestScore < 0.9)) {
-        return { kind: 'stay' };
+        return stayAct(s, p);
       }
       // NEVER leap into the void just because it is the only road: a soul
       // standing on solid ground survives to be rescued; a late-game fall is
       // death (this exact bug killed fully-marked parties one tile from home)
       if (best && bestScore <= -10 && aw.stay && !onFractured) {
-        return { kind: 'stay' };
+        return stayAct(s, p);
       }
       if (best) {
         (ctx.lastCell = ctx.lastCell || {})[p.seat] = [p.r, p.c];
         return moveAct(best, wantHold(aw, p, best, 0));
       }
-      return aw.stay ? { kind: 'stay' } : moveAct(aw.moves[0]);
+      return aw.stay ? stayAct(s, p) : moveAct(aw.moves[0]);
     }
 
     case 'post-move': {
