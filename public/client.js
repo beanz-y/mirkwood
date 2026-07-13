@@ -120,7 +120,7 @@ function idleEndTick() {
       let tag = endBtn.querySelector('.auto-end-note');
       if (left <= 10) {
         if (!tag) { tag = document.createElement('small'); tag.className = 'auto-end-note'; endBtn.appendChild(tag); }
-        tag.textContent = ` — resting in ${left}s`;
+        tag.textContent = ` (resting in ${left}s)`;
       } else if (tag) tag.remove();
     }
     return;
@@ -376,7 +376,7 @@ function copyInvite() {
   if (!room || !room.code) return;
   const url = `${location.origin}/?room=${room.code}`;
   navigator.clipboard.writeText(url).then(
-    () => toast('Invite link copied — send it to your party!', true),
+    () => toast('Invite link copied. Send it to your party!', true),
     () => toast(url, true), // clipboard blocked: at least show it
   );
 }
@@ -577,20 +577,20 @@ document.addEventListener('visibilitychange', () => {
   if (!el) return;
   const perkRows = ['valhalla', 'folkvangr'].map(pn => RUNES[pn].map(rn =>
     `<tr><td style="color:${pn === 'valhalla' ? 'var(--gold)' : 'var(--good)'}">${rn.g}</td>
-     <td><b>${rn.name}</b> — ${rn.perk}<br><small class="hint">❄ Embrace: ${rn.winterPerk}</small></td></tr>`
+     <td><b>${rn.name}</b> · ${rn.perk}<br><small class="hint">❄ Embrace: ${rn.winterPerk}</small></td></tr>`
   ).join('')).join('');
   el.innerHTML = `
-    <p><b>Random runes</b> — at a Rune Circle the stones choose an unclaimed mark for you
+    <p><b>Random runes</b>: at a Rune Circle the stones choose an unclaimed mark for you
     (decline allowed). Standing there, your Stay forks: <b>Linger</b> (a tile burns, the
-    circle holds, the stones choose again) or a plain <b>Stay</b> — the cracked circle
-    gives way beneath you like any fractured tile, and you fall.</p>
-    <p><b>Gate doorways</b> — how many ways each Gate opens: <b>one</b> (the classic rule),
+    circle holds, the stones choose again) or a plain <b>Stay</b>, where the cracked circle
+    gives way beneath you like any fractured tile and you fall.</p>
+    <p><b>Gate doorways</b>: how many ways each Gate opens: <b>one</b> (the classic rule),
     <b>two</b> (opposite sides) or <b>three</b>. More doorways make the final gathering kinder;
     an experiment until one becomes the rule.</p>
-    <p><b>Turn timer</b> — a visible countdown for each decision. A nudge, not an enforcer.
+    <p><b>Turn timer</b>: a visible countdown for each decision. A nudge, not an enforcer.
     (Separate, and always on: a soul who has already moved but forgets <i>End turn</i> rests
     on its own after half a minute of stillness.)</p>
-    <p><b>Rune perks</b> — every mark carries a boon while you bear it (re-attuning swaps it),
+    <p><b>Rune perks</b>: every mark carries a boon while you bear it (re-attuning swaps it),
     and each boon takes a second, stronger form once Niflheim's Embrace begins. On a
     <b>Hard</b> telling, Uruz lends to adjacent souls only. Tap any rune mark on a soul's
     card to read its boon mid-game.</p>
@@ -655,7 +655,7 @@ const TUT_PAGES = [
       + tutTok(1, 0, 1, 'shield', { small: true, dx: 13, dy: -13 })
       + tutTok(1, 0, 2, 'sword', { small: true, dx: -13, dy: 13 })
       + tutTok(1, 0, 3, 'raven', { small: true, dx: 13, dy: 13 })),
-    x: `You died without glory, and the dark wood between the worlds has you. There is one road out: find a <b>Gate</b>, gather its <b>four runes</b> — one different mark on each soul — and stand upon it <b>together</b>. All four of you win, or none. Everything else in Myrkviðr stands between you and that door.`,
+    x: `You died without glory, and the dark wood between the worlds has you. There is one road out: find a <b>Gate</b>, gather its <b>four runes</b> (one different mark on each soul) and stand upon it <b>together</b>. All four of you win, or none. Everything else in Myrkviðr stands between you and that door.`,
   },
   {
     t: 'The Ember of Hope',
@@ -664,7 +664,7 @@ const TUT_PAGES = [
       + tutTok(1, 0, 0, 'helm', { glow: true })
       + tutMist(0, 1) + tutCell(tutTile('straight', 1), 1, 1) + tutMist(2, 1)
       + tutTok(1, 1, 1, 'shield', { dim: true })),
-    x: `<b>Hopeful</b> (above), your ember lights every joined path one space around you — those tiles stay real. <b>Hopeless</b> (below), you see only the tile you stand on: the dark drives you to <b>move every turn</b>, blind. Stand beside a hopeful soul to be rekindled, or spend 1 ◆ at the start of your turn. And whatever <b>no soul's</b> hope lights is devoured by the mist, forever.`,
+    x: `<b>Hopeful</b> (above), your ember lights every joined path one space around you, and those tiles stay real. <b>Hopeless</b> (below), you see only the tile you stand on: the dark drives you to <b>move every turn</b>, blind. Stand beside a hopeful soul to be rekindled, or spend 1 ◆ at the start of your turn. And whatever <b>no soul's</b> hope lights is devoured by the mist, forever.`,
   },
   {
     t: 'Move, and kindle the way',
@@ -675,20 +675,20 @@ const TUT_PAGES = [
       + `<rect x="${PAD + 2 * CS + 3}" y="${PAD + 3}" width="${CS - 6}" height="${CS - 6}" rx="8" class="ghost-outline"/>`
       + tutTok(0, 0, 0, 'helm', { glow: true })
       + tutArrow(PAD + CS * 0.72, PAD + CS / 2, PAD + CS * 1.28, PAD + CS / 2)),
-    x: `On your turn, <b>Move</b> one space along a joined path. Your hope kindles the ways ahead: a fresh tile is drawn for every open passage of your new tile, and you choose where it sits and how it turns. Spend 1 ◆ to <b>press on</b> (up to two more steps). Or <b>Stay</b> instead: steel your Resolve (+1 ◆), though hope gutters while you linger — a tile burns from the stack.`,
+    x: `On your turn, <b>Move</b> one space along a joined path. Your hope kindles the ways ahead: a fresh tile is drawn for every open passage of your new tile, and you choose where it sits and how it turns. Spend 1 ◆ to <b>press on</b> (up to two more steps). Or <b>Stay</b> instead: steel your Resolve (+1 ◆), though hope gutters in the stillness: a tile burns from the stack.`,
   },
   {
-    t: 'Resolve — the will to go on',
+    t: 'Resolve, the will to go on',
     d: () => `<div class="tut-spends">
       <div>Earn it by <b>standing fast</b> (Stay, +1 ◆) or <b>slipping a Draugr's gaze</b> (+1 ◆). Carry at most two.</div>
-      <div><b>Press on</b> — another step after your move</div>
-      <div><b>Rekindle</b> — relight your own hope at the start of your turn</div>
-      <div><b>Endure</b> — stay put while hopeless</div>
-      <div><b>Brace</b> — lose 2 tiles instead of 3 when struck</div>
-      <div><b>Berserk</b> — rush a Draugr; its strike lands on you, then it is banished</div>
-      <div><b>Ward</b> — during Niflheim's Embrace, spare the forest one tile</div>
+      <div><b>Press on</b>: another step after your move</div>
+      <div><b>Rekindle</b>: relight your own hope at the start of your turn</div>
+      <div><b>Endure</b>: stay put while hopeless</div>
+      <div><b>Brace</b>: lose 2 tiles instead of 3 when struck</div>
+      <div><b>Berserk</b>: rush a Draugr. Its strike lands on you, then it is banished</div>
+      <div><b>Ward</b>: during Niflheim's Embrace, spare the forest one tile</div>
     </div>`,
-    x: `The path stack is the party's shared hope made visible — every tile drawn, burned, or lost brings the end closer. Resolve ◆ is how a single soul bends the rules for a moment. Spend it well.`,
+    x: `The path stack is the party's shared hope made visible: every tile drawn, burned, or lost brings the end closer. Resolve ◆ is how a single soul bends the rules for a moment. Spend it well.`,
   },
   {
     t: 'The Draugar',
@@ -697,7 +697,7 @@ const TUT_PAGES = [
       + `<line x1="${PAD + CS / 2}" y1="${PAD + CS / 2}" x2="${PAD + CS * 3.5}" y2="${PAD + CS / 2}" stroke="#d05e5e" stroke-width="5" opacity="0.4"/>`
       + tutTok(2, 0, 0, 'helm')
       + tutArrow(PAD + CS * 2.5, PAD + CS * 0.34, PAD + CS * 2.5, PAD + CS * 0.1, '#6fce9a')),
-    x: `A Draugr wakes at <b>motion in its corridors</b>: step anywhere along a straight, unbroken run of path joined to it — however far, even across the board's wrapped edge — and it lashes down all four corridors at once. Every soul caught in its gaze: <b>3 tiles burn</b>, hope extinguished. <b>End your move outside the line</b> (green) and the strike misses you — slipping its gaze steels your Resolve. Walls, gaps, and Void Rifts blind it.`,
+    x: `A Draugr wakes at <b>motion in its corridors</b>: step anywhere along a straight, unbroken run of path joined to it (however far, even across the board's wrapped edge) and it lashes down all four corridors at once. Every soul caught in its gaze: <b>3 tiles burn</b>, hope extinguished. <b>End your move outside the line</b> (green) and the strike misses you, and slipping its gaze steels your Resolve. Walls, gaps, and Void Rifts blind it.`,
   },
   {
     t: 'Fractured paths & Void Rifts',
@@ -706,7 +706,7 @@ const TUT_PAGES = [
       + riftSVG(PAD + CS, PAD)
       + tutCell(tutTile('cross'), 2, 0)
       + tutArrow(PAD + CS * 0.7, PAD + CS * 0.82, PAD + CS * 1.3, PAD + CS * 0.82, '#a678d8')),
-    x: `Cracked tiles are <b>Fractured</b>: they crumble into a <b>Void Rift</b> the moment you leave them. Falling ends your turn — next turn you land on a drawn tile anywhere in the rift's row or column, <b>ember still lit</b>. A rift blinds the draugar, and a desperate soul may even leap in on purpose. But fall when the stack is spent, and the void keeps you.`,
+    x: `Cracked tiles are <b>Fractured</b>: they crumble into a <b>Void Rift</b> the moment you leave them. Falling ends your turn. Next turn you land on a drawn tile anywhere in the rift's row or column, <b>ember still lit</b>. A rift blinds the draugar, and a desperate soul may even leap in on purpose. But fall when the stack is spent, and the void keeps you.`,
   },
   {
     t: 'Rune Circles & the Gates',
@@ -714,7 +714,7 @@ const TUT_PAGES = [
       tutCell(tutTile('rune', 0, { fractured: true }), 0, 0)
       + tutCell(tutTile('gate', 1, { gate: 'valhalla' }), 1, 0)
       + tutCell(tutTile('gate', 1, { gate: 'folkvangr' }), 2, 0)),
-    x: `Step into a <b>Rune Circle</b> to take one mark of either gate — it replaces the mark you bear, and marks are never traded. The stones speak to each soul <b>once</b>: circles crumble behind you. The two Gates — <b>Valgrind</b> of Valhalla, and the gate to Freyja's <b>Fólkvangr</b> — have a single doorway each and are permanent once placed (only Niflheim's Embrace can claim one, and never while a soul stands on it). Four souls, four different runes of one gate, one doorstep: that is the way out.`,
+    x: `Step into a <b>Rune Circle</b> to take one mark of either gate. It replaces the mark you bear, and marks are never traded. The stones speak to each soul <b>once</b>: circles crumble behind you. The two Gates, <b>Valgrind</b> of Valhalla and the gate to Freyja's <b>Fólkvangr</b>, have a single doorway each and are permanent once placed (only Niflheim's Embrace can claim one, and never while a soul stands on it). Four souls, four different runes of one gate, one doorstep: that is the way out.`,
   },
   {
     t: "Niflheim's Embrace",
@@ -723,7 +723,7 @@ const TUT_PAGES = [
       + `<g opacity="0.35">${tutCell(tutTile('cross'), 1, 0)}</g>`
       + tutMist(2, 0)
       + `<text x="${PAD + CS * 1.5}" y="${PAD + CS * 0.62}" text-anchor="middle" font-size="34" fill="#9fd4ff" opacity="0.9">ᛁ</text>`),
-    x: `When the last tile is drawn, the primordial cold closes in. <b>No new paths can ever be kindled</b>, and at the end of every turn the group surrenders one tile from the board (1 ◆ to <b>Ward</b> it off). The forest dwindles until the souls reach a gate — or nothing remains. The moment no road to a winnable gate survives, the saga ends. Reach the door before the forest is gone.`,
+    x: `When the last tile is drawn, the primordial cold closes in. <b>No new paths can ever be kindled</b>, and at the end of every turn the group surrenders one tile from the board (1 ◆ to <b>Ward</b> it off). The forest dwindles until the souls reach a gate, or until nothing remains. The moment no road to a winnable gate survives, the saga ends. Reach the door before the forest is gone.`,
   },
 ];
 
@@ -765,7 +765,7 @@ $('concede-btn').onclick = () => {
 $('leave-room-btn').onclick = () => leaveSaga();
 $('leave-btn').onclick = () => {
   if (state && (state.phase === 'play' || state.phase === 'setup')) {
-    confirmModal(`Leave this saga? The game continues without you — rejoin any time with code ${room ? room.code : ''} from this browser.`, leaveSaga);
+    confirmModal(`Leave this saga? The game continues without you. Rejoin any time with code ${room ? room.code : ''} from this browser.`, leaveSaga);
   } else {
     leaveSaga();
   }
@@ -905,7 +905,7 @@ function renderLobby() {
     const look = s.you
       ? `<button class="seat-look" title="Choose this soul's sigil and color">⚙ look</button>` : '';
     div.innerHTML = `<div class="seat-name" style="color:${s.color}">${sigilChip(s.icon, s.color, 20)} Soul ${s.seat + 1}${kick}</div>
-      <div class="seat-sub">${s.claimed ? escapeHtml(s.name) + (s.you ? ' (you)' : '') : 'unclaimed — click to take'}${look}</div>`;
+      <div class="seat-sub">${s.claimed ? escapeHtml(s.name) + (s.you ? ' (you)' : '') : 'unclaimed (click to take)'}${look}</div>`;
     div.onclick = () => send({ t: 'claim', seat: s.seat });
     const kb = div.querySelector('.seat-kick');
     if (kb) kb.onclick = (e) => { e.stopPropagation(); send({ t: 'kick', seat: s.seat }); };
@@ -918,7 +918,7 @@ function renderLobby() {
   const wnames = room.watchers || [];
   lw.classList.toggle('hidden', !wnames.length);
   lw.textContent = wnames.length
-    ? `Watching from the mist: ${wnames.join(', ')} — release a soul and they can claim it.` : '';
+    ? `Watching from the mist: ${wnames.join(', ')}. Release a soul and they can claim it.` : '';
   const allClaimed = room.seats.every(s => s.claimed);
   $('start-btn').classList.toggle('hidden', !room.youAreHost);
   $('start-btn').disabled = !allClaimed;
@@ -944,7 +944,7 @@ function renderLobby() {
   const total = CFG_KEYS.reduce((n, k) => n + cfg[k], 0) + cfg.gateValhalla + cfg.gateFolkvangr;
   const gates = cfg.gateValhalla + cfg.gateFolkvangr;
   $('diff-summary').textContent =
-    `${cfg.label || 'Custom'} — ${total} tiles · ${cfg.rune} rune circles · ${cfg.draugr} draugr · ${gates} gate${gates === 1 ? '' : 's'}`
+    `${cfg.label || 'Custom'}: ${total} tiles · ${cfg.rune} rune circles · ${cfg.draugr} draugr · ${gates} gate${gates === 1 ? '' : 's'}`
     + (cfg.randomRunes ? ' · random runes' : '')
     + (cfg.runePerks ? ' · rune perks' : '')
     + (cfg.gateExits === 'straight' ? ' · two-door gates' : cfg.gateExits === 'tee' ? ' · three-door gates' : '')
@@ -967,14 +967,14 @@ function renderLookPicker() {
   const takenC = new Set(room.seats.filter(x => x.claimed && x.seat !== lookSeat).map(x => x.color));
   // each sigil button is a mini token in the soul's color — previews the real
   // token and lets any commissioned mark read on the disc
-  lp.innerHTML = `<h4>Soul ${lookSeat + 1} — bear a sigil, wear a color</h4>
+  lp.innerHTML = `<h4>Soul ${lookSeat + 1}: bear a sigil, wear a color</h4>
     <div class="look-row">${TOKEN_ICON_KEYS.map(k =>
       `<button class="look-btn${k === seat.icon ? ' sel' : ''}${takenI.has(k) ? ' taken' : ''}" data-icon="${k}"
         style="background:${takenI.has(k) ? '#3a4740' : seat.color}"
-        title="${TOKEN_ICONS[k].name}${takenI.has(k) ? ' — borne by another soul' : ''}">${sigilHTML(k, '#0a100d', 22)}</button>`).join('')}</div>
+        title="${TOKEN_ICONS[k].name}${takenI.has(k) ? ' (borne by another soul)' : ''}">${sigilHTML(k, '#0a100d', 22)}</button>`).join('')}</div>
     <div class="look-row">${PLAYER_COLORS.map((c, i) =>
       `<button class="look-swatch${c === seat.color ? ' sel' : ''}${takenC.has(c) ? ' taken' : ''}" data-color="${c}"
-        style="background:${c}" title="${PLAYER_COLOR_NAMES[i]}${takenC.has(c) ? ' — worn by another soul' : ''}"></button>`).join('')}</div>`;
+        style="background:${c}" title="${PLAYER_COLOR_NAMES[i]}${takenC.has(c) ? ' (worn by another soul)' : ''}"></button>`).join('')}</div>`;
   lp.querySelectorAll('[data-icon]').forEach(b => {
     b.onclick = () => { if (!b.classList.contains('taken')) send({ t: 'look', seat: lookSeat, icon: b.dataset.icon }); };
   });
@@ -991,7 +991,7 @@ function renderTopbar() {
     ? ` <span class="peek" title="Raven-counsel: the next tiles of the stack">ᚨ next: ${state.stackPeek.map(t => t.kind === 'gate' ? `Gate of ${GATE_NAMES[t.gate]}` : t.kind === 'rune' ? 'Rune Circle' : t.kind).join(' · ')}</span>`
     : '';
   $('stack-meter').innerHTML = (state.niflheim
-    ? `❄ <b>Niflheim’s Embrace</b> — the forest dwindles`
+    ? `❄ <b>Niflheim’s Embrace</b>: the forest dwindles`
     : `Hope remaining: <b>${n}</b> tiles`) + peek;
   $('stack-meter').classList.toggle('embrace', !!state.niflheim);
   $('stack-meter').classList.toggle('low', !state.niflheim && n <= 10);
@@ -1017,7 +1017,7 @@ function bannerText() {
   if (state.phase === 'lost') return `<span class="who">The mist has taken them all.</span>`;
   if (!aw) return '';
   const who = `<span style="color:${state.players[aw.seat].color}">◈</span> <span class="who">${seatName(aw.seat)}</span>`;
-  const mine = isMine(aw.seat) ? ' — your decision' : '';
+  const mine = isMine(aw.seat) ? ': your decision' : '';
   const texts = {
     'place-start': `${who} chooses where to awaken${mine}`,
     'place-tile': `${who} reveals new paths${mine}`,
@@ -1046,7 +1046,7 @@ function renderPlayers() {
     div.title = "View this soul's status card";
     const runeFlash = transientFx && transientFx.runes.some(rn => rn.seat === p.seat) ? ' flash' : '';
     const rune = p.rune
-      ? `<div class="prune ${p.rune.p}${runeFlash} tappable" title="${runeInfo(p.rune).name} (${GATE_NAMES[p.rune.p]}) — tap to read">${runeInfo(p.rune).g}</div>`
+      ? `<div class="prune ${p.rune.p}${runeFlash} tappable" title="${runeInfo(p.rune).name} (${GATE_NAMES[p.rune.p]}). Tap to read">${runeInfo(p.rune).g}</div>`
       : `<div class="prune none" title="No rune mark yet">·</div>`;
     const status = p.falling
       ? '<span class="falling-tag">falling into the void</span>'
@@ -1079,7 +1079,7 @@ function renderPlayers() {
     if (ab) ab.onclick = (e) => {
       e.stopPropagation();
       if (ab.dataset.act === 'adopt') send({ t: 'claim', seat: p.seat });
-      else if (ab.dataset.act === 'release') confirmModal(`Set ${p.name}'s soul free? Anyone here — including a watcher — can adopt it, and you can take it back if no one does.`, () => send({ t: 'kick', seat: p.seat }));
+      else if (ab.dataset.act === 'release') confirmModal(`Set ${p.name}'s soul free? Anyone here, including a watcher, can adopt it, and you can take it back if no one does.`, () => send({ t: 'kick', seat: p.seat }));
       else confirmModal(`Release ${p.name}'s soul so another player can adopt it? Their player can rejoin and re-adopt it too.`, () => send({ t: 'kick', seat: p.seat }));
     };
     wrap.appendChild(div);
@@ -1111,22 +1111,22 @@ function renderSoul() {
       : 'The mist has swallowed your light.';
   const can = [], cant = [];
   if (p.falling) {
-    can.push('Next turn: land on any empty, unlit space in the fallen rift’s row or column — a tile is drawn for you to land on.');
-    can.push('You land with your <b>ember still lit</b> — you kindle the ways around where you land, as after any move.');
+    can.push('Next turn: land on any empty, unlit space in the fallen rift’s row or column. A tile is drawn for you to land on.');
+    can.push('You land with your <b>ember still lit</b>, kindling the ways around where you land, as after any move.');
     cant.push('You light nothing while you fall.');
   } else if (p.hopeful) {
     can.push('You light every connected path one space around you (no diagonals).');
-    can.push('Move along connected paths — new tiles are revealed at your open passages.');
-    can.push('Stay to steel your Resolve (+1 ◆, max 2 — but hope gutters while you linger: a tile burns from the stack).');
+    can.push('Move along connected paths. New tiles are revealed at your open passages.');
+    can.push('Stay to steel your Resolve (+1 ◆, max 2). Hope gutters in the stillness: a tile burns from the stack.');
     cant.push('Two souls never share a tile (Gates excepted).');
     cant.push('You cannot step onto a Draugr unless you go Berserk (1 ◆).');
   } else {
     can.push('You see only the tile you stand on.');
-    can.push('You <b>must move</b> every turn — staying costs 1 ◆ (Endure).');
+    can.push('You <b>must move</b> every turn. Staying costs 1 ◆ (Endure).');
     can.push('Moving into the mist reveals only the single tile you step onto.');
     can.push('Rekindle: stand beside a hopeful soul on a connected path (automatic), or spend 1 ◆ at the start of your turn.');
     cant.push('You reveal no other paths while hopeless.');
-    cant.push('Step carefully — a Draugr drawn beneath your feet strikes at once.');
+    cant.push('Step carefully: a Draugr drawn beneath your feet strikes at once.');
   }
   const acts = [
     ['Press on', 'after your move, take another step (max twice a turn)', !p.falling],
@@ -1138,22 +1138,22 @@ function renderSoul() {
   ];
   const actHtml = acts.map(([name, desc, relevant]) => `
     <div class="soul-act ${p.resolve > 0 && relevant ? '' : 'unavailable'}">
-      <span class="cost">1◆</span><span><b>${name}</b> — <small>${desc}</small></span>
+      <span class="cost">1◆</span><span><b>${name}</b>: <small>${desc}</small></span>
     </div>`).join('');
   let runeLine = state.randomRunes
-    ? 'Bears no rune mark yet — find a Rune Circle and let the stones choose.'
-    : 'Bears no rune mark yet — find a Rune Circle.';
+    ? 'Bears no rune mark yet. Find a Rune Circle and let the stones choose.'
+    : 'Bears no rune mark yet. Find a Rune Circle.';
   if (p.rune) {
     const i = runeInfo(p.rune);
     const col = p.rune.p === 'valhalla' ? 'var(--gold)' : 'var(--good)';
-    runeLine = `Marked with <span class="glyph" style="color:${col}">${i.g}</span> ${i.name} — bound for <b>${GATE_NAMES[p.rune.p]}</b>.`;
+    runeLine = `Marked with <span class="glyph" style="color:${col}">${i.g}</span> ${i.name}, bound for <b>${GATE_NAMES[p.rune.p]}</b>.`;
     if (state.runePerks && i.perk) {
       runeLine += `<br><small class="perk-line">✦ ${state.niflheim && i.winterPerk ? i.winterPerk : i.perk}</small>`;
     }
     // Deep vitality consent: the bearer opens or closes their purse (worker 'lend')
     if (state.runePerks && p.rune.k === 'uruz' && isMine(seat)) {
       runeLine += `<br><button class="btn tiny" id="lend-toggle">${p.lendOk === false
-        ? 'Purse closed — tap to lend ◆ (ᚢ)' : 'Purse open — lending ◆ · tap to close (ᚢ)'}</button>`;
+        ? 'Purse closed. Tap to lend ◆ (ᚢ)' : 'Purse open, lending ◆. Tap to close (ᚢ)'}</button>`;
     }
   }
   el.innerHTML = `
@@ -1208,12 +1208,12 @@ function showRuneInfo(rune) {
   const perks = state && state.runePerks
     ? `<p class="perk-line" style="text-align:left">✦ ${i.perk}</p>
        <p class="perk-line" style="text-align:left">❄ In the Embrace: ${i.winterPerk}</p>
-       ${state.niflheim ? '<p class="hint">The Embrace holds — the winter form is in effect.</p>' : ''}`
+       ${state.niflheim ? '<p class="hint">The Embrace holds: the winter form is in effect.</p>' : ''}`
     : '<p class="hint">Rune perks are not enabled in this saga.</p>';
   ov.innerHTML = `<div class="modal-card rune-pop-card">
     <div style="font-size:42px;line-height:1.1;color:${col}">${i.g}</div>
     <h2 style="color:${col};margin:4px 0 2px">${i.name}</h2>
-    <p>${i.gloss} — a rune of <b>${GATE_NAMES[rune.p]}</b>.</p>
+    <p>${i.gloss}. A rune of <b>${GATE_NAMES[rune.p]}</b>.</p>
     ${perks}
     <div class="row"><button class="btn primary" id="rune-pop-close">Close</button></div>
   </div>`;
@@ -1609,9 +1609,9 @@ function addInteractions(parts, aw) {
         const mv = extra => act({ kind: 'move', d: m.d, ...extra, ...(holdArmed && aw.canHold ? { hold: true } : {}) });
         clickRect(parts, m.r, m.c, m.kind, () => {
           if (m.kind === 'charge') {
-            confirmModal('Go berserk and rush the Draugr? Its strike WILL land on you — but with its spite spent, it is banished from the forest. (1 Resolve)', () => mv({}));
+            confirmModal('Go berserk and rush the Draugr? Its strike WILL land on you, but with its spite spent it is banished from the forest. (1 Resolve)', () => mv({}));
           } else if (m.kind === 'cross') {
-            confirmModal(`Stride across the Void Rift to the far side?${m.cost ? ' (1 Resolve — Wayfarer ᚱ)' : ' (The last road ᚱ)'}`, () => mv({ cross: true }));
+            confirmModal(`Stride across the Void Rift to the far side?${m.cost ? ' (1 Resolve, Wayfarer ᚱ)' : ' (The last road ᚱ)'}`, () => mv({ cross: true }));
           } else if (m.kind === 'jump') {
             confirmModal('Leap into the Void Rift? You will fall, and land next turn with your ember still lit.', () => mv({}));
           } else {
@@ -1636,7 +1636,7 @@ function addInteractions(parts, aw) {
             if (m.kind === 'charge') {
               confirmModal('Go berserk and rush the Draugr? Its strike WILL land on you, then it is banished. (2 Resolve in total)', () => mv({}));
             } else if (m.kind === 'cross') {
-              confirmModal(`Stride across the Void Rift?${m.cost ? ' (1 Resolve — Wayfarer ᚱ)' : ''}`, () => mv({ cross: true }));
+              confirmModal(`Stride across the Void Rift?${m.cost ? ' (1 Resolve, Wayfarer ᚱ)' : ''}`, () => mv({ cross: true }));
             } else if (m.kind === 'jump') {
               confirmModal('Leap into the Void Rift?', () => mv({}));
             } else {
@@ -1905,7 +1905,7 @@ function renderActionBar() {
   // Raido's turning (arms a pick, like Press On) and Berkano's hold toggle
   const perkBtns = a => {
     if (a.turns && a.turns.length) {
-      const toll = state.niflheim ? 'free — ᚱ' : '1 ◆ — ᚱ';
+      const toll = state.niflheim ? 'free · ᚱ' : '1 ◆ · ᚱ';
       btn(turnArmed ? 'Cancel turning' : `Turn a path <small>(${toll})</small>`, () => {
         turnArmed = !turnArmed;
         if (turnArmed) moveAgainArmed = false;
@@ -1914,8 +1914,8 @@ function renderActionBar() {
     }
     if (a.canHold) {
       btn(holdArmed
-        ? 'Holding the path behind you <small>(1 ◆ — ᛒ)</small>'
-        : 'Hold the path? <small>(1 ◆ — ᛒ)</small>', () => {
+        ? 'Holding the path behind you <small>(1 ◆ · ᛒ)</small>'
+        : 'Hold the path? <small>(1 ◆ · ᛒ)</small>', () => {
         holdArmed = !holdArmed;
         render();
       }, holdArmed ? 'primary' : '');
@@ -1930,10 +1930,10 @@ function renderActionBar() {
     case 'place-scramble': {
       const texts = {
         'place-start': IS_COARSE
-          ? 'Tap a clearing to preview your awakening — tap it again to settle'
+          ? 'Tap a clearing to preview your awakening, then tap it again to settle'
           : 'Choose any dark clearing to awaken in',
         'place-tile': IS_COARSE
-          ? 'Tap a glowing space to preview the tile — tap it again to place'
+          ? 'Tap a glowing space to preview the tile, then tap it again to place'
           : 'Place the revealed tile on a glowing space',
         'place-blind': IS_COARSE
           ? 'Turn the tile you feel beneath you, then ✓ Place'
@@ -1961,9 +1961,9 @@ function renderActionBar() {
         if (aw.canLinger) {
           // Random Runes, standing in a Rune Circle: the Stay forks — say
           // exactly what each choice does, because one of them is a fall
-          btn('Linger at the stones <small>(burn a tile — the stones choose again)</small>',
+          btn('Linger at the stones <small>(burn a tile, the stones choose again)</small>',
             () => act({ kind: 'stay', linger: true }), 'primary');
-          btn('Stay <small>(burn a tile — the cracked circle gives way, you fall)</small>',
+          btn('Stay <small>(burn a tile, the cracked circle gives way, you fall)</small>',
             () => act({ kind: 'stay' }));
         } else {
           const label = p.hopeful ? 'Stay <small>(+1 ◆, burn a tile)</small>' : 'Stay <small>(1 ◆)</small>';
@@ -1979,7 +1979,7 @@ function renderActionBar() {
     case 'post-move': {
       btn('End turn', () => act({ kind: 'end' }), 'primary');
       if (aw.canMoveAgain) {
-        btn(moveAgainArmed ? 'Cancel move' : (aw.freeStep ? 'Press on <small>(free — ᛇ)</small>' : 'Press on <small>(1 ◆)</small>'), () => {
+        btn(moveAgainArmed ? 'Cancel move' : (aw.freeStep ? 'Press on <small>(free · ᛇ)</small>' : 'Press on <small>(1 ◆)</small>'), () => {
           moveAgainArmed = !moveAgainArmed;
           render();
         });
@@ -1989,13 +1989,13 @@ function renderActionBar() {
       else if (moveAgainArmed && aw.canMoveAgain) note('click a glowing space');
       break;
     }
-    case 'swap-draugr': note('The Draugr must take a connected path — choose which'); break;
+    case 'swap-draugr': note('The Draugr must take a connected path. Choose which.'); break;
     case 'fall-landing': note('Choose where to fall back into Myrkviðr (along the rift’s row or column)'); break;
-    case 'scramble': note('Find your footing — choose an adjacent space'); break;
+    case 'scramble': note('Find your footing: choose an adjacent space'); break;
     case 'niflheim': {
-      if (aw.canRefuse) btn('Refuse the cold <small>(once — ᚨ)</small>', () => act({ refuse: true }));
+      if (aw.canRefuse) btn('Refuse the cold <small>(once · ᚨ)</small>', () => act({ refuse: true }));
       if (aw.canSustain) btn('Ward <small>(1 ◆)</small>', () => act({ sustain: true }));
-      note('Niflheim claims a tile — click one to surrender it');
+      note('Niflheim claims a tile. Click one to surrender it');
       break;
     }
   }
@@ -2118,7 +2118,7 @@ function renderModal() {
     const t = cl && cl.tile;
     if (!t) { modalLock = null; modal.classList.add('hidden'); return; }
     card.innerHTML = `<h2>Turn the path ᚱ</h2>
-      <p>How should it lie? The road obeys the Wayfarer${state.niflheim ? ' — freely, in the cold' : ' (1 ◆)'}.</p>`;
+      <p>How should it lie? The road obeys the Wayfarer${state.niflheim ? ', freely in the cold' : ' (1 ◆)'}.</p>`;
     const row = document.createElement('div'); row.className = 'row';
     const seen = new Set([(t.exits || exitsFor(t.kind, t.rot || 0)).join('')]);
     for (let rot = 0; rot < 4; rot++) {
@@ -2178,7 +2178,7 @@ function renderModal() {
       }).join('');
       const flavor = state.winnerGate === 'valhalla'
         ? 'The four runes blaze as one. Valgrind swings wide, and the souls pass out of Myrkviðr to the mead-hall of the einherjar.'
-        : 'The four runes blaze as one. Freyja chooses her own — the meadow gate opens, and the souls pass out of Myrkviðr to Sessrúmnir.';
+        : 'The four runes blaze as one. Freyja chooses her own. The meadow gate opens, and the souls pass out of Myrkviðr to Sessrúmnir.';
       card.innerHTML = `<div class="endgame win">
         <div class="vic-glyph">${gglyph}</div>
         <h1>${GATE_NAMES[state.winnerGate].toUpperCase()}</h1>
@@ -2217,7 +2217,7 @@ function renderModal() {
   // Shared joy (Wunjo): the bearer names which neighbor their Stay steels
   if (aw && aw.type === 'shared-joy' && isMine(aw.seat)) {
     card.innerHTML = `<h2>Shared joy ᚹ</h2>
-      <p>Your Stay steels a neighbor’s Resolve — who takes heart?</p>`;
+      <p>Your Stay steels a neighbor’s Resolve. Who takes heart?</p>`;
     const row = document.createElement('div'); row.className = 'row';
     for (const o of aw.options) {
       const b = document.createElement('button'); b.className = 'btn primary';
@@ -2277,7 +2277,7 @@ function renderModal() {
       <p>Its spite burns away the paths. Brace against it?</p>`;
     const row = document.createElement('div'); row.className = 'row';
     const brace = document.createElement('button');
-    brace.className = 'btn primary'; brace.innerHTML = 'Brace <small>(1 ◆ — lose 2 tiles)</small>';
+    brace.className = 'btn primary'; brace.innerHTML = 'Brace <small>(1 ◆, lose 2 tiles)</small>';
     brace.onclick = () => act({ block: true });
     const take = document.createElement('button');
     take.className = 'btn danger'; take.innerHTML = 'Endure it <small>(lose 3 tiles)</small>';
@@ -2295,9 +2295,9 @@ function renderModal() {
       return `<span class="prune ${t.p}" style="display:inline-block;margin:0 3px" title="${escapeHtml(seatName(t.seat))}">${info.g}</span>`;
     }).join('');
     const oneGate = aw.gates && aw.gates.length === 1
-      ? `<p class="hint">Only the Gate of ${GATE_NAMES[aw.gates[0]]} still stands — the stones choose from its runes alone.</p>` : '';
+      ? `<p class="hint">Only the Gate of ${GATE_NAMES[aw.gates[0]]} still stands, so the stones choose from its runes alone.</p>` : '';
     card.innerHTML = `<h2>The Rune Circle</h2>
-      <p>The stones do not ask — they <b>choose</b>. ${escapeHtml(p.name)} may accept a random
+      <p>The stones do not ask. They <b>choose</b>. ${escapeHtml(p.name)} may accept a random
       unclaimed mark (it replaces any they bear), or leave fate untested.</p>
       ${oneGate}${held ? `<p class="hint">Marks already borne: ${held}</p>` : ''}`;
     const row = document.createElement('div'); row.className = 'row';
@@ -2316,7 +2316,7 @@ function renderModal() {
   if (aw && aw.type === 'attune' && isMine(aw.seat)) {
     const p = state.players[aw.seat];
     card.innerHTML = `<h2>The Rune Circle</h2>
-      <p>Ancient marks wait in the stones. ${escapeHtml(p.name)} may take one — it replaces any mark they bear. All four souls need <b>different</b> runes of the <b>same</b> gate.</p>`;
+      <p>Ancient marks wait in the stones. ${escapeHtml(p.name)} may take one. It replaces any mark they bear. All four souls need <b>different</b> runes of the <b>same</b> gate.</p>`;
     const grid = document.createElement('div'); grid.className = 'rune-grid';
     const attainable = aw.gates || ['valhalla', 'folkvangr']; // older states: all
     for (const pantheon of ['valhalla', 'folkvangr']) {
@@ -2332,7 +2332,7 @@ function renderModal() {
         b.innerHTML = `<span class="glyph">${rn.g}</span><span>${rn.name}<br><small style="color:var(--dim)">${rn.gloss}</small>
           ${state.runePerks && rn.perk ? `<br><small class="perk-line">✦ ${rn.perk}</small>` : ''}</span>
           ${holder ? `<span class="taken">${escapeHtml(seatName(holder.seat))}</span>` : ''}`;
-        if (lost) { b.disabled = true; b.title = 'This gate is lost — its runes hold no power now.'; }
+        if (lost) { b.disabled = true; b.title = 'This gate is lost. Its runes hold no power now.'; }
         else b.onclick = () => act({ p: pantheon, k: rn.k });
         col.appendChild(b);
       });
@@ -2367,7 +2367,7 @@ if (urlRoom && /^[a-zA-Z]{4}$/.test(urlRoom)) {
   } else {
     $('code-input').value = code;
     updateLobbyCTA(); // an invited visitor's primary action is Join
-    $('lobby-error').textContent = 'You were invited to saga ' + code + ' — choose a name and join!';
+    $('lobby-error').textContent = 'You were invited to saga ' + code + '. Choose a name and join!';
     $('name-input').focus();
   }
 } else if (lastCode && token) {

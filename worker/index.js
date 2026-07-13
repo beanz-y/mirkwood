@@ -95,7 +95,7 @@ export class MirkwoodRoom {
       // deploy that changed the state shape — end it gracefully
       if (this.room && this.room.state && this.room.state.v !== STATE_VERSION) {
         this.room.state = null;
-        this.room.notice = 'The forest shifted while you were away — that saga could not survive the update. Begin a new telling.';
+        this.room.notice = 'The forest shifted while you were away. That saga could not survive the update, so begin a new telling.';
         await this.save();
       }
     }
@@ -121,7 +121,7 @@ export class MirkwoodRoom {
     const code = url.searchParams.get('code');
     if (url.searchParams.get('init') === '1') {
       if (this.room && this.ctx.getWebSockets().length > 0) {
-        return new Response('Room code collision — try again', { status: 409 });
+        return new Response('Room code collision, try again', { status: 409 });
       }
       this.room = {
         code,

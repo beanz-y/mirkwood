@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mirkwood — Myrkviðr</title>
+<title>Mirkwood · Myrkviðr</title>
 <link rel="stylesheet" href="/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>ᛗ</text></svg>">
 </head>
@@ -13,12 +13,12 @@
 <div id="lobby" class="overlay">
   <div class="lobby-card">
     <h1 class="title">MIRKWOOD</h1>
-    <p class="subtitle">Myrkviðr — the mist-forest between the worlds</p>
+    <p class="subtitle">Myrkviðr, the mist-forest between the worlds</p>
 
     <div id="lobby-entry">
       <label>Your name
         <input id="name-input" maxlength="16" placeholder="Wanderer" autocomplete="off">
-        <small class="hint name-hint">any name works — no need for your real one</small>
+        <small class="hint name-hint">any name works, no need for your real one</small>
       </label>
       <div class="row">
         <button id="create-btn" class="btn primary">Begin a new saga</button>
@@ -31,7 +31,7 @@
     </div>
 
     <div id="lobby-room" class="hidden">
-      <p class="room-code-label">Gather your party — saga code (click to copy an invite link):</p>
+      <p class="room-code-label">Gather your party. Saga code (click to copy an invite link):</p>
       <div class="room-code" id="room-code" title="Click to copy an invite link">----</div>
       <div id="seat-list" class="seat-list"></div>
       <div id="look-picker" class="hidden"></div>
@@ -49,12 +49,12 @@
             <button id="custom-toggle" class="btn small">Customize…</button>
           </div>
           <label class="tile-check random-row" title="At a Rune Circle, a random unclaimed rune is assigned instead of choosing">
-            <input type="checkbox" id="cfg-randomRunes"> Random runes — the stones choose your mark
+            <input type="checkbox" id="cfg-randomRunes"> Random runes: the stones choose your mark
           </label>
-          <label class="tile-check random-row" title="Each rune grants its bearer a boon — with a second, stronger form once Niflheim's Embrace begins">
-            <input type="checkbox" id="cfg-runePerks"> Rune perks — every mark carries a boon
+          <label class="tile-check random-row" title="Each rune grants its bearer a boon, with a second, stronger form once Niflheim's Embrace begins">
+            <input type="checkbox" id="cfg-runePerks"> Rune perks: every mark carries a boon
           </label>
-          <label class="tile-check random-row" title="A visible countdown per decision — a nudge, not an enforcer">
+          <label class="tile-check random-row" title="A visible countdown per decision. A nudge, not an enforcer">
             Turn timer
             <select id="cfg-turnTimer">
               <option value="0">off</option>
@@ -73,11 +73,11 @@
             <label class="tile-field">Draugr <input type="number" id="cfg-draugr" min="0" max="24"></label>
             <label class="tile-check"><input type="checkbox" id="cfg-gateValhalla"> Gate of Valhalla</label>
             <label class="tile-check"><input type="checkbox" id="cfg-gateFolkvangr"> Gate of Fólkvangr</label>
-            <label class="tile-check" title="How many doorways each Gate opens — a balance experiment until one becomes the rule">
+            <label class="tile-check" title="How many doorways each Gate opens. A balance experiment until one becomes the rule">
               Gate doorways
               <select id="cfg-gateExits">
                 <option value="one">one (classic)</option>
-                <option value="straight">two — opposite sides</option>
+                <option value="straight">two (opposite sides)</option>
                 <option value="tee">three</option>
               </select>
             </label>
@@ -105,7 +105,7 @@
     <p>Mirkwood is a free fan project with no accounts, no ads, no analytics, and
     no tracking. Your chosen display name and game state live on the server only
     while your saga is active and are deleted after about a day of inactivity.
-    Anonymous gameplay statistics (difficulty, result, turn count — never names)
+    Anonymous gameplay statistics (difficulty, result, turn count, never names)
     are kept to help balance the game. Your browser stores only what the game
     needs to reconnect you. There is no chat, and nothing you type is shared
     beyond your game room. Hosting is provided by Cloudflare, which processes
@@ -126,7 +126,7 @@
     <span class="brand">ᛗ MIRKWOOD</span>
     <span id="turn-banner"></span>
     <span id="turn-timer" class="hidden"></span>
-    <span id="stack-meter" title="Tiles remaining — the group's shared hope"></span>
+    <span id="stack-meter" title="Tiles remaining: the group's shared hope"></span>
     <button id="replay-btn" class="btn tiny hidden" title="Replay the last move's animations">⟲ Replay</button>
     <button id="ping-btn" class="btn tiny" title="Ping a spot on the board for the others">⚑ Ping</button>
     <button id="rules-btn" class="btn tiny">Rules</button>
@@ -189,15 +189,15 @@
     <h3>Welcome to Myrkviðr</h3>
     <p class="lore">No skald will sing of how you died. No shield-wall broke
     around you, no valkyrie stooped out of the storm to carry you up to the
-    Allfather's benches. Yours was a straw-death — quiet, unwitnessed,
-    unchosen — and what met you on the far side of it was not the mead-bright
+    Allfather's benches. Yours was a straw-death: quiet, unwitnessed,
+    unchosen. What met you on the far side of it was not the mead-bright
     roar of a hall. It was wind moving through branches.</p>
     <p class="lore">You stand beneath the black boughs of <b>Myrkviðr</b>, the
     dark wood that has marked the border between the worlds since the first
     days. Swan-maids have flown through it; gods and heroes have ridden its
     edges; the sons of Muspell will cross it burning when the world ends.
     Nothing in it keeps its shape. The mist of Niflheim breathes between the
-    trunks, and wherever it settles, the forest forgets its own paths — a road
+    trunks, and wherever it settles, the forest forgets its own paths. A road
     walked once is not there when you turn around.</p>
     <p class="lore">Yet the dead here whisper of two doors. Somewhere under
     the boughs stands <b>Valgrind</b>, the corpse-gate of Valhalla, behind
@@ -208,53 +208,53 @@
     the gates take you: find the standing stones where the old rune-rings
     wait, cut their marks into your soul, and come before a gate that cannot
     refuse four souls bearing its four runes.</p>
-    <p class="lore">You carry no candle or torch — such fires died with your
+    <p class="lore">You carry no candle or torch. Such fires died with your
     body. What you carry is an <b>ember of hope</b>, and it is enough: where
     your hope shines, the paths hold. Where it moves on, the mist devours what
     it leaves behind. And you are not alone beneath the boughs. The
-    <b>draugar</b> walk here — the restless dead who sought the gates before
+    <b>draugar</b> walk here: the restless dead who sought the gates before
     you and failed, and rose again with nothing left in them but spite for
     every soul that still dares to hope.</p>
     <p>Mirkwood (Myrkviðr) is a cooperative game of paths and dwindling light:
     four souls, played by one to four players, who escape together or not at
     all. Each turn your hope kindles fresh paths at the edge of the light,
-    while the mist devours everything left unlit — the forest is never the
+    while the mist devours everything left unlit. The forest is never the
     same shape twice. The shared path stack is the party's hope made visible;
     every tile drawn, burned, or lost to the dark brings Niflheim's Embrace a
     step closer. Gather four different runes of one gate, bring all four souls
-    to stand on it together, and walk out of Myrkviðr — or let the mist take
+    to stand on it together, and walk out of Myrkviðr. Or let the mist take
     everything.</p>
 
     <h3>The goal</h3>
     <p>Win together: all four souls standing on the <b>same Gate</b>, each bearing a
-    <b>different rune</b> of that gate's set — <b>Valgrind</b>, the corpse-door of
+    <b>different rune</b> of that gate's set: <b>Valgrind</b>, the corpse-door of
     Odin's Valhalla, or the gate to <b>Fólkvangr</b>, Freyja's field, where her hall
     Sessrúmnir stands. Lose together if both Gates are lost, the runes can no
-    longer be gathered (a circle a soul stands on is already spent — its stones
-    speak only once), a soul falls with the stack spent — or, in Niflheim's
+    longer be gathered (a circle a soul stands on is already spent; its stones
+    speak only once), a soul falls with the stack spent, or, in Niflheim's
     Embrace, no road remains by which all four souls could reach a winnable
     gate. The forest knows when hope is gone, and says so at once.</p>
 
     <h3>Your turn</h3>
     <ul>
       <li><b>Move</b> one space along a connected path. Your hope kindles the ways
-        ahead — a fresh tile joins the board at every open passage of your new
-        tile — and everything the group's hope no longer lights is <b>lost forever</b>.</li>
+        ahead (a fresh tile joins the board at every open passage of your new
+        tile), and everything the group's hope no longer lights is <b>lost forever</b>.</li>
       <li><b>Stay</b> instead: gain 1 Resolve ◆ (max 2), but hope gutters while you
-        linger — the top tile of the stack burns. If it's a Draugr, it claws onto a
+        wait: the top tile of the stack burns. If it's a Draugr, it claws onto a
         path beside you.</li>
       <li>After moving you may spend Resolve to <b>press on</b> (up to two more steps).
-        Linger too long at that choice and your soul rests on its own — half a minute
+        Wait too long at that choice and your soul rests on its own: half a minute
         with no touch on the page ends the turn (any activity resets it).</li>
     </ul>
 
     <h3>Hope</h3>
     <ul>
-      <li><b>Hopeful</b> — you light all connected paths one space around you (no diagonals).</li>
-      <li><b>Hopeless</b> — you see only your own tile. You <b>must move</b> every turn
+      <li><b>Hopeful</b>: you light all connected paths one space around you (no diagonals).</li>
+      <li><b>Hopeless</b>: you see only your own tile. You <b>must move</b> every turn
         (staying costs 1 ◆), and you move blind: entering the mist reveals only the
         tile you step onto.</li>
-      <li><b>Rekindle</b> — stand beside a hopeful soul on a connected path (automatic),
+      <li><b>Rekindle</b>: stand beside a hopeful soul on a connected path (automatic),
         or spend 1 ◆ at the start of your turn.</li>
     </ul>
 
@@ -262,62 +262,62 @@
     <p>Gain it by <b>Staying</b>, or by <b>evading</b> a Draugr you roused.
     Spend 1 to: <b>Press on</b> (another step) · <b>Rekindle</b> · <b>Endure</b> (stay while hopeless) ·
     <b>Brace</b> (lose 2 tiles instead of 3 when struck) ·
-    <b>Berserk</b> (rush a Draugr — see below) · <b>Ward</b> (skip Niflheim's toll).</p>
+    <b>Berserk</b> (rush a Draugr, see below) · <b>Ward</b> (skip Niflheim's toll).</p>
 
     <h3>The Draugar</h3>
-    <p>The restless dead of Myrkviðr — they failed the road, and hate any light that
+    <p>The restless dead of Myrkviðr: they failed the road, and hate any light that
     still hopes. A Draugr wakes at <b>motion in its corridors</b>: step anywhere
-    along a straight, unbroken run of path joined to it — however far, even across
-    the board's wrapped edge — and it lashes down all four of its corridors at once.
+    along a straight, unbroken run of path joined to it (however far, even across
+    the board's wrapped edge) and it lashes down all four of its corridors at once.
     Every soul caught in its gaze is struck: <b>3 tiles burned</b> per victim, and
     their hope is extinguished. Walls, gaps, and Void Rifts blind it.
-    <b>Ending your move outside its gaze means the strike misses you</b> — every
-    other soul still in its sight suffers it — and slipping its gaze steels your
+    <b>Ending your move outside its gaze means the strike misses you</b> (every
+    other soul still in its sight suffers it), and slipping its gaze steels your
     Resolve (+1).</p>
     <p><b>Berserk</b> (1 ◆): rush a Draugr's tile in a fury. Its strike always lands
-    on you (and on everything else it can see) — but once its spite is spent, the
+    on you (and on everything else it can see), but once its spite is spent, the
     Draugr is <b>banished from the forest</b>, and you claw your way onto an
-    adjacent space. A Draugr can also be left behind: slip its gaze, or walk away —
-    one that no soul lights any longer fades back into the mist.</p>
+    adjacent space. A Draugr can also be left behind: slip its gaze, or walk away.
+    One that no soul lights any longer fades back into the mist.</p>
 
     <h3>Fractured paths &amp; Void Rifts</h3>
     <p>Cracked tiles crumble into <b>Void Rifts</b> when you leave them (or stay on
     them). Falling ends your turn; next turn you land on a drawn tile anywhere in the
-    rift's row or column — <b>ember still lit</b>, kindling the ways around you. If the
+    rift's row or column, <b>ember still lit</b>, kindling the ways around you. If the
     stack is empty when you must land, you fall forever.</p>
 
     <h3>Runes &amp; Gates</h3>
-    <p>Step into a <b>Rune Circle</b> to take one mark (it replaces your old one —
+    <p>Step into a <b>Rune Circle</b> to take one mark (it replaces your old one, and
     marks can never be traded). With the host's <b>Random Runes</b> option, the
     stones choose instead: you receive a random rune not currently borne by any
-    soul — and standing there your Stay forks in two: choose <b>Linger</b> and the
+    soul. Standing there, your Stay forks in two: choose <b>Linger</b> and the
     circle holds while the stones choose again each turn (a tile still burns from
-    the stack; the circle crumbles when you leave) — or choose a plain <b>Stay</b>
+    the stack; the circle crumbles when you leave), or choose a plain <b>Stay</b>
     and the cracked circle gives way beneath you, a fall like any fractured tile.
     Gates have <b>one doorway</b> and hold any
-    number of souls; once placed the everyday mist cannot take a Gate — only
+    number of souls; once placed the everyday mist cannot take a Gate. Only
     Niflheim's Embrace can (see below). A Gate still buried in the stack <b>can</b>
-    burn away — watch the tile counts — and once a gate is wholly lost its runes
+    burn away (watch the tile counts), and once a gate is wholly lost its runes
     are sealed: the stones no longer offer that pantheon's marks.</p>
     <table class="rune-table">
       <tr><th colspan="2">ᚨ Valhalla</th><th colspan="2">ᚠ Fólkvangr</th></tr>
-      <tr><td>ᛞ</td><td>Dagaz — daybreak</td><td>ᛒ</td><td>Berkano — nurture</td></tr>
-      <tr><td>ᛇ</td><td>Eihwaz — endurance</td><td>ᚢ</td><td>Uruz — vitality</td></tr>
-      <tr><td>ᚱ</td><td>Raido — the journey</td><td>ᚹ</td><td>Wunjo — joy</td></tr>
-      <tr><td>ᚨ</td><td>Ansuz — Odin's wisdom</td><td>ᚠ</td><td>Fehu — Freyja's plenty</td></tr>
+      <tr><td>ᛞ</td><td>Dagaz · daybreak</td><td>ᛒ</td><td>Berkano · nurture</td></tr>
+      <tr><td>ᛇ</td><td>Eihwaz · endurance</td><td>ᚢ</td><td>Uruz · vitality</td></tr>
+      <tr><td>ᚱ</td><td>Raido · the journey</td><td>ᚹ</td><td>Wunjo · joy</td></tr>
+      <tr><td>ᚨ</td><td>Ansuz · Odin's wisdom</td><td>ᚠ</td><td>Fehu · Freyja's plenty</td></tr>
     </table>
 
     <h3>Lobby variants</h3>
     <p class="hint">Each of these is chosen by the <b>host in the lobby</b> before the saga
-    begins — the difficulty line beneath the seats names everything in play, so check it
+    begins. The difficulty line beneath the seats names everything in play, so check it
     when you join.</p>
     <div id="rules-variants"></div>
 
     <h3>Niflheim's Embrace</h3>
-    <p>When the last tile is drawn, no new paths can ever be kindled — and at the
+    <p>When the last tile is drawn, no new paths can ever be kindled, and at the
     end of <b>every</b> turn the group must surrender one tile from the board
-    (1 ◆ to Ward). The cold takes any tile still lit — <b>even a Gate or a Void
-    Rift</b> — sparing only one a soul stands on. Reach a gate before the forest
+    (1 ◆ to Ward). The cold takes any tile still lit, <b>even a Gate or a Void
+    Rift</b>, sparing only one a soul stands on. Reach a gate before the forest
     is gone.</p>
 
     <div class="row">
@@ -348,12 +348,12 @@
   <div class="nifl-card">
     <div class="nifl-glyph">ᛁ</div>
     <h1>NIFLHEIM&rsquo;S EMBRACE</h1>
-    <p class="nifl-lede">The path stack is spent — the last ember of shared hope
+    <p class="nifl-lede">The path stack is spent. The last ember of shared hope
     goes dark, and the primordial cold closes in.</p>
     <ul>
       <li>No new paths can ever be kindled.</li>
       <li>At the end of <b>every</b> soul&rsquo;s turn, the mist claims one tile
-        from the board — unless that soul spends 1&nbsp;◆ to <b>Ward</b> the forest.</li>
+        from the board, unless that soul spends 1&nbsp;◆ to <b>Ward</b> the forest.</li>
     </ul>
     <p class="nifl-charge">Reach a gate before the forest is gone.</p>
     <div class="row"><button id="niflheim-close" class="btn primary">Face the cold</button></div>

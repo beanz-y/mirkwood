@@ -27,32 +27,32 @@ export const OPP = d => (d + 2) % 4;
 // single source for the picker, soul card and rules screen.
 export const RUNES = {
   valhalla: [
-    { k: 'dagaz',  g: 'ᛞ', name: 'Dagaz',  gloss: "Day — hope's daybreak",
-      perk: 'Dawn returns — you relight free at the start of your turn',
-      winterPerk: 'Dawnkeeper — while you stand on a Gate, the cold cannot take tiles touching it' },
-    { k: 'eihwaz', g: 'ᛇ', name: 'Eihwaz', gloss: 'Yew — rooted endurance',
-      perk: 'Tireless — your first Press On each turn costs no Resolve',
-      winterPerk: 'Deathless roots — a fall never dooms you: land on any tile in the rift’s row or column' },
-    { k: 'raido',  g: 'ᚱ', name: 'Raido',  gloss: 'Ride — the righteous path',
-      perk: 'Wayfarer — once a turn, 1 ◆: turn an adjacent unoccupied path, or stride across a Void Rift',
-      winterPerk: 'The last road — the Wayfarer’s road-craft costs nothing' },
-    { k: 'ansuz',  g: 'ᚨ', name: 'Ansuz',  gloss: "God — wisdom and Odin's insight",
-      perk: 'Raven-counsel — at your turn’s dawn, the next two stack tiles are known',
-      winterPerk: 'The refusal — once per Embrace, the party skips one surrender' },
+    { k: 'dagaz',  g: 'ᛞ', name: 'Dagaz',  gloss: "Day, hope's daybreak",
+      perk: 'Dawn returns: you relight free at the start of your turn',
+      winterPerk: 'Dawnkeeper: while you stand on a Gate, the cold cannot take tiles touching it' },
+    { k: 'eihwaz', g: 'ᛇ', name: 'Eihwaz', gloss: 'Yew, rooted endurance',
+      perk: 'Tireless: your first Press On each turn costs no Resolve',
+      winterPerk: 'Deathless roots: a fall never dooms you. Land on any tile in the rift’s row or column' },
+    { k: 'raido',  g: 'ᚱ', name: 'Raido',  gloss: 'Ride, the righteous path',
+      perk: 'Wayfarer: once a turn, spend 1 ◆ to turn an adjacent unoccupied path or stride across a Void Rift',
+      winterPerk: 'The last road: the Wayfarer’s road-craft costs nothing' },
+    { k: 'ansuz',  g: 'ᚨ', name: 'Ansuz',  gloss: "God, wisdom and Odin's insight",
+      perk: 'Raven-counsel: at your turn’s dawn, the next two stack tiles are known',
+      winterPerk: 'The refusal: once per Embrace, the party skips one surrender' },
   ],
   folkvangr: [
-    { k: 'berkano', g: 'ᛒ', name: 'Berkano', gloss: 'Birch — nurture and protection',
-      perk: 'New growth — 1 ◆: the fractured path you leave does not crumble',
-      winterPerk: 'Grove shade — the cold can never claim the last tile standing beside you' },
-    { k: 'uruz',    g: 'ᚢ', name: 'Uruz',    gloss: 'Aurochs — vitality and growth',
-      perk: 'Deep vitality — Resolve cap 3; your ◆ may pay a teammate’s spend',
-      winterPerk: 'Winter strength — your Stay steels +2 ◆' },
-    { k: 'wunjo',   g: 'ᚹ', name: 'Wunjo',   gloss: 'Joy — harmony and fulfilment',
-      perk: 'Shared joy — your Stay steels an adjacent teammate +1 ◆, and theirs steels you',
-      winterPerk: 'Heartened — teammates who begin their move beside you take one free extra step' },
-    { k: 'fehu',    g: 'ᚠ', name: 'Fehu',    gloss: "Cattle — wealth, Freyja's plenty",
-      perk: 'Stocked hearth — your Stay burns nothing; twice a saga, 1 ◆ buys back a just-burned Gate or Rune Circle',
-      winterPerk: 'Winter stores — twice per Embrace, spend 1 ◆ to return a tile the cold has just taken' },
+    { k: 'berkano', g: 'ᛒ', name: 'Berkano', gloss: 'Birch, nurture and protection',
+      perk: 'New growth: spend 1 ◆ and the fractured path you leave does not crumble',
+      winterPerk: 'Grove shade: the cold can never claim the last tile standing beside you' },
+    { k: 'uruz',    g: 'ᚢ', name: 'Uruz',    gloss: 'Aurochs, vitality and growth',
+      perk: 'Deep vitality: your Resolve cap is 3, and your ◆ may pay a teammate’s spend',
+      winterPerk: 'Winter strength: your Stay steels +2 ◆' },
+    { k: 'wunjo',   g: 'ᚹ', name: 'Wunjo',   gloss: 'Joy, harmony and fulfilment',
+      perk: 'Shared joy: your Stay steels an adjacent teammate +1 ◆, and theirs steels you',
+      winterPerk: 'Heartened: teammates who begin their move beside you take one free extra step' },
+    { k: 'fehu',    g: 'ᚠ', name: 'Fehu',    gloss: "Cattle: wealth, Freyja's plenty",
+      perk: 'Stocked hearth: your Stay burns nothing, and twice a saga 1 ◆ buys back a just-burned Gate or Rune Circle',
+      winterPerk: 'Winter stores: twice per Embrace, spend 1 ◆ to return a tile the cold has just taken' },
   ],
 };
 export const GATE_NAMES = { valhalla: 'Valhalla', folkvangr: 'Fólkvangr' };
@@ -95,8 +95,8 @@ export function setLendConsent(s, seat, on) {
   if (!p) return;
   p.lendOk = !!on;
   log(s, on
-    ? `${p.name} opens their purse — the party may draw on their vitality. (ᚢ)`
-    : `${p.name} closes their purse — their Resolve is their own. (ᚢ)`, 'info');
+    ? `${p.name} opens their purse. The party may draw on their vitality. (ᚢ)`
+    : `${p.name} closes their purse. Their Resolve is their own. (ᚢ)`, 'info');
 }
 function lendResolve(s, actor, what) {
   const b = uruzLender(s, actor);
@@ -327,7 +327,7 @@ export function createGame(opts = {}) {
   s.tileTotals = { rune: 0, draugr: 0, gate: 0 };
   for (const t of s.stack) if (t.kind in s.tileTotals) s.tileTotals[t.kind]++;
   const label = typeof opts.label === 'string' ? opts.label.slice(0, 12) : '';
-  log(s, `The souls awaken beneath the boughs of Myrkviðr${label && label !== 'Normal' ? ` — a ${label} telling` : ''}.`, 'turn');
+  log(s, `The souls awaken beneath the boughs of Myrkviðr${label && label !== 'Normal' ? ` (a ${label} telling)` : ''}.`, 'turn');
   s.queue.push({ t: 'setup', seat: 0 });
   run(s);
   return s;
@@ -575,7 +575,7 @@ function crumbleBehind(s, p, r, c, fractured, hold) {
   if (!fractured) return;
   if (hold && hasPerk(s, p, 'berkano') && p.resolve >= 1) {
     p.resolve--;
-    log(s, `${p.name} spends Resolve — the birch holds the cracked path together. (ᛒ)`, 'good');
+    log(s, `${p.name} spends Resolve, and the birch holds the cracked path together. (ᛒ)`, 'good');
     return;
   }
   fractureCell(s, r, c);
@@ -771,7 +771,7 @@ function fallDoomCheck(s, p) {
   for (let i = 0; i < SIZE; i++) {
     for (const [r, c] of [[fr, i], [i, fc]]) {
       if (!cellAt(s, r, c) && !lit.has(key(r, c))) {
-        lose(s, `${p.name} falls into the starless void — with the last hope spent, nothing will ever kindle a place to land. The souls are lost.`);
+        lose(s, `${p.name} falls into the starless void. With the last hope spent, nothing will ever kindle a place to land. The souls are lost.`);
         return;
       }
     }
@@ -859,7 +859,7 @@ function embraceDoomCheck(s) {
     }
     return; // this gate can still be won
   }
-  lose(s, 'The cold has severed every road — no soul may reach a gate whose runes could still be gathered. Niflheim claims them all.');
+  lose(s, 'The cold has severed every road. No soul may reach a gate whose runes could still be gathered. Niflheim claims them all.');
 }
 
 function lossCheck(s) {
@@ -894,9 +894,9 @@ function lossCheck(s) {
     )];
     if (orphaned.length) {
       const lost = orphaned.map(g => `The Gate of ${GATE_NAMES[g]}`).join(' and ');
-      lose(s, `${lost} is lost to the mist — the marks the souls bore for it turn to ash, and with too few Rune Circles left they can never swear the ${needed} the Gate of ${GATE_NAMES[bestGate]} still demands.`);
+      lose(s, `${lost} is lost to the mist. The marks the souls bore for it turn to ash, and with too few Rune Circles left they can never swear the ${needed} the Gate of ${GATE_NAMES[bestGate]} still demands.`);
     } else {
-      lose(s, 'Too many Rune Circles are lost to the mist — the souls can never bear the four marks a gate demands.');
+      lose(s, 'Too many Rune Circles are lost to the mist. The souls can never bear the four marks a gate demands.');
     }
     return;
   }
@@ -974,13 +974,13 @@ STEPS['begin-turn'] = (s) => {
       log(s, `${w.name}'s joy heartens ${p.name} for the road. (ᚹ)`, 'good');
     }
   }
-  log(s, `— ${p.name}'s turn —`, 'turn');
+  log(s, `${p.name}'s turn.`, 'turn');
   if (p.falling) { STEPS['landing'](s); return; }
   // Dawn returns: the Dagaz bearer never begins a turn hopeless
   if (!p.hopeful && p.placed && hasPerk(s, p, 'dagaz')) {
     p.hopeful = true;
     ev(s, 'rekindle', { seat: p.seat });
-    log(s, `Dawn returns — ${p.name}'s ember rekindles itself. (ᛞ)`, 'good');
+    log(s, `Dawn returns, and ${p.name}'s ember rekindles itself. (ᛞ)`, 'good');
     s.queue.unshift({ t: 'illum', forSeat: p.seat, chooser: p.seat }, { t: 'relight', chooser: s.turn }, { t: 'action' });
     return;
   }
@@ -1048,7 +1048,7 @@ STEPS['stay-fracture'] = (s, step) => {
     // never implied: a plain Stay on the circle lets it give way beneath them
     // like any fractured tile (playtest ask — the fall is a real option).
     if (step && step.linger && s.randomRunes && t.kind === 'rune') {
-      log(s, `${p.name} lingers in the Rune Circle — the stones stir again.`, 'info');
+      log(s, `${p.name} lingers in the Rune Circle, and the stones stir again.`, 'info');
       s.queue.unshift({ t: 'relight', chooser: s.turn }, { t: 'end-turn' });
       s.awaiting = {
         type: 'attune', seat: p.seat, random: true,
@@ -1092,8 +1092,8 @@ function applyHit(s, seat, n, braced) {
   p.hopeful = false;
   if (s.moveCtx && s.moveCtx.mover === seat) s.moveCtx.moverHit = true;
   log(s, braced
-    ? `${p.name} braces against the Draugr — 2 tiles lost, hope extinguished.`
-    : `${p.name} is struck by the Draugr — 3 tiles lost, hope extinguished.`, 'danger');
+    ? `${p.name} braces against the Draugr: 2 tiles lost, hope extinguished.`
+    : `${p.name} is struck by the Draugr: 3 tiles lost, hope extinguished.`, 'danger');
 }
 
 STEPS['after-hits'] = (s) => {
@@ -1102,7 +1102,7 @@ STEPS['after-hits'] = (s) => {
     const p = P(s, ctx.mover);
     if (p.placed && p.resolve < 2) {
       p.resolve++;
-      log(s, `${p.name} slips past the Draugr's gaze — Resolve steeled (+1).`, 'good');
+      log(s, `${p.name} slips past the Draugr's gaze. Resolve steeled (+1).`, 'good');
     } else if (p.placed) {
       log(s, `${p.name} slips past the Draugr's gaze.`, 'good');
     }
@@ -1204,7 +1204,7 @@ STEPS['end-turn'] = (s) => {
   if (s.phase !== 'play') return;
   if (!s.stack.length && !s.niflheim) {
     s.niflheim = true;
-    log(s, 'The path stack is spent — the last ember of shared hope goes dark. NIFLHEIM’S EMBRACE begins.', 'danger');
+    log(s, 'The path stack is spent, and the last ember of shared hope goes dark. NIFLHEIM’S EMBRACE begins.', 'danger');
   }
   if (s.niflheim) {
     let removable = [];
@@ -1222,7 +1222,7 @@ STEPS['end-turn'] = (s) => {
       const dt = tileAt(s, dawn.r, dawn.c);
       if (dt && dt.kind === 'gate') {
         removable = removable.filter(o => wrapAdj(dawn, { r: o.r, c: o.c }) !== 1);
-        if (!removable.length) log(s, `The dawn holds at the gate — the cold finds nothing to take. (ᛞ)`, 'good');
+        if (!removable.length) log(s, `The dawn holds at the gate, and the cold finds nothing to take. (ᛞ)`, 'good');
       }
     }
     // Grove shade (Berkano): one tile beside the bearer is protected as if a
@@ -1233,7 +1233,7 @@ STEPS['end-turn'] = (s) => {
     const birch = perkBearer(s, 'berkano');
     if (birch && removable.length === 1
       && wrapAdj(birch, { r: removable[0].r, c: removable[0].c }) === 1) {
-      log(s, `The grove's shade holds the last path beside ${birch.name} — the cold is denied. (ᛒ)`, 'good');
+      log(s, `The grove's shade holds the last path beside ${birch.name}. The cold is denied. (ᛒ)`, 'good');
       removable = [];
     }
     if (removable.length) {
@@ -1289,7 +1289,7 @@ STEPS['scramble'] = (s, { seat, from, free, banish, then }) => {
     p.placed = false; p.r = null; p.c = null;
     p.falling = { r: fr, c: fc };
     ev(s, 'fall', { seat: p.seat, from: [fr, fc], r: fr, c: fc });
-    log(s, `${p.name} finds no footing — they tumble into the dark!`, 'danger');
+    log(s, `${p.name} finds no footing and tumbles into the dark!`, 'danger');
     sweep(s);
     fallDoomCheck(s, p);
     if (s.phase !== 'play') return;
@@ -1307,7 +1307,7 @@ function banishCell(s, r, c) {
     s.discard.push(t);
     s.grid[key(r, c)] = null;
     ev(s, 'banish', { r, c, tile: t });
-    log(s, 'Its spite spent, the Draugr dissolves — banished from the forest.', 'good');
+    log(s, 'Its spite spent, the Draugr dissolves, banished from the forest.', 'good');
   }
 }
 
@@ -1464,7 +1464,7 @@ STEPS['stay-burn'] = (s, step) => {
   // staying burns hope — unless Freyja's hearth is stocked (Fehu). A chosen
   // linger always burns: no free rerolls at the stones.
   if (hasPerk(s, p, 'fehu') && !linger && s.stack.length) {
-    log(s, `${p.name}'s hearth is stocked — the forest keeps its hope. (ᚠ)`, 'good');
+    log(s, `${p.name}'s hearth is stocked, and the forest keeps its hope. (ᚠ)`, 'good');
   } else if (s.stack.length) {
     const t = drawTile(s);
     if (t.kind === 'draugr') {
@@ -1495,7 +1495,7 @@ STEPS['stay-burn'] = (s, step) => {
       hearthNote(s, t);
       if (t.kind === 'gate') log(s, `The Gate of ${GATE_NAMES[t.gate]} is lost to the mist!`, 'danger');
       else if (t.kind === 'rune') log(s, 'A Rune Circle is lost from the path stack.', 'danger');
-      else log(s, 'Hope gutters in the stillness — a path tile is lost.', 'info');
+      else log(s, 'Hope gutters in the stillness. A path tile is lost.', 'info');
     }
   }
   s.queue.unshift({ t: 'stay-fracture', linger });
@@ -1629,7 +1629,7 @@ ACTIONS['attune'] = (s, p, payload) => {
   // payload racing in from a click meant for the previous decision must
   // bounce, never quietly mark the soul with a rune nobody chose
   if (s.randomRunes && !payload.skip && !payload.draw) {
-    err('The stones await an answer — accept their choice, or leave the runes untouched.');
+    err('The stones await an answer: accept their choice, or leave the runes untouched.');
   }
   if (!s.randomRunes && !payload.skip) {
     const set = RUNES[payload.p];
@@ -1639,7 +1639,7 @@ ACTIONS['attune'] = (s, p, payload) => {
     // marks are ash — the stones no longer offer them (playtest rule: players
     // missed the gate's burning and swore to it anyway)
     if (!gatesLeft(s).includes(payload.p)) {
-      err(`The Gate of ${GATE_NAMES[payload.p]} is lost to the mist — its runes hold no power now.`);
+      err(`The Gate of ${GATE_NAMES[payload.p]} is lost to the mist. Its runes hold no power now.`);
     }
   }
   s.awaiting = null;
@@ -1668,7 +1668,7 @@ ACTIONS['attune'] = (s, p, payload) => {
     if (!pool.length) {
       // possible once a gate is lost: the surviving gate's four runes may all
       // be borne already — the stones have nothing left worth giving
-      log(s, `The stones are silent — no rune remains that ${p.name} could bear.`, 'info');
+      log(s, `The stones are silent. No rune remains that ${p.name} could bear.`, 'info');
       return;
     }
     [pantheon, k] = pool[Math.floor(rand(s) * pool.length)];
@@ -1834,7 +1834,7 @@ ACTIONS['niflheim'] = (s, p, payload, aw) => {
     s.awaiting = null;
     s.perkUse.refusal = true;
     const b = perkBearer(s, 'ansuz');
-    log(s, `${b ? b.name : 'The party'} speaks the Allfather's refusal — the cold is denied its toll. (ᚨ)`, 'good');
+    log(s, `${b ? b.name : 'The party'} speaks the Allfather's refusal. The cold is denied its toll. (ᚨ)`, 'good');
     return;
   }
   if (payload.sustain) {
@@ -1899,7 +1899,7 @@ ACTIONS['winter-stores'] = (s, p, payload) => {
   const t = s.discard.pop(); // the tile the cold just claimed
   s.grid[key(ctx.r, ctx.c)] = { tile: t };
   ev(s, 'reveal', { r: ctx.r, c: ctx.c });
-  log(s, `${p.name} opens Freyja's stores — ${describeTile(t)} is returned to the forest. (ᚠ)`, 'good');
+  log(s, `${p.name} opens Freyja's stores, and ${describeTile(t)} is returned to the forest. (ᚠ)`, 'good');
 };
 
 ACTIONS['stocked-hearth'] = (s, p, payload, aw) => {
@@ -1917,7 +1917,7 @@ ACTIONS['stocked-hearth'] = (s, p, payload, aw) => {
     }
     if (di < 0) err('The mist keeps it.');
   } else if (!payload.decline) {
-    err('The hearth awaits an answer — ransom the tile, or let the cold keep it.');
+    err('The hearth awaits an answer: ransom the tile, or let the cold keep it.');
   }
   s.awaiting = null;
   if (!payload.restore) {
@@ -1934,7 +1934,7 @@ ACTIONS['stocked-hearth'] = (s, p, payload, aw) => {
   // the pile has been disturbed: the raven's dawn report no longer holds
   if (s.peekLen != null) s.peekLen = s.stack.length + 2;
   ev(s, 'ransom', { tile: { kind: t.kind, gate: t.gate || undefined } });
-  log(s, `${p.name} opens the stocked hearth — ${describeTile(t)} is ransomed from the mist and shuffled back among the paths. (ᚠ)`, 'good');
+  log(s, `${p.name} opens the stocked hearth, and ${describeTile(t)} is ransomed from the mist and shuffled back among the paths. (ᚠ)`, 'good');
 };
 
 export function concede(s) {
