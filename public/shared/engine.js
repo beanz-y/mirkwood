@@ -38,7 +38,7 @@ export const RUNES = {
       winterPerk: 'The last road: the Wayfarer’s road-craft costs nothing' },
     { k: 'ansuz',  g: 'ᚨ', name: 'Ansuz',  gloss: "God, wisdom and Odin's insight",
       perk: 'Raven-counsel: at your turn’s dawn, the next two stack tiles are known',
-      winterPerk: 'The refusal: once per Embrace, the party skips one surrender' },
+      winterPerk: 'The refusal: once per Embrace, the cold is denied for a full round (no soul surrenders)' },
   ],
   folkvangr: [
     { k: 'berkano', g: 'ᛒ', name: 'Berkano', gloss: 'Birch, nurture and protection',
@@ -299,6 +299,7 @@ export function createGame(opts = {}) {
     uruzAdjacent: !!opts.uruzAdjacent, // Hard telling: Uruz lends to neighbors only
     perkSet: Array.isArray(opts.perkSet) ? opts.perkSet : null,
     perkUse: { refusal: false, stores: 0, hearth: 0 }, // limited-use bookkeeping
+    refusalLeft: 0, // end-turn tolls still covered by a spoken refusal (Ansuz)
     freeSteps: 0, // free Press Ons this turn (Eihwaz; +Wunjo's Heartened in winter)
     wayfarerUsed: false, // Raido's road-craft (turn a path / cross a rift), once a turn
     peekLen: null,       // stack length when the Ansuz bearer's turn began (peek snapshot)
@@ -1207,6 +1208,15 @@ STEPS['end-turn'] = (s) => {
     log(s, 'The path stack is spent, and the last ember of shared hope goes dark. NIFLHEIM’S EMBRACE begins.', 'danger');
   }
   if (s.niflheim) {
+    // The refusal (Ansuz): once spoken, it shields the WHOLE PARTY for a full
+    // round — this end-turn and the three that follow demand no surrender
+    // (playtest fix: it used to spare only the speaker's own toll)
+    if (s.refusalLeft > 0) {
+      s.refusalLeft--;
+      log(s, `The Allfather's refusal holds. The cold takes nothing. (ᚨ)`, 'good');
+      STEPS['end-turn2'](s);
+      return;
+    }
     let removable = [];
     for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
       const cl = cellAt(s, r, c);
@@ -1676,6 +1686,12 @@ ACTIONS['attune'] = (s, p, payload) => {
     ({ p: pantheon, k } = payload);
   }
   p.rune = { p: pantheon, k };
+  // Raven-counsel: a mark taken MID-TURN stamps the peek watermark NOW —
+  // without this, peekLen is still null from the turn's dawn and the
+  // null-fallback in stackPeekView re-reads the live stack top on every
+  // broadcast, a sliding window for the rest of the pickup turn (playtest
+  // bug: "infinite preview on the turn the rune is first picked")
+  if (hasPerk(s, p, 'ansuz') && s.turn === p.seat) s.peekLen = s.stack.length;
   const r = RUNES[pantheon].find(rn => rn.k === k);
   ev(s, 'rune', { seat: p.seat });
   log(s, s.randomRunes
@@ -1829,12 +1845,14 @@ ACTIONS['post-move'] = (s, p, payload, aw) => {
 
 ACTIONS['niflheim'] = (s, p, payload, aw) => {
   if (payload.refuse) {
-    // The refusal (Ansuz, once per Embrace): the party denies the cold its toll
+    // The refusal (Ansuz, once per Embrace): the party denies the cold for a
+    // FULL ROUND — this toll and the next three end-turns take nothing
     if (!aw.canRefuse) err('The refusal has been spoken already.');
     s.awaiting = null;
     s.perkUse.refusal = true;
+    s.refusalLeft = 3; // this toll is skipped now; the next three end-turns hold too
     const b = perkBearer(s, 'ansuz');
-    log(s, `${b ? b.name : 'The party'} speaks the Allfather's refusal. The cold is denied its toll. (ᚨ)`, 'good');
+    log(s, `${b ? b.name : 'The party'} speaks the Allfather's refusal. For a full round, the cold takes nothing. (ᚨ)`, 'good');
     return;
   }
   if (payload.sustain) {

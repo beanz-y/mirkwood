@@ -1150,18 +1150,68 @@ section('rune perks (host variant)');
   else check(true, 'Ansuz: (no draws this move — skipped)');
 }
 {
+  // Ansuz picked MID-TURN: the watermark stamps at the moment of attunement,
+  // so the pickup turn gets exactly the next two — not a sliding window for
+  // the rest of the turn (playtest bug: "infinite preview when first picked")
+  const s = createGame({ seed: 60, stack: deck(40), runePerks: true });
+  doSetup(s);
+  _test.setTile(s, 1, 2, _test.makeTileDef(s, 'rune', { fractured: true }), 0);
+  applyAction(s, 0, { kind: 'move', d: 1 });
+  check(s.awaiting.type === 'attune', 'the stones offer their marks');
+  const lenAtAttune = s.stack.length;
+  applyAction(s, 0, { p: 'valhalla', k: 'ansuz' });
+  check(s.peekLen === lenAtAttune, 'the watermark stamps at the moment of attunement');
+  const drawsSoFar = lenAtAttune - s.stack.length;
+  const view1 = publicState(s).stackPeek;
+  check((view1 ? view1.length : 0) === Math.max(0, 2 - drawsSoFar),
+    'the pickup peek shrinks with each draw');
+  while (s.awaiting && s.awaiting.type === 'place-tile' && s.awaiting.seat === 0) {
+    const tg = s.awaiting.targets[0];
+    applyAction(s, 0, { r: tg.r, c: tg.c, rot: tg.rots[0] });
+  }
+  const drawsTotal = lenAtAttune - s.stack.length;
+  const viewEnd = publicState(s).stackPeek;
+  if (drawsTotal >= 2) check(viewEnd === null, 'after two draws the ravens are silent — no sliding window');
+  else check((viewEnd ? viewEnd.length : 0) === 2 - drawsTotal,
+    'the peek never exceeds the attunement snapshot');
+}
+{
   // Winter-forms: the refusal (Ansuz), winter stores (Fehu), grove shade (Berkano)
   const s = createGame({ seed: 50, stack: deck(30), runePerks: true });
   s.players[1].rune = { p: 'valhalla', k: 'ansuz' };
   doSetup(s);
   s.stack = []; s.niflheim = true;
+  // make the state loss-proof so the whole round can be observed: a fully
+  // connected board, both gates standing, and a complete distinct rune set
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (!s.grid[key(r, c)]) _test.setTile(s, r, c, _test.makeTileDef(s, 'cross'), 0);
+  }
+  _test.setTile(s, 0, 0, _test.makeTileDef(s, 'gate', { gate: 'valhalla' }), 2);
+  _test.setTile(s, 5, 5, _test.makeTileDef(s, 'gate', { gate: 'folkvangr' }), 0);
+  s.players[0].rune = { p: 'valhalla', k: 'dagaz' };
+  s.players[2].rune = { p: 'valhalla', k: 'raido' };
+  s.players[3].rune = { p: 'valhalla', k: 'eihwaz' };
   s.awaiting = null; s.queue.length = 0; s.queue.push({ t: 'end-turn' }); _test.run(s);
   check(s.awaiting && s.awaiting.type === 'niflheim' && s.awaiting.canRefuse === true,
     'winter: the refusal is offered while unspent');
   const tilesBefore = s.grid.filter(Boolean).length;
   applyAction(s, s.awaiting.seat, { refuse: true });
+  check(s.phase === 'play', 'winter: the fixture survives the refusal');
   check(s.perkUse.refusal === true, 'winter: the refusal is spent');
   check(s.grid.filter(Boolean).length === tilesBefore, 'winter: the cold took nothing');
+  check(s.refusalLeft === 3, 'winter: the refusal covers the rest of the round');
+  // the whole PARTY is shielded: the next three end-turns demand no surrender
+  // (playtest bug: only the speaker's own toll used to be spared)
+  let shielded = 0;
+  for (let i = 0; i < 3; i++) {
+    s.awaiting = null; s.queue.length = 0; s.queue.push({ t: 'end-turn' }); _test.run(s);
+    if (s.phase === 'play' && !(s.awaiting && s.awaiting.type === 'niflheim')) shielded++;
+  }
+  check(shielded === 3, 'winter: no soul surrenders while the refusal holds');
+  check(s.grid.filter(Boolean).length === tilesBefore, 'winter: the board is untouched for the full round');
+  s.awaiting = null; s.queue.length = 0; s.queue.push({ t: 'end-turn' }); _test.run(s);
+  check(s.awaiting && s.awaiting.type === 'niflheim' && s.awaiting.canRefuse === false,
+    'winter: the round ends, the toll returns, and the refusal cannot be spoken twice');
 
   const w = createGame({ seed: 51, stack: deck(30), runePerks: true });
   w.players[2].rune = { p: 'folkvangr', k: 'fehu' };

@@ -575,6 +575,7 @@ function cloneState(s) {
     storesCtx: s.storesCtx ? { ...s.storesCtx } : null,
     wayfarerUsed: s.wayfarerUsed, // Raido's once-a-turn road-craft budget
     peekLen: s.peekLen,           // Ansuz dawn-peek snapshot marker
+    refusalLeft: s.refusalLeft,   // Ansuz refusal: tolls still covered this round
     hearthPending: s.hearthPending ? s.hearthPending.map(o => ({ ...o })) : null,
     tileTotals: { ...s.tileTotals },
   };

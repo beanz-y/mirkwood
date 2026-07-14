@@ -1,5 +1,20 @@
 # Self-play tool — working notes / handoff
 
+## HUMAN CALIBRATION (2026-07-10 — supersedes every "2% TNC band" reference below)
+
+Dan's real Mirkwood record: **77 games, 9 wins (11.7%, ±3.7% SE)** across mixed
+configs (some perks, some tee gates, some plain); his latest wins came on
+Normal + rune perks. Anchors:
+- Bot-to-human exchange rate ≈ **12-18×** (planner 0.65-0.93% on those configs).
+  The bot stays valid as a RELATIVE instrument; its ratios transfer, its
+  absolute win% does not.
+- The old ~2% target was a The Night Cage number and is RETIRED. Mirkwood at a
+  practiced solo player's level is a ~10% game. Caveats: solo multi-handing =
+  perfect coordination (a table of four lands lower), and 77 rapid digital reps
+  train skill fast.
+- Per-config human splits now accumulate automatically: the Firestore saga docs
+  log runePerks / gateExits / tiles / customized as of 2026-07-10.
+
 *Written 2026-07-09 at the end of a "make the bot more human-like" session.
 Read this before touching `tools/`. High-level context is also in the project
 memory; this file is the technical detail a coding session needs.*

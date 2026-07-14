@@ -8,10 +8,11 @@
  * deployed Worker runs) with a COOPERATIVE heuristic party and prints outcome
  * statistics. No server, no network, no Firebase — pure local simulation.
  *
- * Human benchmark: Dan & wife have won The Night Cage ~2 times in 100+ games,
- * so a well-balanced Mirkwood should sit in the low single digits for strong
- * play. If the bot exceeds that comfortably, the game is too easy; if a
- * well-tuned bot can NEVER win, suspect the economy.
+ * Human benchmark (2026-07-10, real Mirkwood data): Dan is 9/77 (11.7%) across
+ * mixed configs — a 12-18x premium over the planner bot's 0.65-0.93% on the
+ * same settings. Treat the bot as a RELATIVE instrument (its ratios between
+ * configs transfer to humans; its absolute win% does not). The old "~2% TNC
+ * band" target is retired; see tools/SELFPLAY_NOTES.md HUMAN CALIBRATION.
  *
  * Policy principles (per playtest direction):
  *  1. Full cooperation — one shared plan; nobody optimizes selfishly.
