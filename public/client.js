@@ -597,6 +597,12 @@ document.addEventListener('visibilitychange', () => {
     <table class="rune-table">${perkRows}</table>`;
 })();
 
+// installable app: register the minimal (deliberately cache-free) service
+// worker — see public/sw.js for why nothing is ever cached
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => { /* install UX is optional */ });
+}
+
 // privacy notice overlay (lobby footer + rules screen; backdrop click closes)
 {
   const openPrivacy = () => $('privacy').classList.remove('hidden');

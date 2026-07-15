@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev"],
       "cwd": "E:\\Claude\\mirkwood",
       "port": 8930
+    },
+    {
+      "name": "mirkwood-alt",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["wrangler", "dev", "--port", "8931"],
+      "cwd": "E:\\Claude\\mirkwood",
+      "port": 8931
     }
   ]
 }

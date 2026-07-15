@@ -1,0 +1,17 @@
+{
+  "name": "Mirkwood · Myrkviðr",
+  "short_name": "Mirkwood",
+  "description": "A cooperative saga of four souls seeking the gates of Valhalla and Fólkvangr through the mist-forest Myrkviðr. Gather your party and keep the ember of hope alive.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a100d",
+  "theme_color": "#0a100d",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
