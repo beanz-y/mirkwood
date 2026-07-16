@@ -117,7 +117,6 @@ let armedAction = null; // the confirm for the armed cell (also behind ✓ Place
 let hoverCell = null;   // hovered placement target (desktop ghost preview)
 let livePreview = null;    // onlooker's view of the active player's pending placement {seat,r,c,rot}
 let lastPreviewSent = '';  // active player: last preview signature broadcast (dedupe)
-let pingArmed = false;     // ping mode: the next board click marks a spot for everyone
 let lastPingAt = 0;        // local throttle
 
 function updateTimer() {
@@ -445,7 +444,8 @@ function resetSagaState() {
   lastAnimatedSeq = null; hiddenAtSeq = null;
   armedCell = null; armedAction = null; hoverCell = null;
   moveAgainArmed = false; holdArmed = false; turnArmed = false;
-  pingArmed = false; modalLock = null;
+  modalLock = null;
+  cancelPingHold(); pingFired = false;
   idleEndSig = null; knownWatchers = null; lastNotifySig = '';
 }
 
@@ -540,19 +540,18 @@ const sagaNeedsYou = p => !!(p && p.exists && p.yourTurn);
 // sagas other than the one you are looking at that want a decision
 const sagasWanting = () => sagaList.filter(s => s.code !== lastCode && sagaNeedsYou(sagaPeeks[s.code]));
 
+// The menu button carries the one piece of news the menu holds: another saga
+// is waiting on you. It is always present — the menu is also the only way to
+// begin a second saga, so it must never hide.
 function renderSagaButton() {
-  const b = $('sagas-btn');
+  const b = $('menu-btn');
   if (!b) return;
-  // an ordinary player with one saga should never know this exists
-  const many = sagaList.length > 1;
-  b.classList.toggle('hidden', !many);
-  if (!many) return;
   const wanting = sagasWanting().length;
-  b.innerHTML = `⚔ ${sagaList.length}${wanting ? ` <span class="saga-dot">${wanting}</span>` : ''}`;
+  b.innerHTML = `☰${wanting ? ` <span class="saga-dot">${wanting}</span>` : ''}`;
   b.classList.toggle('needs-you', wanting > 0);
   b.title = wanting
     ? `${wanting} other ${wanting === 1 ? 'saga needs' : 'sagas need'} you`
-    : 'Switch between your sagas';
+    : 'Menu: your sagas, rules, settings';
 }
 
 function sagaCardsHTML(activeCode) {
@@ -636,7 +635,8 @@ function browseLobby() {
   renderSagaList();
 }
 
-$('sagas-btn').onclick = openSagaPanel;
+$('menu-btn').onclick = openSagaPanel;
+$('home-btn').onclick = browseLobby; // the brand is the way out and back
 $('sagas-add').onclick = browseLobby;
 $('sagas-close').onclick = closeSagaPanel;
 $('sagas').onclick = (e) => { if (e.target.id === 'sagas') closeSagaPanel(); };
@@ -858,31 +858,82 @@ $('replay-btn').onclick = () => {
 };
 
 // ---------------------------------------------------------------- ping
-// Point teammates at a spot when you're not on voice. The Ping button arms
-// ping mode; the next board tap marks that cell for everyone (a transient
-// sonar marker in your colour with your name). Works for any player or watcher.
-function updatePingBtn() {
-  $('ping-btn').classList.toggle('armed', pingArmed);
-  $('board').classList.toggle('ping-armed', pingArmed);
-  $('ping-btn').textContent = pingArmed ? '⚑ Tap a spot' : '⚑ Ping';
-}
-$('ping-btn').onclick = () => { pingArmed = !pingArmed; updatePingBtn(); };
+// Point teammates at a spot when you're not on voice.
+/*
+ * Ping: press and hold a spot on the board to mark it for everyone (a
+ * transient sonar marker in your colour, with your name). Works for any
+ * player or watcher, on their turn or not.
+ *
+ * This used to be a topbar button you armed and then tapped. A long press
+ * costs no space and no first tap, which matters most on a phone — where the
+ * topbar was wrapping and eating the board.
+ *
+ * The whole difficulty is that a cell already means something: a press that
+ * becomes a ping must NOT also place a tile. So the press is watched, and once
+ * it turns into a ping we swallow the click that the browser sends afterwards.
+ */
+const PING_HOLD_MS = 500;
+let pingHold = null; // {timer, x, y, r, c}
+let pingFired = false;
 
-// capture-phase so an armed ping wins over the cell's own move/place handler
-$('board').addEventListener('click', (e) => {
-  if (!pingArmed) return;
-  e.stopPropagation(); e.preventDefault();
-  pingArmed = false; updatePingBtn();
+function boardCellAt(clientX, clientY) {
   const br = $('board').getBoundingClientRect();
-  const vx = (e.clientX - br.left) / br.width * (SIZE * CS + PAD * 2);
-  const vy = (e.clientY - br.top) / br.height * (SIZE * CS + PAD * 2);
+  if (!br.width || !br.height) return null;
+  const vx = (clientX - br.left) / br.width * (SIZE * CS + PAD * 2);
+  const vy = (clientY - br.top) / br.height * (SIZE * CS + PAD * 2);
   const c = Math.floor((vx - PAD) / CS), r = Math.floor((vy - PAD) / CS);
-  if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return;
-  const now = Date.now();
-  if (now - lastPingAt < 350) return; // local throttle
-  lastPingAt = now;
-  send({ t: 'ping', r, c });
+  if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) return null;
+  return { r, c };
+}
+
+function cancelPingHold() {
+  if (pingHold) { clearTimeout(pingHold.timer); pingHold = null; }
+  $('board').classList.remove('ping-holding');
+}
+
+$('board').addEventListener('pointerdown', (e) => {
+  if (e.button !== undefined && e.button !== 0 && e.pointerType === 'mouse') return;
+  const cell = boardCellAt(e.clientX, e.clientY);
+  if (!cell) return;
+  cancelPingHold();
+  pingHold = {
+    x: e.clientX, y: e.clientY, ...cell,
+    timer: setTimeout(() => {
+      const now = Date.now();
+      if (now - lastPingAt >= 350) { // local throttle
+        lastPingAt = now;
+        send({ t: 'ping', r: cell.r, c: cell.c });
+        // a tick of haptic so a held finger knows it landed, on the devices
+        // that have it
+        if (navigator.vibrate) { try { navigator.vibrate(25); } catch { /* ignore */ } }
+      }
+      pingFired = true; // the click that follows this press is not a placement
+      cancelPingHold();
+    }, PING_HOLD_MS),
+  };
+  $('board').classList.add('ping-holding');
+});
+
+// a drag is a scroll or a rotate gesture, not a ping
+$('board').addEventListener('pointermove', (e) => {
+  if (!pingHold) return;
+  if (Math.abs(e.clientX - pingHold.x) > 10 || Math.abs(e.clientY - pingHold.y) > 10) cancelPingHold();
+});
+$('board').addEventListener('pointerup', cancelPingHold);
+$('board').addEventListener('pointercancel', cancelPingHold);
+$('board').addEventListener('pointerleave', cancelPingHold);
+
+// capture-phase, so the ping's own click never reaches the cell underneath
+$('board').addEventListener('click', (e) => {
+  if (!pingFired) return;
+  pingFired = false;
+  e.stopPropagation(); e.preventDefault();
 }, true);
+
+// holding over a cell must not raise iOS's callout or select the SVG text
+$('board').addEventListener('contextmenu', (e) => {
+  if (IS_COARSE) e.preventDefault();
+});
 
 // draw a transient sonar marker at (r,c) in the pinger's colour + name. HTML
 // overlay so it's independent of the board SVG's re-renders.
@@ -999,8 +1050,8 @@ if ('serviceWorker' in navigator) {
 }
 
 // rules overlay
-function openRules() { $('rules').classList.remove('hidden'); }
-$('rules-btn').onclick = openRules;
+function openRules() { closeSagaPanel(); $('rules').classList.remove('hidden'); }
+$('rules-btn').onclick = openRules; // now lives in the menu
 $('rules-btn-lobby').onclick = openRules;
 $('rules-close').onclick = () => $('rules').classList.add('hidden');
 $('rules').onclick = (e) => { if (e.target === $('rules')) $('rules').classList.add('hidden'); };
@@ -1126,8 +1177,12 @@ function renderTutorial() {
   $('tut-prev').disabled = tutStep === 0;
   $('tut-next').textContent = tutStep === TUT_PAGES.length - 1 ? 'Into the forest' : 'Next ›';
 }
-function openTutorial() { tutStep = 0; renderTutorial(); $('tutorial').classList.remove('hidden'); }
+function openTutorial() {
+  closeSagaPanel();
+  tutStep = 0; renderTutorial(); $('tutorial').classList.remove('hidden');
+}
 $('tut-btn-lobby').onclick = openTutorial;
+$('tut-btn').onclick = openTutorial; // menu
 $('tut-btn-rules').onclick = () => { $('rules').classList.add('hidden'); openTutorial(); };
 $('tut-prev').onclick = () => { if (tutStep > 0) { tutStep--; renderTutorial(); } };
 $('tut-next').onclick = () => {
@@ -1149,11 +1204,14 @@ $('anims-btn').onclick = () => {
   if (room) render();
 };
 applyAnims();
+// both now sit in the menu, so it has to get out of the way of their confirms
 $('concede-btn').onclick = () => {
+  closeSagaPanel();
   confirmModal('Abandon all hope and surrender the saga to Niflheim?', () => send({ t: 'concede' }));
 };
 $('leave-room-btn').onclick = () => leaveSaga();
 $('leave-btn').onclick = () => {
+  closeSagaPanel();
   if (state && (state.phase === 'play' || state.phase === 'setup')) {
     confirmModal(`Leave this saga? The game continues without you. Rejoin any time with code ${room ? room.code : ''} from this browser.`, leaveSaga);
   } else {

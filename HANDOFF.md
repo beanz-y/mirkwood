@@ -104,6 +104,26 @@ run/deploy. Everything below has been built, tested, and browser-verified.*
 >   URLs land in logs) fans out to each DO's `sagaPeek(token)`. Returns raw
 >   `awaiting` bits, NOT a sentence, so the card renders through the same
 >   `awaitingText()` as the bell and push. Cap 12. Never returns a token.
+> - **Topbar cleanup + ☰ menu + long-press ping (same day, Dan's asks).** The
+>   topbar was wrapping to three rows on a phone and eating the board. Now it
+>   holds only what changes during play (brand/banner/timer/stack/⟲/☰/code/dot);
+>   rules, walkthrough, notifications, animations, leave, abandon and the saga
+>   switcher all moved into `#sagas` (the menu), and the side footer is gone.
+>   Measured on a 375px phone: topbar **98px → 67px**, plus the footer's strip
+>   back. Under 900px `.brand-word` hides so the brand is the bare ᛗ.
+> - **The brand is the way home** (`browseLobby`), which fixes the gap that
+>   prompted all this: the old ⚔ button only appeared once you held 2+ sagas,
+>   so from your FIRST saga there was no way to begin a second except Leave
+>   (which forgets it). The menu is always present, so the door always is.
+> - **Ping is now a press-and-hold** (500ms) on a board cell, not an armed
+>   button. The hard part is that a cell already means something: `pingFired`
+>   makes a capture-phase click handler swallow the click the browser sends
+>   after the press, so a ping never also places a tile (verified: long press
+>   sends only `ping` and the cell stays placeable; a short tap still places;
+>   a >10px drag cancels, so scrolling never pings). `-webkit-touch-callout`
+>   + `user-select:none` on #board keep iOS from raising its callout.
+>   Discoverability moved into the rules ("Your turn" section) since the
+>   button that used to advertise the feature is gone.
 > - KNOWN, ACCEPTED: switching away from a saga that has **not started** frees
 >   your claimed souls (webSocketClose frees pre-start seats of absent tokens).
 >   Started sagas keep them (verified: 4 souls survived a switch away and back).

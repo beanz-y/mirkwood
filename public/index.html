@@ -107,15 +107,38 @@
   </div>
 </div>
 
-<!-- ======================= SAGAS ======================= -->
+<!-- ======================= MENU ======================= -->
+<!-- everything that used to crowd the topbar: the sagas you keep, this saga's
+     doings, and your settings -->
 <div id="sagas" class="overlay hidden">
-  <div class="modal-card rules-card" style="width:min(440px,94vw)">
-    <h2>Your sagas</h2>
+  <div class="modal-card menu-card">
+    <h2>Menu</h2>
+
+    <h3 class="menu-head">Your sagas</h3>
     <p class="hint">A saga you are not looking at still waits for you, and will
     ring if you have the bell on.</p>
     <div id="saga-list" class="saga-list"></div>
     <div class="row">
       <button id="sagas-add" class="btn">Begin or join another</button>
+    </div>
+
+    <h3 class="menu-head">This saga</h3>
+    <div class="menu-row">
+      <button id="rules-btn" class="btn tiny">Runes &amp; rules</button>
+      <button id="tut-btn" class="btn tiny">Walkthrough</button>
+    </div>
+    <div class="menu-row">
+      <button id="leave-btn" class="btn tiny">Leave saga</button>
+      <button id="concede-btn" class="btn tiny hidden">Abandon hope</button>
+    </div>
+
+    <h3 class="menu-head">Settings</h3>
+    <div class="menu-row">
+      <button id="notify-btn" class="btn tiny" title="Notify me when it is my turn while I am away">🔕</button>
+      <button id="anims-btn" class="btn tiny"></button>
+    </div>
+
+    <div class="row">
       <button id="sagas-close" class="btn primary">Back to the forest</button>
     </div>
   </div>
@@ -153,16 +176,14 @@
 <!-- ======================= GAME ======================= -->
 <div id="game" class="hidden">
   <header id="topbar">
-    <span class="brand">ᛗ MIRKWOOD</span>
-    <!-- only appears once this browser is keeping more than one saga -->
-    <button id="sagas-btn" class="btn tiny hidden" title="Switch between your sagas"></button>
+    <!-- the brand is the way home: step out to begin or join another saga
+         without leaving this one -->
+    <button class="brand" id="home-btn" title="Your sagas, and the way to begin another">ᛗ <span class="brand-word">MIRKWOOD</span></button>
     <span id="turn-banner"></span>
     <span id="turn-timer" class="hidden"></span>
     <span id="stack-meter" title="Tiles remaining: the group's shared hope"></span>
     <button id="replay-btn" class="btn tiny hidden" title="Replay the last move's animations">⟲ Replay</button>
-    <button id="notify-btn" class="btn tiny" title="Notify me when it is my turn while I am away">🔕</button>
-    <button id="ping-btn" class="btn tiny" title="Ping a spot on the board for the others">⚑ Ping</button>
-    <button id="rules-btn" class="btn tiny">Rules</button>
+    <button id="menu-btn" class="btn tiny" title="Menu">☰</button>
     <span id="room-tag" title="Click to copy an invite link"></span>
     <span id="conn-dot" class="conn wait" title="Connecting..."></span>
   </header>
@@ -190,13 +211,8 @@
         <div id="log" class="tab-pane"></div>
         <div id="soul" class="tab-pane hidden"></div>
       </div>
-      <div class="side-footer">
-        <button id="anims-btn" class="btn tiny"></button>
-        <span>
-          <button id="leave-btn" class="btn tiny">Leave saga</button>
-          <button id="concede-btn" class="btn tiny hidden">Abandon hope</button>
-        </span>
-      </div>
+      <!-- animations / leave / abandon now live in the ☰ menu, which frees the
+           whole footer strip for the board on a phone -->
     </aside>
   </main>
 
@@ -280,6 +296,9 @@
         Wait too long at that choice and your soul rests on its own: half a minute
         with no touch on the page ends the turn (any activity resets it).</li>
     </ul>
+    <p class="hint"><b>Pointing something out:</b> press and hold any spot on the
+    board to mark it for everyone, on your turn or not. There is no chat in
+    Mirkwood, so this is how the party says "here".</p>
 
     <h3>Hope</h3>
     <ul>

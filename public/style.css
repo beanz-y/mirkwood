@@ -129,7 +129,13 @@ input:focus { outline: 1px solid var(--gold); }
   background: rgba(10, 16, 13, 0.9);
   font-size: 14px;
 }
-.brand { color: var(--gold); letter-spacing: 3px; font-size: 15px; }
+/* the brand is a button (the way home) but must still read as the mark */
+.brand {
+  color: var(--gold); letter-spacing: 3px; font-size: 15px;
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: inherit; white-space: nowrap;
+}
+.brand:hover { color: #f5cf72; }
 #turn-banner { flex: 1; text-align: center; color: var(--text); font-size: 15px; }
 #turn-banner .who { color: var(--gold); }
 #stack-meter { color: var(--dim); }
@@ -275,7 +281,6 @@ input:focus { outline: 1px solid var(--gold); }
 #log p.k-danger { color: var(--danger); }
 #log p.k-good { color: var(--good); }
 #log p.k-turn { color: var(--gold); margin-top: 8px; }
-.side-footer { padding: 6px 12px; border-top: 1px solid var(--line); text-align: right; }
 .auto-end-note { opacity: 0.85; font-weight: normal; }
 /* rune perks: the boon line in the picker / soul card, and the raven-counsel peek */
 .perk-line { color: var(--gold); opacity: 0.9; }
@@ -378,8 +383,8 @@ input:focus { outline: 1px solid var(--gold); }
 }
 @keyframes pingring { 0% { transform: scale(0.12); opacity: 0.9; } 100% { transform: scale(1); opacity: 0; } }
 @keyframes pingfade { 0% { opacity: 1; } 65% { opacity: 1; } 100% { opacity: 0; } }
-#board.ping-armed { cursor: crosshair; }
-#ping-btn.armed { border-color: var(--gold); color: var(--gold); background: #3a2f14; }
+/* a held press is becoming a ping: no callout, no text selection, no drag */
+#board { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 body.no-anims .ping .ring { display: none; }
 
 /* ---------------- floating preview ---------------- */
@@ -781,10 +786,18 @@ body.no-anims *, body.no-anims *::before, body.no-anims *::after {
   30% { box-shadow: 0 0 18px rgba(232,178,60,0.9); }
   100% { box-shadow: 0 0 0 rgba(232,178,60,0); }
 }
-.side-footer { display: flex; justify-content: space-between; }
-
-/* ---- the saga switcher: several sagas kept in one browser ---------------- */
-#sagas-btn.needs-you { color: var(--gold); border-color: var(--gold); }
+/* ---- the menu: sagas, this saga's doings, settings ----------------------- */
+.menu-card { width: min(420px, 94vw); max-height: 88vh; overflow-y: auto; }
+.menu-head {
+  margin: 16px 0 6px; font-size: 12px; font-weight: normal;
+  letter-spacing: 2px; text-transform: uppercase; color: var(--dim);
+  border-bottom: 1px solid var(--line); padding-bottom: 4px;
+}
+.menu-card h2 { margin-bottom: 0; }
+.menu-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.menu-row .btn { flex: 1; min-width: 120px; }
+/* the badge rides the menu button: another saga wants you */
+#menu-btn.needs-you { color: var(--gold); border-color: var(--gold); }
 .saga-dot {
   display: inline-block; min-width: 15px; padding: 0 3px; margin-left: 2px;
   border-radius: 8px; background: var(--gold); color: #1a1206;
@@ -830,18 +843,17 @@ body.no-anims *, body.no-anims *::before, body.no-anims *::after {
   .tab-pane { height: 45vh; min-height: 240px; }
   #players { grid-template-columns: 1fr 1fr; }
   .pcard { font-size: 12px; }
-  #topbar { flex-wrap: wrap; gap: 6px 12px; }
+  /* The topbar earns its space back: rules/notifications/ping/leave all moved
+     into the ☰ menu, and the rune alone carries the brand here, so the strip
+     is one short row plus the banner instead of three rows of buttons. */
+  #topbar { flex-wrap: wrap; gap: 6px 10px; }
   #turn-banner { order: 5; flex-basis: 100%; text-align: left; }
-  /* keep the tile preview floating over the board while the page scrolls —
-     compact, and raised so it never hides the footer buttons below */
-  #preview { position: fixed; right: 8px; bottom: 52px; z-index: 40; width: 128px; padding: 8px; }
+  .brand-word { display: none; }
+  /* keep the tile preview floating over the board while the page scrolls.
+     It used to be raised to clear the Leave/Abandon footer; that footer is
+     gone, so it can sit at the bottom again. */
+  #preview { position: fixed; right: 8px; bottom: 8px; z-index: 40; width: 128px; padding: 8px; }
   #preview-svg { width: 84px; height: 84px; }
-  /* the Leave / Abandon / Animations buttons stay pinned to the bottom, above
-     the floating preview, so they're always reachable even mid-turn */
-  .side-footer {
-    position: sticky; bottom: 0; z-index: 45;
-    background: rgba(9, 14, 10, 0.97);
-  }
 }
 
 /* narrow phones: the rune picker's two columns become one (auto-flow must

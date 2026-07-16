@@ -121,15 +121,26 @@ Notes:
 ## Several sagas at once
 
 One browser can keep any number of sagas (different groups, different nights).
-The **⚔ switcher** in the topbar appears as soon as you hold more than one, with
-a dot when another saga is waiting on you; *Begin or join another* steps out to
-the entry screen without leaving the saga you are in. The same list sits on the
-entry screen, so you never need to remember a code.
+The **☰ menu** holds them, with a dot when another saga is waiting on you.
+*Begin or join another* — or tapping the **ᛗ MIRKWOOD** brand — steps out to the
+entry screen without leaving the saga you are in, which is how you host a second
+game while a first is still running. The same list sits on the entry screen, so
+you never need to remember a code.
 
 Each card says the one thing worth knowing at a glance: whether that saga wants
 a decision from you, and which one (worded by the same `awaitingText()` the bell
 and the push use, so all three agree). Progress, souls and setup are all in the
 same payload if a card should ever say more.
+
+### The topbar and the menu
+
+The topbar keeps only what changes during play: the brand (home), the turn
+banner, the turn timer, the stack meter, ⟲ Replay, ☰, the saga code, and the
+connection dot. Everything else — your sagas, rules, walkthrough, notifications,
+animations, leave, abandon — lives in the **☰ menu**, and **ping is a press and
+hold on the board** rather than a button. On a phone this took the topbar from
+98px to 67px and removed the side footer entirely, which is board space back.
+Under 900px the brand collapses to the bare ᛗ rune.
 
 Only the saga you are looking at holds a socket. That is deliberate, and it is
 what makes the rest work: a saga you are *not* connected to has no live socket,
@@ -289,8 +300,10 @@ convergence timing, or 2-ply lookahead in `tools/policy.js`.
   page, their turn ends itself (any activity resets the clock; a countdown
   shows on the button for the final 10s). Client-side only, always on.
 - **No chat, by design**: there is no in-app messaging and no user-to-user
-  message content is relayed or stored anywhere; coordination happens via the
-  ⚑ Ping marker (ephemeral, never persisted).
+  message content is relayed or stored anywhere; coordination happens by
+  **pressing and holding a spot on the board** to ping it for everyone
+  (ephemeral, never persisted). The hold is watched so a ping never also
+  places a tile.
 - **State versioning**: rooms persisted by an older engine version are
   gracefully reset to the lobby after a deploy instead of crashing
   (`STATE_VERSION` in the engine — bump it on breaking state changes).
