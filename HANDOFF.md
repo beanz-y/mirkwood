@@ -115,6 +115,24 @@ run/deploy. Everything below has been built, tested, and browser-verified.*
 >   prompted all this: the old ⚔ button only appeared once you held 2+ sagas,
 >   so from your FIRST saga there was no way to begin a second except Leave
 >   (which forgets it). The menu is always present, so the door always is.
+> - **Right-anchored topbar + the wrap actually fixed (same day).** The banner
+>   drops to its own row under 900px, which takes its `flex:1` with it — and
+>   that spacer was the only thing pushing tiles/replay/menu/code/status right.
+>   Fixed with `.brand { margin-right:auto }` + `justify-content:flex-end` (the
+>   latter keeps wrapped rows right-aligned too). But the real cause of the
+>   wrap was **"Hope remaining: 80 tiles" at 160px**, nearly half a 375px bar:
+>   `.bar-word` (the same trick as the brand's word) drops the prose on a
+>   phone, so the meter reads "80 tiles" at **51px**. Result at 375px with
+>   Replay AND the turn timer showing: **3 rows/96px → 1 button row + banner,
+>   67px**. The Embrace state was worse (179px → 3 rows); it now reads
+>   "❄ Embrace" (89px) so the ENDGAME keeps its board space. Desktop is
+>   untouched (1 row, 42px, full prose, banner still centred).
+> - **Leave / Abandon warn in red** (`.btn.danger`), including the lobby's own
+>   Leave, since it is the same `leaveSaga()`. Abandon also gets `.strong` (a
+>   red fill): it does not just remove you, it surrenders the saga for the
+>   whole party. Note `.btn.danger` had NO hover rule, so these had no hover
+>   response at all; `.btn.danger:hover` (0,3,0) now outranks `.btn:hover`
+>   (0,2,0), which would otherwise have painted a destructive button gold.
 > - **Ping is now a press-and-hold** (500ms) on a board cell, not an armed
 >   button. The hard part is that a cell already means something: `pingFired`
 >   makes a capture-phase click handler swallow the click the browser sends
@@ -130,10 +148,72 @@ run/deploy. Everything below has been built, tested, and browser-verified.*
 >   Left alone because that freeing is what releases seats when someone
 >   genuinely leaves; there is no clean way to tell "parked" from "gone".
 >
+> **Addendum (2026-07-16, backgrounded-app notifications): the "known gap"
+> below BIT, and is fixed.** It was never a corner case: on iOS it is the
+> common case.
+> - **The old premise was false.** "The two tiers divide on one question: is
+>   the socket still here" — no. The local tier needs the page's JS RUNNING
+>   (its only call site is the `state` handler), and socket-open says nothing
+>   about that. Backgrounding freezes the page (Chrome lists *network* event
+>   handlers among what freezing suspends; its own guidance tells authors to
+>   close their sockets, which proves the browser will not) while the socket
+>   stays open. iOS freezes within ~5s. Android keeps running ~5 min, so the
+>   local tier genuinely works there for a while — hence "it works on my
+>   laptop".
+> - **The question is now "is anyone WATCHING?"** Client sends `{t:'away'}` on
+>   visibilitychange; `watching(token, ignore)` = a socket for that token whose
+>   page says it is on screen. Closed / backgrounded / frozen all collapse to
+>   one answer.
+> - **`away` rides on JOIN** (`{t:'join', away: document.hidden}` →
+>   `serializeAttachment({token, away})`). This is load-bearing: a page can
+>   reconnect while still pocketed (the edge reaps idle sockets and the client
+>   auto-rejoins on a 2s timer), and it makes the flag atomic with registration
+>   instead of depending on a message sent moments before a freeze.
+> - **`webSocketClose` re-runs `maybePush(ws)`** — the safety net for an `away`
+>   lost to a freeze. A zombie socket is only a zombie until the edge reaps it;
+>   that is when we re-ask. `maybePush` writes `pushSig` only AFTER its early
+>   returns, so a suppressed decision stays eligible and rings once, late
+>   rather than never. **`getWebSockets()` still returns the closing socket**,
+>   hence the `ignore` param — without it the dying socket vetoes its own push.
+> - **`away:true` re-runs `maybePush` too.** Nothing else ever would: only the
+>   awaiting player can act, so a decision that landed while they watched would
+>   hang forever once they pocketed the phone. visibilitychange also fires on
+>   screen lock and incoming calls, where they never registered whose turn it
+>   was.
+> - **`pushArmed` is SERVER-authored** (`roomView.pushArmed`, the same
+>   expression `maybePush` gates on) and the page's bell stands down on it. A
+>   client-side guess drifts four ways (a `send` that no-ops on a closing
+>   socket, subs the Worker drops as expired, a stale flag carried across a
+>   saga switch since `r.subs` is per-DO, a failed `/push-key` fetch) and the
+>   costs are asymmetric: wrong-false = silent miss, wrong-true = double.
+>   `broadcast()` sends `room` before `state` on one ordered socket, so it is
+>   never stale. Requires broadcasts after push-sub, push-unsub, and the
+>   expired-sub cleanup.
+> - **iOS ignores `tag`** (WebKit 258922, still open): a double there is two
+>   notifications and two buzzes, and `getNotifications()` is broken on iOS 17
+>   so nothing can reap them. Suppression must be correct by construction — the
+>   tag is worth zero as cross-tier dedupe. Keep the constant `mk-turn` tag +
+>   `renotify:true` (both tiers now): their job is "exactly one turn
+>   notification in the tray, and a new decision always alerts", which needs
+>   renotify *because* the tag is constant.
+> - **Never suppress in the service worker.** WebKit REVOKES the push
+>   subscription if a handler does not show a notification. Chrome tolerates it
+>   (~6 silent pushes/day, then substitutes its own generic notification).
+> - REJECTED: a `setWebSocketAutoResponse` heartbeat. The DO has ONE alarm slot
+>   and `save()` unconditionally re-arms IDLE_PURGE, so a liveness sweep would
+>   need `alarm()` reworked into a scheduler; and hidden-tab timer throttling
+>   (~1/min) forces a loose threshold. It only covers "away lost AND socket
+>   never closes". Add it only if /push-status shows `connected:true,
+>   watching:true` on a phone that is demonstrably backgrounded.
+> - Verified: 16-assert Node harness (`away_push_test.mjs` in the scratchpad) —
+>   socket OPEN but away → PUSHED (the bug); watching → no push; away-then-back
+>   → no push; join-while-hidden → not watching; zombie reaped → rings late.
+>   Browser: `away:true`/`away:false` on the wire at the right moments, and
+>   /push-status flipping `watching` false/true through the real Worker.
+>   **Real-device confirmation is still Dan's** (the pane cannot background a
+>   PWA or grant push).
+>
 > **Notes for later:**
-> - Known gap: if a mobile OS freezes the page but holds the socket open, the
->   Worker still sees it as live and stays quiet while the frozen page can't
->   ring. The page catches up on wake. Not worth a heartbeat unless it bites.
 > - `.dev.vars` (gitignored) holds a throwaway VAPID key for local testing, so
 >   `npm run dev` reports push as configured. It is not the production key.
 

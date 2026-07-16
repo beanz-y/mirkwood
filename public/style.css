@@ -88,7 +88,14 @@ input:focus { outline: 1px solid var(--gold); }
 .btn.primary:hover { background: #4d3f1c; }
 .btn.small { font-size: 13px; padding: 6px 12px; }
 .btn.tiny { font-size: 11px; padding: 4px 10px; color: var(--dim); }
+/* Doors out. Red says the plain .btn:hover gold must not: this one does not
+   walk back. (.btn.danger:hover outranks .btn:hover, which otherwise leaves
+   these with no hover response at all.) */
 .btn.danger { border-color: var(--danger); color: var(--danger); }
+.btn.danger:hover { background: #3a1616; border-color: #e88a8a; color: #f2b0b0; }
+/* heavier still: Abandon surrenders the saga for the whole party, not just you */
+.btn.danger.strong { background: #3a1616; }
+.btn.danger.strong:hover { background: #521f1f; }
 .btn:disabled { opacity: 0.4; cursor: default; }
 
 .error { color: var(--danger); min-height: 1.2em; font-size: 14px; }
@@ -845,10 +852,19 @@ body.no-anims *, body.no-anims *::before, body.no-anims *::after {
   .pcard { font-size: 12px; }
   /* The topbar earns its space back: rules/notifications/ping/leave all moved
      into the ☰ menu, and the rune alone carries the brand here, so the strip
-     is one short row plus the banner instead of three rows of buttons. */
-  #topbar { flex-wrap: wrap; gap: 6px 10px; }
+     is one short row plus the banner instead of three rows of buttons.
+
+     The banner drops to its own row here, which takes its flex:1 with it — and
+     that was the only thing pushing tiles/replay/menu/code/status to the right.
+     So the brand claims the slack instead: it stays hard left, everything else
+     anchors right (and justify-content keeps them there if they ever wrap). */
+  #topbar { flex-wrap: wrap; gap: 6px 10px; justify-content: flex-end; }
+  .brand { margin-right: auto; }
   #turn-banner { order: 5; flex-basis: 100%; text-align: left; }
-  .brand-word { display: none; }
+  /* prose the topbar can afford on a desktop but not on a phone: the brand's
+     word (the rune still reads as the mark) and the stack meter's sentence
+     (the number is the point, and the tooltip keeps the rest) */
+  .bar-word { display: none; }
   /* keep the tile preview floating over the board while the page scrolls.
      It used to be raised to clear the Leave/Abandon footer; that footer is
      gone, so it can sit at the bottom again. */

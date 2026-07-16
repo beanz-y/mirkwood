@@ -258,13 +258,16 @@ export class MirkwoodRoom {
       souls: r.seats.map((s, i) => ({
         seat: i,
         name: s ? s.name : null,
-        // connected: their own browser handles notifications, so no push is sent
+        // connected but NOT watching = the app is backgrounded (its page is
+        // frozen and cannot ring itself), so we push. Reporting both is the
+        // point: "connected" alone was the assumption that hid this bug.
         connected: !!s && live.has(s.token),
+        watching: !!s && this.watching(s.token),
         // 0 = this player never enabled the bell (on any device) in this saga
         subscribedDevices: s ? ((subs[s.token] || []).length) : 0,
       })),
       lastPush: r.lastPush || null,
-      note: 'A push is sent only when the awaiting soul\'s keeper has NO live connection AND has a subscribed device. If lastPush is null, none was ever attempted in this saga.',
+      note: 'A push is sent only when the awaiting soul\'s keeper is not WATCHING (closed, or backgrounded so their page is frozen) AND has a subscribed device. If lastPush is null, none was ever attempted in this saga.',
     };
   }
 
@@ -343,6 +346,32 @@ export class MirkwoodRoom {
     return att ? att.token : null;
   }
 
+  // Merge into a socket's attachment. Never write it bare: a plain
+  // serializeAttachment({away}) would drop the token, and that failure is
+  // silent and severe (tokenOf -> null, so broadcast skips the socket and
+  // every later message is rejected with "Join a saga first").
+  attach(ws, patch) {
+    const att = ws.deserializeAttachment() || {};
+    ws.serializeAttachment({ ...att, ...patch });
+  }
+
+  // Has this page told us it went to the background? Attachments survive DO
+  // hibernation, so the flag rides along with the token — unlike in-memory
+  // state, which would report every hibernated player as watching.
+  awayOf(ws) {
+    const att = ws.deserializeAttachment();
+    return !!(att && att.away);
+  }
+
+  // Anyone actually looking at this saga on that player's behalf? A frozen
+  // background page still holds its socket, so being connected is not enough.
+  // `ignore` excludes a socket that is closing: getWebSockets() still returns
+  // it, so without this a dying socket would veto its own player's push.
+  watching(token, ignore) {
+    return this.ctx.getWebSockets()
+      .some(w => w !== ignore && this.tokenOf(w) === token && !this.awayOf(w));
+  }
+
   send(ws, msg) {
     try { ws.send(JSON.stringify(msg)); } catch { /* gone */ }
   }
@@ -354,6 +383,14 @@ export class MirkwoodRoom {
       youAreHost: r.host === token,
       started: !!r.state,
       config: r.config || null,
+      // Will WE ring this player? The client's own bell stands down when this
+      // is true, so it must be the SAME expression maybePush() gates on, from
+      // the same room — a client guessing for itself drifts (a failed send, a
+      // sub we dropped as expired, or another saga's subscription) and drifts
+      // in both directions: a silent miss, or a double buzz. broadcast() sends
+      // 'room' before 'state' on the same ordered socket, so this is never
+      // staler than the decision it is judged against.
+      pushArmed: pushConfigured(this.env) && !!(((r.subs && r.subs[token]) || []).length),
       seats: r.seats.map((s, i) => ({
         seat: i,
         name: s ? s.name : null,
@@ -457,18 +494,27 @@ export class MirkwoodRoom {
   }
 
   /*
-   * Ring a player whose app is closed.
+   * Ring a player who cannot ring themselves.
    *
-   * The topbar bell can only reach an app that is still running, so the two
-   * tiers divide on exactly one question: is that player's socket still here?
-   * If it is, their own browser will notify them and we stay quiet. If it is
-   * not, this is the only way left to reach them.
+   * The question is NOT "is their socket still here?" — that was the original
+   * mistake. The page's own bell needs its JS to be RUNNING, and a socket
+   * being open says nothing about that. When a phone backgrounds an installed
+   * app the browser freezes the page (suspending even network event handlers)
+   * but leaves the WebSocket open — Chrome's freeze guidance tells authors to
+   * close their own sockets, which is proof the browser will not. On iOS that
+   * freeze lands within about five seconds. So a backgrounded player looked
+   * "connected" to us while their page was incapable of notifying them, and
+   * both tiers stayed quiet.
+   *
+   * So the real question is "is anyone WATCHING?": a socket counts only while
+   * its page has told us it is visible (see the 'away' message). Closed app,
+   * backgrounded app and frozen app all collapse into the same answer: no.
    *
    * Silent no-op unless the VAPID secret is set (see worker/push.js), and
    * never allowed to disturb a saga: the sends happen after the broadcast, off
    * the critical path, and failures are swallowed.
    */
-  async maybePush() {
+  async maybePush(ignore) {
     const r = this.room;
     const st = r && r.state;
     if (!st || !pushConfigured(this.env)) return;
@@ -477,8 +523,9 @@ export class MirkwoodRoom {
     if (!aw) return;
     const seat = r.seats[aw.seat];
     if (!seat) return; // a vacant soul: no one to ring (adoption covers it)
-    // still connected? then their own browser is handling it
-    if (this.ctx.getWebSockets().some(w => this.tokenOf(w) === seat.token)) return;
+    // watching = connected AND the page says it is on screen. A backgrounded
+    // page is frozen, so its bell cannot fire and this push is the only way.
+    if (this.watching(seat.token, ignore)) return;
     const subs = (r.subs && r.subs[seat.token]) || [];
     if (!subs.length) return; // never enabled the bell, or not on this device
     const sig = `${aw.type}:${aw.seat}:${st.seq || 0}`;
@@ -528,6 +575,9 @@ export class MirkwoodRoom {
         const alive = new Set(keep.map(s => s.endpoint));
         this.room.subs[seat.token] = this.room.subs[seat.token].filter(s => alive.has(s.endpoint));
         if (!this.room.subs[seat.token].length) delete this.room.subs[seat.token];
+        // we just stopped being able to ring them: say so, or their own bell
+        // stays stood down for a Worker that can no longer reach them
+        this.broadcast();
       }
       await this.save();
     })());
@@ -566,6 +616,21 @@ export class MirkwoodRoom {
         if (changed) await this.save();
       }
       this.broadcast();
+      /*
+       * Ask again now that this socket is gone.
+       *
+       * This is the safety net under the 'away' message, which is sent from
+       * the least reliable moment there is: a page can be frozen or discarded
+       * before it flushes, leaving a zombie socket that looks like someone
+       * watching. A zombie is only a zombie until the edge reaps it, and this
+       * is that moment. maybePush writes its dedupe signature only AFTER its
+       * early returns, so a decision suppressed by the zombie is still
+       * eligible and rings exactly once, late rather than never.
+       *
+       * getWebSockets() still returns this closing socket, so it must be
+       * excluded or it would veto its own player's push.
+       */
+      await this.maybePush(ws);
     }
     await this.ctx.storage.setAlarm(Date.now() + IDLE_PURGE_MS);
   }
@@ -588,7 +653,11 @@ export class MirkwoodRoom {
       if (!r.members[token]) r.members[token] = { name };
       else if (clean(msg.name)) r.members[token].name = name;
       if (!r.host) r.host = token; // first soul to register hosts the saga
-      ws.serializeAttachment({ token });
+      // A page that rejoins while already hidden must say so in the same
+      // breath as its token: the socket is new, but the phone is still in a
+      // pocket. Carrying it here (rather than in a later message) makes it
+      // atomic with registration, so it cannot be lost to a freeze.
+      ws.serializeAttachment({ token, away: msg.away === true });
       // orphaned lobby: if the host's token is gone for good (e.g. cleared
       // browser storage), the horn passes to whoever shows up
       if (!r.state && r.host !== token) {
@@ -769,6 +838,26 @@ export class MirkwoodRoom {
         this.broadcast();
         return;
       }
+      case 'away': {
+        /*
+         * "My page is going to sleep" / "I am back". Sent from the client's
+         * visibilitychange handler, the last moment a backgrounding page is
+         * guaranteed to still be running. This is what tells a frozen page
+         * from a watching one: the socket looks identical either way.
+         *
+         * No save(): an attachment is not room storage, so app-switching all
+         * evening costs no storage writes.
+         */
+        this.attach(ws, { away: !!msg.away });
+        // Going away re-opens the question. Nothing else would ever ask it
+        // again: only the awaiting player can act, so a decision that landed
+        // while they were watching would hang forever, silently, if they then
+        // pocketed the phone. And visibilitychange also fires on a screen
+        // lock or an incoming call, where they never registered whose turn it
+        // was. The push is the durable trace that the saga wants them.
+        if (msg.away) await this.maybePush();
+        return;
+      }
       case 'push-sub': {
         // this browser's subscription for closed-app notifications. Held per
         // token rather than per seat (one player may keep several souls, and
@@ -787,6 +876,7 @@ export class MirkwoodRoom {
         });
         r.subs[token] = list.slice(-3); // a player's last few devices
         await this.save();
+        this.broadcast(); // roomView.pushArmed just changed: their bell stands down
         return;
       }
       case 'push-unsub': {
@@ -796,6 +886,7 @@ export class MirkwoodRoom {
         r.subs[token] = r.subs[token].filter(s => s.endpoint !== msg.endpoint);
         if (!r.subs[token].length) delete r.subs[token];
         await this.save();
+        this.broadcast(); // pushArmed is false again: their own bell resumes
         return;
       }
       case 'act': {

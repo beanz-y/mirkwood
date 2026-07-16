@@ -47,7 +47,9 @@
       <p id="lobby-watchers" class="hint hidden"></p>
       <div class="row">
         <button id="claim-all-btn" class="btn small">Claim remaining souls</button>
-        <button id="leave-room-btn" class="btn small">Leave</button>
+        <!-- same leaveSaga() as the menu's: frees your souls and forgets the
+             saga, so it warns in the same colour -->
+        <button id="leave-room-btn" class="btn small danger">Leave</button>
       </div>
       <div id="difficulty">
         <h4>Difficulty</h4>
@@ -128,8 +130,10 @@
       <button id="tut-btn" class="btn tiny">Walkthrough</button>
     </div>
     <div class="menu-row">
-      <button id="leave-btn" class="btn tiny">Leave saga</button>
-      <button id="concede-btn" class="btn tiny hidden">Abandon hope</button>
+      <!-- the only two doors out: red, because neither can be walked back.
+           Abandon is heavier: it ends the saga for the whole party. -->
+      <button id="leave-btn" class="btn tiny danger">Leave saga</button>
+      <button id="concede-btn" class="btn tiny danger strong hidden">Abandon hope</button>
     </div>
 
     <h3 class="menu-head">Settings</h3>
@@ -178,7 +182,7 @@
   <header id="topbar">
     <!-- the brand is the way home: step out to begin or join another saga
          without leaving this one -->
-    <button class="brand" id="home-btn" title="Your sagas, and the way to begin another">ᛗ <span class="brand-word">MIRKWOOD</span></button>
+    <button class="brand" id="home-btn" title="Your sagas, and the way to begin another">ᛗ <span class="bar-word">MIRKWOOD</span></button>
     <span id="turn-banner"></span>
     <span id="turn-timer" class="hidden"></span>
     <span id="stack-meter" title="Tiles remaining: the group's shared hope"></span>

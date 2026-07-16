@@ -63,15 +63,32 @@ Add `VAPID_JWK` the same way to switch on notifications for a **closed** app
 Two tiers, both opt-in behind the topbar bell (Mirkwood never asks for
 notification permission on its own — only a bell click does):
 
-- **Local** (always available, no setup): the page notifies you while the tab
-  or app is backgrounded. If the app is *closed*, the page is gone and so is
-  this tier.
+- **Local** (always available, no setup): the page rings itself. Needs its JS
+  to be *running*, so this tier only exists while the app is on screen or (on
+  desktop and for a few minutes on Android) merely hidden.
 - **Push** (needs `VAPID_JWK`): the Worker asks the browser's push service to
-  ring you, so an installed app that is fully closed still gets your turn.
+  ring you. Reaches an installed app that is backgrounded **or** fully closed.
 
-They divide on one question — is that player's socket still connected? If it
-is, their own browser handles it and the Worker stays quiet; if it is not, the
-Worker pushes. Exactly one tier can fire for a given decision.
+They divide on one question: **is anyone watching?** Not "is the socket open" —
+that was the original mistake, and it cost a whole class of missed turns.
+Backgrounding an installed app freezes the page (suspending even its WebSocket
+message handler, within about five seconds on iOS) but leaves the socket open,
+because the browser does not close it for you. Such a player looked connected
+while being completely unable to ring themselves, so both tiers stayed quiet.
+
+So the client says `{t:'away'}` when it goes to the background, and the Worker
+counts a socket as watching only while its page says it is on screen. Closed,
+backgrounded and frozen all collapse to the same answer, and the Worker pushes.
+The flag rides along with the token on join (a page can reconnect while still
+pocketed), and if it is ever lost to a freeze, the Worker asks again the moment
+the socket is reaped — so a decision rings late rather than never.
+
+Only one tier ever fires: the Worker publishes `pushArmed` on the room view, and
+the page's own bell stands down whenever the Worker will ring instead. That
+answer is deliberately the Worker's rather than the client's guess, because the
+two must agree exactly: a wrong "no" is a silent miss, and a wrong "yes" is a
+double notification — and on iOS a double really is two notifications and two
+buzzes, since Safari ignores the `tag` that collapses them elsewhere.
 
 To enable push:
 
@@ -82,11 +99,13 @@ To enable push:
 3. Open `/push-test` to confirm the runtime sees it and the key parses.
 
 **Why didn't my phone ring?** Open **`/push-status?room=CODE`** (the saga's
-4-letter code). For each soul it reports whether its keeper is `connected` (if
-so, no push is sent — their own browser rings it) and how many
-`subscribedDevices` they have (`0` = the bell was never enabled in this saga),
-plus `lastPush`: what was said, how many devices the push service accepted, and
-any failure. `lastPush: null` means no push was ever attempted. Subscription
+4-letter code). For each soul it reports `connected` **and** `watching` — the
+distinction is the whole point, since `connected: true, watching: false` is a
+backgrounded app whose page is frozen, and that is precisely the state the
+Worker used to misread as "someone is looking at it". It also reports
+`subscribedDevices` (`0` = the bell was never enabled in this saga) and
+`lastPush`: what was said, how many devices the push service accepted, and any
+failure. `lastPush: null` means no push was ever attempted. Subscription
 endpoints and keys are never exposed.
 
 Prefer this over the dashboard logs: Mirkwood runs everything inside WebSocket
@@ -134,13 +153,19 @@ same payload if a card should ever say more.
 
 ### The topbar and the menu
 
-The topbar keeps only what changes during play: the brand (home), the turn
-banner, the turn timer, the stack meter, ⟲ Replay, ☰, the saga code, and the
-connection dot. Everything else — your sagas, rules, walkthrough, notifications,
-animations, leave, abandon — lives in the **☰ menu**, and **ping is a press and
-hold on the board** rather than a button. On a phone this took the topbar from
-98px to 67px and removed the side footer entirely, which is board space back.
-Under 900px the brand collapses to the bare ᛗ rune.
+The topbar keeps only what changes during play: the brand (home) hard left, then
+the turn banner, and — anchored right — the turn timer, stack meter, ⟲ Replay,
+☰, the saga code and the connection dot. Everything else (your sagas, rules,
+walkthrough, notifications, animations, leave, abandon) lives in the **☰ menu**,
+and **ping is a press and hold on the board** rather than a button.
+
+Under 900px the banner drops to its own row and `.bar-word` spans are hidden, so
+the brand shows the bare ᛗ rune and the stack meter reads "80 tiles" instead of
+"Hope remaining: 80 tiles" (160px → 51px; the tooltip keeps the full sense).
+During the Embrace it reads "❄ Embrace". That prose was what forced the topbar
+to wrap: with Replay and a turn timer showing at 375px it was three rows and
+98px, and is now one button row plus the banner at 67px — plus the whole side
+footer given back to the board.
 
 Only the saga you are looking at holds a socket. That is deliberate, and it is
 what makes the rest work: a saga you are *not* connected to has no live socket,

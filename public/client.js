@@ -229,6 +229,15 @@ const notifyText = aw => awaitingText(aw.type, seatName(aw.seat));
 async function maybeNotify() {
   if (!notifyPref || !('Notification' in window) || Notification.permission !== 'granted') return;
   if (!document.hidden || !state || !room) return;
+  // The Worker is ringing this one, so stand down. This is the ROOM's answer
+  // (roomView.pushArmed), not our own guess: it is the same expression
+  // maybePush gates on, from the same saga, so the two tiers cannot disagree.
+  // Guessing here drifts both ways — a send that never landed, a subscription
+  // the Worker dropped as expired, or another saga's subscription after a
+  // switch — and the costs are not symmetric. A wrong false is one silent
+  // miss; a wrong true is a double, which on iOS means two notifications and
+  // two buzzes, because Safari ignores the tag that would collapse them.
+  if (room.pushArmed) return;
   if (state.phase !== 'play' && state.phase !== 'setup') return;
   const aw = state.awaiting;
   if (!aw || !isMine(aw.seat)) return;
@@ -237,21 +246,48 @@ async function maybeNotify() {
   const sig = `${room.code}:${aw.type}:${aw.seat}:${state.seq || 0}`;
   if (sig === lastNotifySig) return; // one ping per decision
   lastNotifySig = sig;
-  const opts = { body: notifyText(aw), tag: 'mk-turn', icon: '/icon-192.png', badge: '/icon-192.png' };
+  // renotify matches the push tier (sw.js): the tag is constant so that only
+  // ever one turn notification sits in the tray, and a replacement is silent
+  // by default — which would mean a NEW decision arriving over a stale one
+  // never alerts. The tag collapses; renotify makes it still speak up.
+  const opts = {
+    body: notifyText(aw), tag: 'mk-turn', renotify: true,
+    icon: '/icon-192.png', badge: '/icon-192.png',
+  };
   try {
     const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
     if (reg && reg.showNotification) reg.showNotification('Mirkwood', opts);
     else new Notification('Mirkwood', opts);
   } catch { /* best-effort: never let a notification break the game */ }
 }
-// returning to the game clears any lingering turn notification
+/*
+ * Tell the room when this page goes to sleep, and when it wakes.
+ *
+ * This is the difference between a backgrounded app being rung and being
+ * missed. Backgrounding an installed app freezes the page: JS stops, including
+ * the WebSocket message handler that maybeNotify() hangs off, so the bell above
+ * cannot possibly fire. But the socket stays OPEN — the browser does not close
+ * it for us — so without this the Worker would look at a live socket, assume
+ * someone was watching, and stay quiet too. Nobody would ring.
+ *
+ * visibilitychange is the last moment a backgrounding page is guaranteed to
+ * still be running (iOS gives roughly five seconds before the freeze), so it is
+ * where the truth gets out. pagehide covers the bfcache case, where the page is
+ * likewise alive but not on screen.
+ */
+function sayAway(away) {
+  if (ws && ws.readyState === WebSocket.OPEN) send({ t: 'away', away });
+}
 document.addEventListener('visibilitychange', async () => {
+  sayAway(document.hidden);
   if (document.hidden) return;
+  // returning to the game clears any lingering turn notification
   try {
     const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
     if (reg && reg.getNotifications) (await reg.getNotifications({ tag: 'mk-turn' })).forEach(n => n.close());
   } catch { /* best-effort */ }
 });
+window.addEventListener('pagehide', () => sayAway(true));
 
 // ---- push: the tier that reaches an app that is fully closed ---------------
 // The subscription lives in the room's Durable Object, so it is offered again
@@ -299,6 +335,8 @@ async function pushSubscribe() {
     }
     const j = sub.toJSON();
     send({ t: 'push-sub', sub: { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth } });
+    // no local flag to set: the room answers whether it can ring us, and says
+    // so in roomView.pushArmed on the broadcast this triggers
   } catch { /* best-effort: the local tier still covers a backgrounded app */ }
 }
 async function pushUnsubscribe() {
@@ -429,7 +467,10 @@ function openSocket(query, onReady) {
 function rejoin() {
   if (!lastCode) return; // token may be empty on a first visit: the server mints one
   openSocket(`room=${encodeURIComponent(lastCode)}`, () =>
-    send({ t: 'join', code: lastCode, name: myName, token }));
+    // `away` rides with the token: a page that reconnects while the phone is
+    // still pocketed must say so in the same breath, or the room counts a
+    // frozen tab as someone watching
+    send({ t: 'join', code: lastCode, name: myName, token, away: document.hidden }));
 }
 
 // Forget everything that belonged to the saga we were just in. render()'s
@@ -777,14 +818,14 @@ function showError(text) {
 $('create-btn').onclick = () => {
   myName = $('name-input').value.trim() || 'Wanderer';
   localStorage.setItem('mk-name', myName);
-  openSocket('new=1', () => send({ t: 'create', name: myName, token }));
+  openSocket('new=1', () => send({ t: 'create', name: myName, token, away: document.hidden }));
 };
 $('join-btn').onclick = () => {
   myName = $('name-input').value.trim() || 'Wanderer';
   localStorage.setItem('mk-name', myName);
   const code = $('code-input').value.toUpperCase().trim();
   if (!code) { showError('Enter a saga code.'); return; }
-  openSocket(`room=${encodeURIComponent(code)}`, () => send({ t: 'join', code, name: myName, token }));
+  openSocket(`room=${encodeURIComponent(code)}`, () => send({ t: 'join', code, name: myName, token, away: document.hidden }));
 };
 $('claim-all-btn').onclick = () => send({ t: 'claimAll' });
 $('start-btn').onclick = () => send({ t: 'start' });
@@ -1438,9 +1479,12 @@ function renderTopbar() {
   const peek = state.stackPeek && state.stackPeek.length
     ? ` <span class="peek" title="Raven-counsel: the next tiles of the stack">ᚨ next: ${state.stackPeek.map(t => t.kind === 'gate' ? `Gate of ${GATE_NAMES[t.gate]}` : t.kind === 'rune' ? 'Rune Circle' : t.kind).join(' · ')}</span>`
     : '';
+  // .bar-word is the prose a phone drops: "Hope remaining: 80 tiles" is 160px,
+  // nearly half a 375px topbar, and was the one thing forcing it to wrap. The
+  // number is the part that matters; the title attribute carries the rest.
   $('stack-meter').innerHTML = (state.niflheim
-    ? `❄ <b>Niflheim’s Embrace</b>: the forest dwindles`
-    : `Hope remaining: <b>${n}</b> tiles`) + peek;
+    ? `❄ <span class="bar-word">Niflheim’s </span><b>Embrace</b><span class="bar-word">: the forest dwindles</span>`
+    : `<span class="bar-word">Hope remaining: </span><b>${n}</b> tiles`) + peek;
   $('stack-meter').classList.toggle('embrace', !!state.niflheim);
   $('stack-meter').classList.toggle('low', !state.niflheim && n <= 10);
   if (transientFx && transientFx.burn) {
