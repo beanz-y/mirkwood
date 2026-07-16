@@ -31,7 +31,18 @@ run/deploy. Everything below has been built, tested, and browser-verified.*
 >   can never drift — this is why it is one secret and not two.
 > - `/push-test` is the runtime-visibility diagnostic, sibling of
 >   `/telemetry-test` (same dashboard-vars trap: Build variables never reach
->   the running Worker).
+>   the running Worker). **`/push-status?room=CODE`** answers "why didn't my
+>   phone ring?": per soul, is its keeper `connected` (⇒ no push by design) and
+>   does it have `subscribedDevices`, plus `lastPush` (what was said, how many
+>   the push service accepted, any failure; null = never attempted). Counts
+>   only, never endpoints/keys.
+> - **GOTCHA worth remembering for this whole repo**: `console.log` inside a
+>   WebSocket handler is buffered out of the dashboard's LIVE log view until
+>   the socket closes — and Mirkwood does everything inside WS handlers, so a
+>   live tail looks empty exactly when you want to read it. Persisted logs
+>   (Workers & Pages → mirkwood → **Observability**, NOT a tab called "Logs";
+>   7-day retention) do capture them. This is why /push-status exists: Dan is
+>   dashboard-only and needed an answer that is true the moment he loads it.
 > - **The tiers divide on one question**: is the awaiting seat's token still
 >   holding a live WebSocket? Yes → their own browser rings it, Worker stays
 >   quiet. No → `maybePush()` pushes. Both hinge on the page being alive, so
@@ -61,15 +72,11 @@ run/deploy. Everything below has been built, tested, and browser-verified.*
 >    session scratchpad (`push_trigger_test.mjs`), not committed: it needs a
 >    running dev server.
 >
-> **STILL OPEN:**
-> - **Real-device test is Dan's** (iOS: install to Home Screen first, 16.4+).
->   Nothing rings until `VAPID_JWK` is set in the dashboard.
-> - **Privacy notice not yet updated** — wording is Dan-approved text, and push
->   adds a real new flow (a subscription address, plus the player's device
->   talking to Google/Apple/Mozilla's push service, which the notice currently
->   doesn't mention since Cloudflare was the only third party). A draft is in
->   the session summary. **Update the notice BEFORE setting the secret**; the
->   feature is dark until then, so the ordering is free.
+> **STATUS: COMPLETE.** `VAPID_JWK` is set in the dashboard, the privacy notice
+> carries the approved push paragraph, and **Dan's phone rang from a closed app
+> on 2026-07-16**. Nothing outstanding.
+>
+> **Notes for later:**
 > - Known gap: if a mobile OS freezes the page but holds the socket open, the
 >   Worker still sees it as live and stays quiet while the frozen page can't
 >   ring. The page catches up on wake. Not worth a heartbeat unless it bites.

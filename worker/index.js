@@ -115,6 +115,22 @@ export default {
         }, null, 2), { status: 200, headers });
       }
     }
+    // Why a push did or did not ring, for one saga: /push-status?room=CODE
+    // Console logging is a poor answer here — Mirkwood does everything inside
+    // WebSocket handlers, and those logs are held back from the dashboard's
+    // live view until the socket closes. This reads the room's own state, so
+    // it is true the moment you load it, from the phone under test.
+    if (url.pathname === '/push-status') {
+      const code = (url.searchParams.get('room') || '').toUpperCase().trim();
+      if (!/^[A-Z]{4}$/.test(code)) {
+        return new Response(JSON.stringify({
+          ok: false,
+          error: 'Name the saga: /push-status?room=CODE (the 4-letter code).',
+        }, null, 2), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      }
+      const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
+      return stub.fetch(new Request(url.toString(), req));
+    }
     if (url.pathname === '/ws') {
       if ((req.headers.get('Upgrade') || '').toLowerCase() !== 'websocket') {
         return new Response('Expected a WebSocket', { status: 426 });
@@ -167,9 +183,51 @@ export class MirkwoodRoom {
     }
   }
 
+  /*
+   * The push diagnostic for one saga. Deliberately answers the question a
+   * player actually has ("why didn't my phone ring?") rather than dumping
+   * state: for each soul, is its keeper connected (so their own browser would
+   * ring it), and does that keeper have a device subscribed at all? Those two
+   * plus lastPush explain every outcome.
+   *
+   * Never exposes a subscription's endpoint or keys — counts only.
+   */
+  pushStatus() {
+    const r = this.room;
+    if (!r) {
+      return { ok: false, saga: null, note: 'No such saga. Check the code, or it may have been purged after a day idle.' };
+    }
+    const subs = r.subs || {};
+    const live = new Set(this.ctx.getWebSockets().map(w => this.tokenOf(w)).filter(Boolean));
+    const st = r.state;
+    const aw = st && st.awaiting;
+    return {
+      ok: true,
+      saga: r.code,
+      pushConfigured: pushConfigured(this.env), // false = VAPID_JWK secret not set
+      phase: st ? st.phase : 'lobby',
+      awaiting: aw ? { type: aw.type, seat: aw.seat, soul: st.players[aw.seat].name } : null,
+      souls: r.seats.map((s, i) => ({
+        seat: i,
+        name: s ? s.name : null,
+        // connected: their own browser handles notifications, so no push is sent
+        connected: !!s && live.has(s.token),
+        // 0 = this player never enabled the bell (on any device) in this saga
+        subscribedDevices: s ? ((subs[s.token] || []).length) : 0,
+      })),
+      lastPush: r.lastPush || null,
+      note: 'A push is sent only when the awaiting soul\'s keeper has NO live connection AND has a subscribed device. If lastPush is null, none was ever attempted in this saga.',
+    };
+  }
+
   async fetch(req) {
     await this.load();
     const url = new URL(req.url);
+    if (url.pathname === '/push-status') {
+      return new Response(JSON.stringify(this.pushStatus(), null, 2), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      });
+    }
     const code = url.searchParams.get('code');
     if (url.searchParams.get('init') === '1') {
       if (this.room && this.ctx.getWebSockets().length > 0) {
@@ -351,24 +409,39 @@ export class MirkwoodRoom {
       // a browser that has thrown its subscription away (uninstalled, blocked,
       // expired) tells us so once — forget it rather than push into the void
       const keep = subs.filter((s, i) => !results[i].gone);
-      if (keep.length !== subs.length) {
-        await this.load();
-        if (this.room && this.room.subs && this.room.subs[seat.token]) {
-          const alive = new Set(keep.map(s => s.endpoint));
-          this.room.subs[seat.token] = this.room.subs[seat.token].filter(s => alive.has(s.endpoint));
-          if (!this.room.subs[seat.token].length) delete this.room.subs[seat.token];
-          await this.save();
-        }
-      }
-      // Trace either way. Logging only failures makes silence ambiguous
-      // between "never tried" and "worked", which are the two cases worth
-      // telling apart when a push does not arrive on a device.
       const accepted = results.filter(x => x.ok).length;
       const failed = results.filter(x => !x.ok && !x.gone);
+
+      // Trace either way. Logging only failures makes silence ambiguous
+      // between "never tried" and "worked". NB console.log inside a WebSocket
+      // handler is buffered out of the dashboard's LIVE view until the socket
+      // closes, so /push-status below is the reliable read, not this line.
       console.log(`push to seat ${aw.seat} (${st.players[aw.seat].name}): `
         + `${accepted}/${results.length} accepted by the push service`
         + `${failed.length ? `, first failure ${JSON.stringify(failed[0])}` : ''}`
         + `${results.length !== keep.length ? `, dropped ${results.length - keep.length} expired` : ''}`);
+
+      await this.load();
+      if (!this.room) return;
+      // what /push-status reports: enough to tell a push that was never
+      // attempted from one the push service accepted
+      this.room.lastPush = {
+        at: new Date().toISOString(),
+        seat: aw.seat,
+        soul: st.players[aw.seat].name,
+        said: payload.body,
+        accepted,
+        devices: results.length,
+        expiredDropped: results.length - keep.length,
+        failure: failed.length
+          ? (failed[0].status ? `HTTP ${failed[0].status}` : failed[0].error) : null,
+      };
+      if (this.room.subs && this.room.subs[seat.token] && keep.length !== subs.length) {
+        const alive = new Set(keep.map(s => s.endpoint));
+        this.room.subs[seat.token] = this.room.subs[seat.token].filter(s => alive.has(s.endpoint));
+        if (!this.room.subs[seat.token].length) delete this.room.subs[seat.token];
+      }
+      await this.save();
     })());
   }
 

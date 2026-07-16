@@ -81,6 +81,21 @@ To enable push:
    already in the privacy notice.
 3. Open `/push-test` to confirm the runtime sees it and the key parses.
 
+**Why didn't my phone ring?** Open **`/push-status?room=CODE`** (the saga's
+4-letter code). For each soul it reports whether its keeper is `connected` (if
+so, no push is sent — their own browser rings it) and how many
+`subscribedDevices` they have (`0` = the bell was never enabled in this saga),
+plus `lastPush`: what was said, how many devices the push service accepted, and
+any failure. `lastPush: null` means no push was ever attempted. Subscription
+endpoints and keys are never exposed.
+
+Prefer this over the dashboard logs: Mirkwood runs everything inside WebSocket
+handlers, and **`console.log` from a WebSocket handler is held back from the
+dashboard's live log view until the socket closes** — so a live tail looks
+empty exactly when you most want to read it. If you do want the logs, they are
+under *Workers & Pages → mirkwood → **Observability*** (not "Logs"), persisted
+for 7 days; every push traces there either way.
+
 Notes:
 - The public application-server key is *derived* from that secret and served
   from `/push-key`, so the client's key can never drift from the signing key.
