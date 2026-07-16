@@ -32,6 +32,11 @@
         <button id="join-btn" class="btn">Join a saga</button>
       </div>
       <p id="lobby-error" class="error"></p>
+      <!-- sagas this browser is keeping: the way back in without remembering codes -->
+      <div id="lobby-sagas" class="hidden">
+        <p class="hint saga-list-label">Your sagas</p>
+        <div id="lobby-saga-list" class="saga-list"></div>
+      </div>
     </div>
 
     <div id="lobby-room" class="hidden">
@@ -102,6 +107,20 @@
   </div>
 </div>
 
+<!-- ======================= SAGAS ======================= -->
+<div id="sagas" class="overlay hidden">
+  <div class="modal-card rules-card" style="width:min(440px,94vw)">
+    <h2>Your sagas</h2>
+    <p class="hint">A saga you are not looking at still waits for you, and will
+    ring if you have the bell on.</p>
+    <div id="saga-list" class="saga-list"></div>
+    <div class="row">
+      <button id="sagas-add" class="btn">Begin or join another</button>
+      <button id="sagas-close" class="btn primary">Back to the forest</button>
+    </div>
+  </div>
+</div>
+
 <!-- ======================= PRIVACY ======================= -->
 <div id="privacy" class="overlay hidden">
   <div class="modal-card rules-card" style="width:min(480px,94vw)">
@@ -135,6 +154,8 @@
 <div id="game" class="hidden">
   <header id="topbar">
     <span class="brand">ᛗ MIRKWOOD</span>
+    <!-- only appears once this browser is keeping more than one saga -->
+    <button id="sagas-btn" class="btn tiny hidden" title="Switch between your sagas"></button>
     <span id="turn-banner"></span>
     <span id="turn-timer" class="hidden"></span>
     <span id="stack-meter" title="Tiles remaining: the group's shared hope"></span>

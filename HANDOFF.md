@@ -76,6 +76,40 @@ run/deploy. Everything below has been built, tested, and browser-verified.*
 > carries the approved push paragraph, and **Dan's phone rang from a closed app
 > on 2026-07-16**. Nothing outstanding.
 >
+> **Addendum (2026-07-16, several sagas in one browser): DONE.**
+> Dan runs several playtests at once and was burning a device per game. One
+> browser now keeps any number of sagas, with a ⚔ switcher in the topbar.
+> - **The server needed nothing for identity.** Every room's DO already maps
+>   `token -> seats` independently, so one `mk-token` was always a valid player
+>   in every room. The block was entirely client-side.
+> - **One socket at a time**, and that is the load-bearing choice: a saga you
+>   are not connected to has no live socket, which is the exact condition
+>   `maybePush()` fires on. The push tier IS the background-notification
+>   channel for other sagas, so nothing extra was built. (Multi-socket would
+>   have suppressed push for background sagas and needed an in-app tier
+>   rebuilt to replace it, plus per-saga routing for ping/preview.)
+> - `mk-sagas` = the list; `mk-code` still means "the one you are looking at",
+>   so bootstrap/reconnect are untouched. A pre-multi-saga browser adopts its
+>   `mk-code` silently on first load (verified).
+> - `switchSaga()` must **never** send `{t:'leave'}` — leave drops the room's
+>   push subscription and frees pre-start seats. Switching looks exactly like
+>   closing the app. `browseLobby()` ("Begin or join another") is the same
+>   deal: step out without leaving. Without it there was NO way to accumulate
+>   a second saga, which only surfaced by trying to use the feature.
+> - `resetSagaState()` now clears all ~25 per-saga vars and is called from both
+>   `leaveRoom` and `switchSaga`. `leaveRoom` used to clear only 7; render()'s
+>   awaitingSig block masked it. Switching would not have: saga A's
+>   livePreview/knownWatchers would bleed onto saga B's board.
+> - `POST /sagas {token, codes[]}` (token in the BODY: it is a credential, and
+>   URLs land in logs) fans out to each DO's `sagaPeek(token)`. Returns raw
+>   `awaiting` bits, NOT a sentence, so the card renders through the same
+>   `awaitingText()` as the bell and push. Cap 12. Never returns a token.
+> - KNOWN, ACCEPTED: switching away from a saga that has **not started** frees
+>   your claimed souls (webSocketClose frees pre-start seats of absent tokens).
+>   Started sagas keep them (verified: 4 souls survived a switch away and back).
+>   Left alone because that freeing is what releases seats when someone
+>   genuinely leaves; there is no clean way to tell "parked" from "gone".
+>
 > **Notes for later:**
 > - Known gap: if a mobile OS freezes the page but holds the socket open, the
 >   Worker still sees it as live and stays quiet while the frozen page can't

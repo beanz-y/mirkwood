@@ -32,6 +32,53 @@ let lookSeat = null;      // seat whose look picker is open in the lobby
 let lastAnimatedSeq = null; // engine action counter: animate each action ONCE
 let hiddenAtSeq = null;     // action counter when the tab went to sleep
 
+// ---- the sagas this browser is keeping ------------------------------------
+// One player can be in several sagas at once (different groups, different
+// nights). The server needed nothing for this: every room's Durable Object
+// maps token -> seats on its own, so one `mk-token` is already a valid player
+// everywhere. Only ONE saga is connected at a time — `lastCode`/`mk-code` is
+// still "the one you are looking at", and switching just reconnects.
+//
+// That is also what keeps notifications working: a saga you are not currently
+// connected to has no live socket, which is exactly the condition that makes
+// its room PUSH you when it needs you (see worker/push.js).
+let sagaList = loadSagaList();
+let sagaPeeks = {};        // code -> the last /sagas answer, for the switcher
+let sagaPeekAt = 0;        // when we last asked
+
+function loadSagaList() {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem('mk-sagas') || '[]'); } catch { list = []; }
+  list = list.filter(s => s && /^[A-Z]{4}$/.test(s.code));
+  // someone arriving from the single-saga era: adopt the saga they are in.
+  // Writes storage directly rather than calling saveSagaList — this runs while
+  // sagaList itself is still being initialised.
+  const only = localStorage.getItem('mk-code') || '';
+  if (/^[A-Z]{4}$/.test(only) && !list.some(s => s.code === only)) {
+    list.push({ code: only, at: Date.now() });
+    localStorage.setItem('mk-sagas', JSON.stringify(list));
+  }
+  return list;
+}
+function saveSagaList(list = sagaList) {
+  sagaList = list;
+  localStorage.setItem('mk-sagas', JSON.stringify(list));
+}
+function rememberSaga(code) {
+  if (!/^[A-Z]{4}$/.test(code)) return;
+  const at = Date.now();
+  const found = sagaList.find(s => s.code === code);
+  if (found) found.at = at;
+  else sagaList.push({ code, at });
+  saveSagaList();
+  renderSagaButton();
+}
+function forgetSaga(code) {
+  saveSagaList(sagaList.filter(s => s.code !== code));
+  delete sagaPeeks[code];
+  renderSagaButton();
+}
+
 // Sigils. Commissioned art drops in via the manifest key `sigil-<key>`
 // (e.g. "sigil-raven"); it overrides the built-in vector mark everywhere the
 // sigil appears, while the soul's chosen COLOR still rides on the disc behind
@@ -186,7 +233,9 @@ async function maybeNotify() {
   if (state.phase !== 'play' && state.phase !== 'setup') return;
   const aw = state.awaiting;
   if (!aw || !isMine(aw.seat)) return;
-  const sig = `${aw.type}:${aw.seat}:${state.seq || 0}`;
+  // the code belongs in here: without it two sagas sitting on the same seat
+  // and seq collide, and one of them goes quiet
+  const sig = `${room.code}:${aw.type}:${aw.seat}:${state.seq || 0}`;
   if (sig === lastNotifySig) return; // one ping per decision
   lastNotifySig = sig;
   const opts = { body: notifyText(aw), tag: 'mk-turn', icon: '/icon-192.png', badge: '/icon-192.png' };
@@ -384,12 +433,26 @@ function rejoin() {
     send({ t: 'join', code: lastCode, name: myName, token }));
 }
 
+// Forget everything that belonged to the saga we were just in. render()'s
+// awaitingSig block re-derives most of this, which is why leaving a room could
+// get away with clearing only a handful — but switching sagas cannot: whatever
+// is left here is one saga's business bleeding onto another's board.
+function resetSagaState() {
+  room = null; state = null;
+  transientFx = null; livePreview = null; lastPreviewSent = '';
+  awaitingSig = ''; previewRot = 0; clickMap = new Map();
+  decisionDeadline = null; soulSeat = null; lookSeat = null;
+  lastAnimatedSeq = null; hiddenAtSeq = null;
+  armedCell = null; armedAction = null; hoverCell = null;
+  moveAgainArmed = false; holdArmed = false; turnArmed = false;
+  pingArmed = false; modalLock = null;
+  idleEndSig = null; knownWatchers = null; lastNotifySig = '';
+}
+
 function leaveRoom(message) {
   lastCode = '';
   localStorage.removeItem('mk-code');
-  room = null; state = null;
-  soulSeat = null; transientFx = null; moveAgainArmed = false; modalLock = null;
-  holdArmed = false; turnArmed = false;
+  resetSagaState();
   clearTimeout(reconnectTimer);
   if (ws) { ws.onclose = null; try { ws.close(); } catch { /* gone */ } }
   $('lobby').classList.remove('hidden');
@@ -399,13 +462,189 @@ function leaveRoom(message) {
   $('modal').classList.add('hidden');
   $('preview').classList.add('hidden');
   $('lobby-error').textContent = message || '';
+  renderSagaList();
 }
 
 // tell the room we're going, then return to the entry screen
 function leaveSaga() {
   send({ t: 'leave' });
+  forgetSaga(lastCode); // a saga you walked out of is not one you are keeping
   leaveRoom();
 }
+
+/*
+ * Move to another saga you are keeping.
+ *
+ * Deliberately NOT `leave` + join: `leave` tells the room you are gone for
+ * good, which frees your souls if it has not started yet and drops the push
+ * subscription that would have told you when your turn came round. Switching
+ * away should look exactly like closing the app — the room keeps your seats
+ * and rings you when it needs you. openSocket's own teardown does that
+ * silently, so all this has to do is aim the reconnect at a different code.
+ */
+function switchSaga(code) {
+  if (!/^[A-Z]{4}$/.test(code)) return;
+  closeSagaPanel();
+  if (code === lastCode && room) return; // already here
+  resetSagaState();
+  clearTimeout(reconnectTimer);
+  lastCode = code;
+  localStorage.setItem('mk-code', code);
+  $('lobby').classList.add('hidden');
+  $('game').classList.remove('hidden');
+  $('modal').classList.add('hidden');
+  $('preview').classList.add('hidden');
+  setConn('wait');
+  rejoin();
+}
+
+// ---- the saga switcher ----------------------------------------------------
+// Asks the server about every saga this browser keeps, so a card can say
+// whether that saga is waiting on you. Only when you look: the sagas you are
+// not connected to reach you by push, so there is nothing to poll for.
+
+async function refreshSagaPeeks() {
+  const codes = sagaList.map(s => s.code).slice(0, 12);
+  if (!codes.length || !token) return;
+  try {
+    const res = await fetch('/sagas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // the token identifies which souls are yours, so it travels in the body,
+      // never in the URL
+      body: JSON.stringify({ token, codes }),
+    });
+    const j = await res.json();
+    if (!j.ok) return;
+    sagaPeekAt = Date.now();
+    for (const s of j.sagas) sagaPeeks[s.code] = s;
+    renderSagaButton();
+    renderSagaList();
+  } catch { /* the switcher just shows what it knew last */ }
+}
+
+// what this saga wants from you, in one line
+function sagaCardLine(p) {
+  if (!p) return { text: 'Looking...', cls: 'muted' };
+  if (!p.exists) return { text: 'Gone to the mist', cls: 'muted' };
+  if (p.phase === 'won') return { text: 'Won', cls: 'good' };
+  if (p.phase === 'lost') return { text: 'Lost', cls: 'bad' };
+  if (!p.started) return { text: `In the lobby (${p.seatsClaimed}/4 souls claimed)`, cls: 'muted' };
+  if (!p.awaiting) return { text: 'Underway', cls: 'muted' };
+  // the same table the bell and the push read, so all three word it alike
+  if (p.yourTurn) return { text: awaitingText(p.awaiting.type, p.awaiting.soul), cls: 'yours' };
+  return { text: `Waiting on ${p.awaiting.soul}`, cls: 'muted' };
+}
+
+const sagaNeedsYou = p => !!(p && p.exists && p.yourTurn);
+// sagas other than the one you are looking at that want a decision
+const sagasWanting = () => sagaList.filter(s => s.code !== lastCode && sagaNeedsYou(sagaPeeks[s.code]));
+
+function renderSagaButton() {
+  const b = $('sagas-btn');
+  if (!b) return;
+  // an ordinary player with one saga should never know this exists
+  const many = sagaList.length > 1;
+  b.classList.toggle('hidden', !many);
+  if (!many) return;
+  const wanting = sagasWanting().length;
+  b.innerHTML = `⚔ ${sagaList.length}${wanting ? ` <span class="saga-dot">${wanting}</span>` : ''}`;
+  b.classList.toggle('needs-you', wanting > 0);
+  b.title = wanting
+    ? `${wanting} other ${wanting === 1 ? 'saga needs' : 'sagas need'} you`
+    : 'Switch between your sagas';
+}
+
+function sagaCardsHTML(activeCode) {
+  return sagaList
+    .slice()
+    .sort((a, b) => b.at - a.at)
+    .map((s) => {
+      const p = sagaPeeks[s.code];
+      const line = sagaCardLine(p);
+      const here = s.code === activeCode;
+      const gone = p && !p.exists;
+      return `<div class="saga-card${here ? ' here' : ''}${gone ? ' gone' : ''}" data-code="${s.code}">
+        <div class="saga-card-main" data-go="${s.code}">
+          <div class="saga-card-code">${s.code}${here ? ' <span class="saga-here">you are here</span>' : ''}</div>
+          <div class="saga-card-line ${line.cls}">${escapeHtml(line.text)}</div>
+        </div>
+        <button class="btn tiny saga-forget" data-forget="${s.code}" title="Forget this saga">✕</button>
+      </div>`;
+    }).join('');
+}
+
+function wireSagaCards(root) {
+  root.querySelectorAll('[data-go]').forEach((el) => {
+    el.onclick = () => switchSaga(el.dataset.go);
+  });
+  root.querySelectorAll('[data-forget]').forEach((el) => {
+    el.onclick = (e) => {
+      e.stopPropagation(); // forgetting is not switching
+      const code = el.dataset.forget;
+      forgetSaga(code);
+      renderSagaList();
+      if (code === lastCode) leaveSaga();
+    };
+  });
+}
+
+function renderSagaList() {
+  const panel = $('saga-list');
+  if (panel) {
+    panel.innerHTML = sagaCardsHTML(lastCode);
+    wireSagaCards(panel);
+  }
+  // the same list on the entry screen: without it, leaving a saga strands you
+  // with no way back except remembering codes
+  const lob = $('lobby-sagas'), lobList = $('lobby-saga-list');
+  if (lob && lobList) {
+    lob.classList.toggle('hidden', sagaList.length === 0);
+    lobList.innerHTML = sagaCardsHTML(null);
+    wireSagaCards(lobList);
+  }
+  renderSagaButton();
+}
+
+function openSagaPanel() {
+  renderSagaList();
+  $('sagas').classList.remove('hidden');
+  refreshSagaPeeks(); // fresh the moment you look
+}
+function closeSagaPanel() { $('sagas').classList.add('hidden'); }
+
+/*
+ * Step out to the entry screen to pick up ANOTHER saga, without leaving the
+ * one you are in. The Leave button says "I am done with this saga" and tells
+ * the room so; this says "hold my place, I will be back" — which is the whole
+ * point of keeping several. `lastCode` is left alone, so a reload lands you
+ * back where you were.
+ */
+function browseLobby() {
+  closeSagaPanel();
+  if (ws) { ws.onclose = null; try { ws.close(); } catch { /* gone */ } }
+  clearTimeout(reconnectTimer);
+  resetSagaState();
+  $('lobby').classList.remove('hidden');
+  $('game').classList.add('hidden');
+  $('lobby-entry').classList.remove('hidden');
+  $('lobby-room').classList.add('hidden');
+  $('modal').classList.add('hidden');
+  $('preview').classList.add('hidden');
+  $('lobby-error').textContent = '';
+  updateLobbyCTA();
+  renderSagaList();
+}
+
+$('sagas-btn').onclick = openSagaPanel;
+$('sagas-add').onclick = browseLobby;
+$('sagas-close').onclick = closeSagaPanel;
+$('sagas').onclick = (e) => { if (e.target.id === 'sagas') closeSagaPanel(); };
+
+// coming back to the app is the other moment "when I look" means something
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && sagaList.length > 1 && Date.now() - sagaPeekAt > 15000) refreshSagaPeeks();
+});
 
 // shared SVG gradient defs for the procedural art, injected once so both the
 // board and the tile-preview panel can reference them
@@ -449,6 +688,7 @@ function handle(msg) {
       token = msg.token; lastCode = msg.code;
       localStorage.setItem('mk-token', token);
       localStorage.setItem('mk-code', lastCode);
+      rememberSaga(lastCode); // one more saga this browser is keeping
       // this room's Durable Object is the one that will do the pushing, so it
       // needs the subscription too (each room keeps its own, and drops it when
       // the room is purged)
@@ -492,8 +732,12 @@ function handle(msg) {
       showPing(msg); // a "look here" marker from any player or watcher
       break;
     case 'error':
-      if (msg.fatal) leaveRoom(msg.msg);
-      else showError(msg.msg);
+      if (msg.fatal) {
+        // the saga is gone for good (bad code, or purged after a day idle):
+        // stop offering it in the switcher
+        forgetSaga(lastCode);
+        leaveRoom(msg.msg);
+      } else showError(msg.msg);
       break;
   }
 }
@@ -2519,3 +2763,6 @@ if (urlRoom && /^[a-zA-Z]{4}$/.test(urlRoom)) {
 } else if (lastCode && token) {
   rejoin();
 }
+// the sagas you are keeping, on the entry screen and behind the topbar button
+renderSagaList();
+if (sagaList.length > 1 && token) refreshSagaPeeks();

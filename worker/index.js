@@ -10,6 +10,9 @@ import { createGame, applyAction, publicState, concede, renameSoul, setLendConse
 import { logSaga, telemetryConfigured } from './firestore.js';
 import { sendPush, pushConfigured, vapidPublicKey } from './push.js';
 
+// how many sagas the switcher may ask about at once (one subrequest each)
+const MAX_PEEK = 12;
+
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const makeCode = () =>
   Array.from({ length: 4 }, () => LETTERS[Math.floor(Math.random() * LETTERS.length)]).join('');
@@ -114,6 +117,51 @@ export default {
           ],
         }, null, 2), { status: 200, headers });
       }
+    }
+    /*
+     * A glance at several sagas at once, for the saga switcher: which of them
+     * are waiting on you?
+     *
+     * POST, with the token in the BODY on purpose — it is effectively this
+     * player's credential (a join with it takes their seats), and query
+     * strings end up in logs and referrers.
+     *
+     * Returns the raw `awaiting` fields rather than a finished sentence: the
+     * client renders them through the same awaitingText() the bell and the
+     * push use, so all three word a decision identically.
+     */
+    if (url.pathname === '/sagas' && req.method === 'POST') {
+      const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+      let body;
+      try { body = await req.json(); } catch { body = null; }
+      const token = body && typeof body.token === 'string' ? body.token : '';
+      const codes = (body && Array.isArray(body.codes) ? body.codes : [])
+        .map(c => String(c).toUpperCase().trim())
+        .filter(c => /^[A-Z]{4}$/.test(c));
+      const seen = [...new Set(codes)];
+      if (!token || !seen.length) {
+        return new Response(JSON.stringify({ ok: false, error: 'Send {token, codes:[CODE,...]}.' }),
+          { status: 400, headers });
+      }
+      // one subrequest per saga, so keep the fan-out bounded
+      if (seen.length > MAX_PEEK) {
+        return new Response(JSON.stringify({ ok: false, error: `At most ${MAX_PEEK} sagas at a time.` }),
+          { status: 400, headers });
+      }
+      const sagas = await Promise.all(seen.map(async (code) => {
+        try {
+          const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
+          const res = await stub.fetch(new Request(`https://room/saga-peek?code=${code}`, {
+            method: 'POST',
+            body: JSON.stringify({ token }),
+          }));
+          return await res.json();
+        } catch {
+          // one unreachable room must not blank the whole switcher
+          return { code, exists: false, error: true };
+        }
+      }));
+      return new Response(JSON.stringify({ ok: true, sagas }, null, 2), { headers });
     }
     // Why a push did or did not ring, for one saga: /push-status?room=CODE
     // Console logging is a poor answer here — Mirkwood does everything inside
@@ -220,9 +268,49 @@ export class MirkwoodRoom {
     };
   }
 
+  /*
+   * One line of the saga switcher: does this saga need this player right now?
+   *
+   * Deliberately thin. It answers only what a player asked for at a glance
+   * (whose move it is, and whether that is them) plus enough to name the saga.
+   * Progress, souls and setup all sit in this same state if they are ever
+   * wanted on the card.
+   *
+   * Never returns a token: `yourSeats` is computed here so the caller's own
+   * token is the only one that ever leaves the browser.
+   */
+  sagaPeek(token, code) {
+    const r = this.room;
+    if (!r) return { code, exists: false }; // never begun, or purged after a day idle
+    const st = r.state;
+    const aw = st && st.awaiting;
+    const yourSeats = r.seats
+      .map((s, i) => (s && s.token === token ? i : -1))
+      .filter(i => i >= 0);
+    return {
+      code: r.code,
+      exists: true,
+      started: !!st,
+      phase: st ? st.phase : 'lobby',
+      awaiting: aw ? { type: aw.type, seat: aw.seat, soul: st.players[aw.seat].name } : null,
+      yourTurn: !!(aw && r.seats[aw.seat] && r.seats[aw.seat].token === token),
+      yourSeats,
+      seatsClaimed: r.seats.filter(Boolean).length,
+      winnerGate: (st && st.winnerGate) || null,
+    };
+  }
+
   async fetch(req) {
     await this.load();
     const url = new URL(req.url);
+    if (url.pathname === '/saga-peek') {
+      let body;
+      try { body = await req.json(); } catch { body = {}; }
+      const code = url.searchParams.get('code');
+      return new Response(JSON.stringify(this.sagaPeek(body && body.token, code)), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     if (url.pathname === '/push-status') {
       return new Response(JSON.stringify(this.pushStatus(), null, 2), {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },

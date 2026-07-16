@@ -118,6 +118,37 @@ Notes:
 - Reconnects: the browser keeps a token in localStorage and rejoins its seats
   automatically — refresh mid-game is safe.
 
+## Several sagas at once
+
+One browser can keep any number of sagas (different groups, different nights).
+The **⚔ switcher** in the topbar appears as soon as you hold more than one, with
+a dot when another saga is waiting on you; *Begin or join another* steps out to
+the entry screen without leaving the saga you are in. The same list sits on the
+entry screen, so you never need to remember a code.
+
+Each card says the one thing worth knowing at a glance: whether that saga wants
+a decision from you, and which one (worded by the same `awaitingText()` the bell
+and the push use, so all three agree). Progress, souls and setup are all in the
+same payload if a card should ever say more.
+
+Only the saga you are looking at holds a socket. That is deliberate, and it is
+what makes the rest work: a saga you are *not* connected to has no live socket,
+which is exactly the condition that makes its room **push** you when your turn
+comes round (see the notification section above). Tapping that notification
+opens straight into that saga.
+
+Two consequences worth knowing:
+
+- Switching is a reconnect, and it is *not* a "leave" — the room keeps your
+  souls and your subscription, exactly as if you had closed the app.
+- A saga that has **not started yet** frees your claimed souls when you switch
+  away, because pre-start seats are released whenever a player disconnects.
+  Started sagas keep your souls bound, so ongoing games are unaffected.
+
+No server change was needed for any of this: every room's Durable Object maps
+`token -> seats` on its own, so one browser's token was always a valid player in
+any number of rooms.
+
 ## Playing
 
 1. One player opens the site, enters a name, and **begins a new saga** — they

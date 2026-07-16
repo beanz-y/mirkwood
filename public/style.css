@@ -783,6 +783,41 @@ body.no-anims *, body.no-anims *::before, body.no-anims *::after {
 }
 .side-footer { display: flex; justify-content: space-between; }
 
+/* ---- the saga switcher: several sagas kept in one browser ---------------- */
+#sagas-btn.needs-you { color: var(--gold); border-color: var(--gold); }
+.saga-dot {
+  display: inline-block; min-width: 15px; padding: 0 3px; margin-left: 2px;
+  border-radius: 8px; background: var(--gold); color: #1a1206;
+  font-size: 10px; font-weight: bold; line-height: 15px; text-align: center;
+}
+.saga-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.saga-list-label { margin-bottom: 2px; }
+.saga-card {
+  display: flex; align-items: stretch; gap: 6px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--panel); overflow: hidden;
+}
+.saga-card-main { flex: 1; padding: 9px 11px; cursor: pointer; text-align: left; }
+.saga-card-main:hover { background: var(--panel2); }
+.saga-card-code {
+  font-size: 15px; letter-spacing: 3px; color: var(--gold);
+}
+.saga-here {
+  font-size: 10px; letter-spacing: 0; color: var(--dim); margin-left: 6px;
+}
+.saga-card-line { font-size: 12.5px; margin-top: 3px; color: var(--dim); }
+/* the one thing the card exists to say */
+.saga-card-line.yours { color: var(--gold); }
+.saga-card-line.good { color: var(--good); }
+.saga-card-line.bad { color: var(--danger); }
+.saga-card.here { border-color: var(--gold); }
+.saga-card.gone { opacity: 0.5; }
+.saga-forget {
+  border: none; border-left: 1px solid var(--line); border-radius: 0;
+  padding: 0 10px; color: var(--dim);
+}
+.saga-forget:hover { color: var(--danger); border-color: var(--line); }
+
 @media (max-width: 900px) {
   #layout { flex-direction: column; overflow-y: auto; }
   #side { width: 100%; border-left: none; border-top: 1px solid var(--line); }
