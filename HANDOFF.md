@@ -13,6 +13,69 @@ run/deploy. Everything below has been built, tested, and browser-verified.*
 > rulebook phrasing was rewritten. RULES.md departures #14–15 document it.
 > The repo is on GitHub now; push to main deploys via Workers Builds.
 
+> **Addendum (2026-07-10, PWA + notifications):** Mirkwood is now an
+> installable web app (public/manifest.webmanifest + cache-free public/sw.js +
+> icons, gold ᛗ Mannaz). Opt-in TURN NOTIFICATIONS shipped as **local
+> notifications only** (topbar bell, never auto-prompts): they fire when the
+> tab/app is BACKGROUNDED and a decision is on a soul this browser controls.
+>
+> **Addendum (2026-07-16, closed-app notifications via Web Push): DONE.**
+> The second tier is built, so a CLOSED installed app now rings too. Shape:
+> - `worker/push.js` — RFC 8291 payload encryption (ECDH → HKDF → aes128gcm)
+>   and RFC 8292 VAPID (ES256 JWT). Written against WebCrypto, no dependency.
+>   Inert unless the secret is set, exactly like `worker/firestore.js`, so the
+>   repo still carries zero key material and is safe to publish.
+> - **ONE secret: `VAPID_JWK`** (dashboard → Settings → Variables and Secrets,
+>   type Secret; Dan is dashboard-only). `node tools/vapid-keys.mjs` prints it.
+>   The PUBLIC key is *derived* from it and served from `/push-key`, so the two
+>   can never drift — this is why it is one secret and not two.
+> - `/push-test` is the runtime-visibility diagnostic, sibling of
+>   `/telemetry-test` (same dashboard-vars trap: Build variables never reach
+>   the running Worker).
+> - **The tiers divide on one question**: is the awaiting seat's token still
+>   holding a live WebSocket? Yes → their own browser rings it, Worker stays
+>   quiet. No → `maybePush()` pushes. Both hinge on the page being alive, so
+>   exactly one can fire. Trigger points: after `act` and after `start`.
+> - Subs live in `room.subs` (token → up to 3 devices), purged with the room,
+>   on `leave`, on bell-off (`push-unsub`), and when a push service reports
+>   404/410. Sends go through `ctx.waitUntil` and never block a saga.
+> - `awaitingText()` moved INTO `public/shared/engine.js` so the bell and the
+>   push read one table (`test/push.test.js` scans the engine for prompt types
+>   and fails if any lacks text — it also caught `stocked-hearth`, which the
+>   old client-side map was missing).
+>
+> **How it was verified** (the pane cannot grant push permission):
+> 1. Crypto: `test/push.test.js` reproduces **RFC 8291 §5's published message
+>    body byte for byte** from the RFC's fixed keys/salt. This matters because
+>    a browser silently DROPS a payload it cannot decrypt — the failure would
+>    be invisible until a real device showed nothing.
+> 2. That test runs under Node, not workerd, so it does not prove the Workers
+>    runtime has the primitives. Pointed a test subscription at a reachable
+>    host and got **HTTP 405 back** — i.e. encryption + VAPID signing + the
+>    POST all really executed inside workerd. (An unreachable endpoint returns
+>    an opaque "internal error" that is indistinguishable from a crypto
+>    exception — don't trust that alone.)
+> 3. Decision logic: two sagas via raw WS (A holds souls 0/2/3, B holds soul
+>    1), identical up to the moment the saga turns to B — B connected = no
+>    push, B's socket closed = exactly one push for seat 1. Harness in the
+>    session scratchpad (`push_trigger_test.mjs`), not committed: it needs a
+>    running dev server.
+>
+> **STILL OPEN:**
+> - **Real-device test is Dan's** (iOS: install to Home Screen first, 16.4+).
+>   Nothing rings until `VAPID_JWK` is set in the dashboard.
+> - **Privacy notice not yet updated** — wording is Dan-approved text, and push
+>   adds a real new flow (a subscription address, plus the player's device
+>   talking to Google/Apple/Mozilla's push service, which the notice currently
+>   doesn't mention since Cloudflare was the only third party). A draft is in
+>   the session summary. **Update the notice BEFORE setting the secret**; the
+>   feature is dark until then, so the ordering is free.
+> - Known gap: if a mobile OS freezes the page but holds the socket open, the
+>   Worker still sees it as live and stays quiet while the frozen page can't
+>   ring. The page catches up on wake. Not worth a heartbeat unless it bites.
+> - `.dev.vars` (gitignored) holds a throwaway VAPID key for local testing, so
+>   `npm run dev` reports push as configured. It is not the production key.
+
 ---
 
 ## What this is

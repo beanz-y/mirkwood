@@ -2,6 +2,7 @@
 import {
   RUNES, GATE_NAMES, exitsFor, SIZE, key, DIRNAMES, TILE_PRESETS,
   PLAYER_COLORS, PLAYER_COLOR_NAMES, TOKEN_ICONS, TOKEN_ICON_KEYS, iconSVG,
+  awaitingText,
 } from '/shared/engine.js';
 
 const $ = id => document.getElementById(id);
@@ -134,8 +135,12 @@ setInterval(idleEndTick, 500);
 // Never auto-prompts: the browser's permission dialog appears only when the
 // player clicks the bell. Fires while the tab is HIDDEN and a decision belongs
 // to any soul this browser controls (turns, Draugr braces, perk prompts).
-// Local notifications only: they reach a backgrounded tab or installed app; a
-// fully CLOSED app would need Web Push infrastructure (out of scope for now).
+//
+// Two tiers, and they hand off cleanly because both hinge on this page being
+// alive: these LOCAL notifications are drawn by the page, so they cover a
+// backgrounded tab or app. Once the app is fully CLOSED the socket is gone
+// with it, and the Worker takes over with a real push (see pushSubscribe
+// below and worker/push.js) — so exactly one tier can fire at a time.
 let notifyPref = localStorage.getItem('mk-notify') === 'on';
 let lastNotifySig = '';
 function bellIcon() {
@@ -157,7 +162,9 @@ $('notify-btn').onclick = async () => {
   }
   if (notifyPref) {
     notifyPref = false; localStorage.setItem('mk-notify', 'off');
-    toast('Turn notifications off.', true); bellIcon(); return;
+    toast('Turn notifications off.', true); bellIcon();
+    pushUnsubscribe(); // stop the closed-app pings too
+    return;
   }
   const perm = Notification.permission === 'granted'
     ? 'granted' : await Notification.requestPermission();
@@ -168,30 +175,11 @@ $('notify-btn').onclick = async () => {
   notifyPref = true; localStorage.setItem('mk-notify', 'on');
   toast('You will be notified when the saga needs you.', true);
   bellIcon();
+  pushSubscribe();
 };
 bellIcon();
 
-function notifyText(aw) {
-  const who = seatName(aw.seat);
-  const map = {
-    'place-start': `${who}: choose where to awaken`,
-    'place-tile': `${who}: place the revealed path`,
-    'action': `${who}: your move`,
-    'post-move': `${who}: press on, or end your turn`,
-    'block': `A Draugr strikes ${who}. Brace?`,
-    'attune': `${who} stands among the runes`,
-    'swap-draugr': `A Draugr stalks toward ${who}`,
-    'fall-landing': `${who}: choose where to land`,
-    'place-landing': `${who}: find your footing`,
-    'place-blind': `${who}: feel through the mist`,
-    'place-scramble': `${who}: scramble to safety`,
-    'scramble': `${who}: scramble to safety`,
-    'niflheim': `The cold demands a tile. ${who} must choose`,
-    'winter-stores': `Freyja's stores: ransom the taken tile?`,
-    'shared-joy': `Shared joy: choose who takes heart`,
-  };
-  return map[aw.type] || `${who}: the saga awaits your decision`;
-}
+const notifyText = aw => awaitingText(aw.type, seatName(aw.seat));
 async function maybeNotify() {
   if (!notifyPref || !('Notification' in window) || Notification.permission !== 'granted') return;
   if (!document.hidden || !state || !room) return;
@@ -216,6 +204,66 @@ document.addEventListener('visibilitychange', async () => {
     if (reg && reg.getNotifications) (await reg.getNotifications({ tag: 'mk-turn' })).forEach(n => n.close());
   } catch { /* best-effort */ }
 });
+
+// ---- push: the tier that reaches an app that is fully closed ---------------
+// The subscription lives in the room's Durable Object, so it is offered again
+// on every join and forgotten when the room purges. Push stays off unless the
+// Worker has its VAPID secret (/push-key answers with nothing until then), in
+// which case the local tier above remains the only one, which is fine.
+// iOS caveat: push reaches an installed PWA only (Add to Home Screen, 16.4+).
+let pushKey; // undefined = unasked, '' = the server has no push configured
+async function serverPushKey() {
+  if (pushKey !== undefined) return pushKey;
+  try {
+    const res = await fetch('/push-key');
+    pushKey = (await res.json()).key || '';
+  } catch { pushKey = ''; }
+  return pushKey;
+}
+const keyBytes = (s) => {
+  const bin = atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+};
+const sameKey = (buf, k) => {
+  if (!buf) return false;
+  const a = new Uint8Array(buf), b = keyBytes(k);
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+};
+async function pushSubscribe() {
+  if (!notifyPref || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return; // offered again on the next join
+  const key = await serverPushKey();
+  if (!key) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    // a subscription made against a retired VAPID key can never be delivered
+    // to, so trade it in rather than silently going quiet
+    if (sub && !sameKey(sub.options && sub.options.applicationServerKey, key)) {
+      try { await sub.unsubscribe(); } catch { /* already gone */ }
+      sub = null;
+    }
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true, applicationServerKey: keyBytes(key),
+      });
+    }
+    const j = sub.toJSON();
+    send({ t: 'push-sub', sub: { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth } });
+  } catch { /* best-effort: the local tier still covers a backgrounded app */ }
+}
+async function pushUnsubscribe() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    if (!sub) return;
+    const endpoint = sub.endpoint;
+    await sub.unsubscribe();
+    if (ws && ws.readyState === WebSocket.OPEN) send({ t: 'push-unsub', endpoint });
+  } catch { /* the room forgets it at the next purge anyway */ }
+}
 
 let anims = localStorage.getItem('mk-anims') !== 'off';
 const sm = s => (anims ? s : ''); // gate SMIL snippets on the animations setting
@@ -401,6 +449,10 @@ function handle(msg) {
       token = msg.token; lastCode = msg.code;
       localStorage.setItem('mk-token', token);
       localStorage.setItem('mk-code', lastCode);
+      // this room's Durable Object is the one that will do the pushing, so it
+      // needs the subscription too (each room keeps its own, and drops it when
+      // the room is purged)
+      pushSubscribe();
       break;
     case 'room':
       room = msg.room;

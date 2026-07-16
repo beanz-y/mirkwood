@@ -57,6 +57,32 @@ export const RUNES = {
 };
 export const GATE_NAMES = { valhalla: 'Valhalla', folkvangr: 'Fólkvangr' };
 
+// What a soul is being asked for, in one line. Shared on purpose: the topbar
+// bell writes it in the browser, and the Worker writes it into a push for an
+// app that is closed, so a single table keeps the two tiers saying the same
+// thing. `who` is the soul's name.
+export function awaitingText(type, who) {
+  const map = {
+    'place-start': `${who}: choose where to awaken`,
+    'place-tile': `${who}: place the revealed path`,
+    'action': `${who}: your move`,
+    'post-move': `${who}: press on, or end your turn`,
+    'block': `A Draugr strikes ${who}. Brace?`,
+    'attune': `${who} stands among the runes`,
+    'swap-draugr': `A Draugr stalks toward ${who}`,
+    'fall-landing': `${who}: choose where to land`,
+    'place-landing': `${who}: find your footing`,
+    'place-blind': `${who}: feel through the mist`,
+    'place-scramble': `${who}: scramble to safety`,
+    'scramble': `${who}: scramble to safety`,
+    'niflheim': `The cold demands a tile. ${who} must choose`,
+    'winter-stores': `Freyja's stores: ransom the taken tile?`,
+    'shared-joy': `Shared joy: choose who takes heart`,
+    'stocked-hearth': `${who}: ransom what the mist has taken?`,
+  };
+  return map[type] || `${who}: the saga awaits your decision`;
+}
+
 // ---------------------------------------------------------------- rune perks
 // Host variant: each rune grants its bearer a boon (RUNES[..].perk), with a
 // second form during Niflheim's Embrace (winterPerk). s.perkSet (null = all 8)

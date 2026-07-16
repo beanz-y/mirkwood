@@ -13,13 +13,38 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
+// A push from the Worker: the app is closed (or the whole browser is), so this
+// is the only thing of ours still running. The payload arrives encrypted and
+// is decrypted by the browser before we see it (see worker/push.js).
+// userVisibleOnly is part of the subscription contract: every push MUST show a
+// notification, so a malformed payload still rings rather than silently
+// spending the player's trust.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { /* show the fallback */ }
+  const title = data.title || 'Mirkwood';
+  event.waitUntil(self.registration.showNotification(title, {
+    body: data.body || 'The saga awaits your decision.',
+    // shares the tag with the local tier, so a returning player never finds
+    // two notifications for the same decision
+    tag: data.tag || 'mk-turn',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    renotify: true,
+    data: { url: data.url || '/' },
+  }));
+});
+
 // tapping a turn notification brings the saga back into focus (or reopens it)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       for (const c of list) if ('focus' in c) return c.focus();
-      return self.clients.openWindow('/');
+      // nothing running: a push carries the saga code, so the app reopens
+      // straight into the room rather than the lobby
+      return self.clients.openWindow(url);
     }),
   );
 });

@@ -55,6 +55,47 @@ choose type **Secret**, then `FIREBASE_PROJECT_ID` and
 fine). Secrets set here persist across git deploys and are encrypted and
 write-only. This is the full telemetry setup — no CLI involved.
 
+Add `VAPID_JWK` the same way to switch on notifications for a **closed** app
+(see below). Every secret is optional: unset simply means that feature is off.
+
+### Turn notifications
+
+Two tiers, both opt-in behind the topbar bell (Mirkwood never asks for
+notification permission on its own — only a bell click does):
+
+- **Local** (always available, no setup): the page notifies you while the tab
+  or app is backgrounded. If the app is *closed*, the page is gone and so is
+  this tier.
+- **Push** (needs `VAPID_JWK`): the Worker asks the browser's push service to
+  ring you, so an installed app that is fully closed still gets your turn.
+
+They divide on one question — is that player's socket still connected? If it
+is, their own browser handles it and the Worker stays quiet; if it is not, the
+Worker pushes. Exactly one tier can fire for a given decision.
+
+To enable push:
+
+1. `node tools/vapid-keys.mjs` — prints one JSON line (no npm install, no CLI).
+2. Paste it as the secret **`VAPID_JWK`** (dashboard, type Secret, as above).
+   Optionally set `VAPID_SUBJECT` to a contact URL; it defaults to the address
+   already in the privacy notice.
+3. Open `/push-test` to confirm the runtime sees it and the key parses.
+
+Notes:
+- The public application-server key is *derived* from that secret and served
+  from `/push-key`, so the client's key can never drift from the signing key.
+  Nothing key-shaped lives in the repo.
+- Payloads are encrypted end-to-end (RFC 8291): the push service relays
+  ciphertext it cannot read. The crypto is pinned against the RFC's own test
+  vector in `test/push.test.js`.
+- Subscriptions live in the room's Durable Object and are dropped when the
+  player switches the bell off, leaves, or the room purges — and when the
+  push service reports one as expired.
+- Rotating the key is safe: subscriptions made against the old key are traded
+  in automatically the next time that player joins.
+- **iOS**: push reaches an *installed* PWA only (Add to Home Screen, 16.4+).
+  A real device is the only way to confirm delivery.
+
 Notes:
 - The `migrations` block in [wrangler.jsonc](wrangler.jsonc) declares the
   `MirkwoodRoom` Durable Object as SQLite-backed — required for the free plan.

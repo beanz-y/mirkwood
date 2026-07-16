@@ -6,8 +6,9 @@
  * authoritative engine state in DO storage so games survive disconnects and
  * hibernation. WebSockets use the hibernation API, so idle rooms cost nothing.
  */
-import { createGame, applyAction, publicState, concede, renameSoul, setLendConsent, normTiles, STATE_VERSION, PLAYER_COLORS, TOKEN_ICON_KEYS } from '../public/shared/engine.js';
+import { createGame, applyAction, publicState, concede, renameSoul, setLendConsent, normTiles, awaitingText, STATE_VERSION, PLAYER_COLORS, TOKEN_ICON_KEYS } from '../public/shared/engine.js';
 import { logSaga, telemetryConfigured } from './firestore.js';
+import { sendPush, pushConfigured, vapidPublicKey } from './push.js';
 
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const makeCode = () =>
@@ -59,6 +60,57 @@ export default {
             '404/NOT_FOUND: no Firestore database exists yet — Firebase console → Build → Firestore Database → Create database',
             'FAILED_PRECONDITION mentioning Datastore Mode: recreate the database in NATIVE mode (the documents API requires it)',
             'invalid_grant / DECODER errors: the FIREBASE_SERVICE_ACCOUNT secret is not the complete, unmodified JSON file',
+          ],
+        }, null, 2), { status: 200, headers });
+      }
+    }
+    // the application-server key the browser must subscribe with, derived from
+    // the VAPID secret so it can never drift out of sync with it. Answers with
+    // null until the secret is set, which is the client's cue to stay on local
+    // notifications only.
+    if (url.pathname === '/push-key') {
+      let key = null;
+      try { key = pushConfigured(env) ? vapidPublicKey(env) : null; } catch { key = null; }
+      return new Response(JSON.stringify({ key }), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      });
+    }
+    // push self-test, the sibling of /telemetry-test: what does the RUNTIME
+    // actually see? (names only, never values)
+    if (url.pathname === '/push-test') {
+      const headers = { 'Content-Type': 'application/json' };
+      const present = { VAPID_JWK: !!env.VAPID_JWK, VAPID_SUBJECT: !!env.VAPID_SUBJECT };
+      if (!pushConfigured(env)) {
+        return new Response(JSON.stringify({
+          ok: false,
+          configured: false,
+          present,
+          effect: 'Closed-app push is OFF. The topbar bell still works while the app is backgrounded.',
+          hints: [
+            'Generate the key: node tools/vapid-keys.mjs — it prints one JSON line.',
+            'Paste it under the WORKER runtime: Workers & Pages → mirkwood → Settings → "Variables and Secrets", name VAPID_JWK, type "Secret". NOT the Build configuration\'s build variables (those never reach the running Worker).',
+            'Confirm the dashboard\'s deploy prompt so a new version ships, then reload this URL (no git push needed).',
+          ],
+        }, null, 2), { status: 200, headers });
+      }
+      try {
+        const key = vapidPublicKey(env);
+        return new Response(JSON.stringify({
+          ok: true,
+          configured: true,
+          present,
+          publicKey: key,
+          note: 'The secret parses and the public key derives from it. Players who enable the bell will now be subscribed for closed-app pushes; delivery itself can only be confirmed on a real device (an installed app on iOS).',
+        }, null, 2), { status: 200, headers });
+      } catch (e) {
+        return new Response(JSON.stringify({
+          ok: false,
+          configured: true,
+          present,
+          error: String(e.message || e).slice(0, 300),
+          hints: [
+            'The secret must be the complete JSON line printed by tools/vapid-keys.mjs (a P-256 private JWK: kty EC, crv P-256, with d/x/y).',
+            'Re-run the generator and paste the whole line, with no surrounding quotes or line breaks.',
           ],
         }, null, 2), { status: 200, headers });
       }
@@ -128,6 +180,7 @@ export class MirkwoodRoom {
         host: null,
         seats: [null, null, null, null], // {token, name, color, icon}
         members: {},                     // token -> {name}
+        subs: {},                        // token -> [push subscription] (see maybePush)
         state: null,
       };
       await this.save();
@@ -255,6 +308,61 @@ export class MirkwoodRoom {
     } catch (e) {
       console.error('saga telemetry failed:', e.message);
     }
+  }
+
+  /*
+   * Ring a player whose app is closed.
+   *
+   * The topbar bell can only reach an app that is still running, so the two
+   * tiers divide on exactly one question: is that player's socket still here?
+   * If it is, their own browser will notify them and we stay quiet. If it is
+   * not, this is the only way left to reach them.
+   *
+   * Silent no-op unless the VAPID secret is set (see worker/push.js), and
+   * never allowed to disturb a saga: the sends happen after the broadcast, off
+   * the critical path, and failures are swallowed.
+   */
+  async maybePush() {
+    const r = this.room;
+    const st = r && r.state;
+    if (!st || !pushConfigured(this.env)) return;
+    if (st.phase !== 'play' && st.phase !== 'setup') return;
+    const aw = st.awaiting;
+    if (!aw) return;
+    const seat = r.seats[aw.seat];
+    if (!seat) return; // a vacant soul: no one to ring (adoption covers it)
+    // still connected? then their own browser is handling it
+    if (this.ctx.getWebSockets().some(w => this.tokenOf(w) === seat.token)) return;
+    const subs = (r.subs && r.subs[seat.token]) || [];
+    if (!subs.length) return; // never enabled the bell, or not on this device
+    const sig = `${aw.type}:${aw.seat}:${st.seq || 0}`;
+    if (r.pushSig === sig) return; // one ping per decision
+    r.pushSig = sig;
+    await this.save();
+
+    const payload = {
+      title: 'Mirkwood',
+      body: awaitingText(aw.type, st.players[aw.seat].name),
+      tag: 'mk-turn',
+      url: `/?room=${r.code}`, // reopens straight into the saga, not the lobby
+    };
+    this.ctx.waitUntil((async () => {
+      const results = await Promise.all(subs.map(s => sendPush(this.env, s, payload)));
+      // a browser that has thrown its subscription away (uninstalled, blocked,
+      // expired) tells us so once — forget it rather than push into the void
+      const keep = subs.filter((s, i) => !results[i].gone);
+      if (keep.length !== subs.length) {
+        await this.load();
+        if (this.room && this.room.subs && this.room.subs[seat.token]) {
+          const alive = new Set(keep.map(s => s.endpoint));
+          this.room.subs[seat.token] = this.room.subs[seat.token].filter(s => alive.has(s.endpoint));
+          if (!this.room.subs[seat.token].length) delete this.room.subs[seat.token];
+          await this.save();
+        }
+      }
+      const failed = results.filter(x => !x.ok && !x.gone);
+      if (failed.length) console.log(`push to seat ${aw.seat} failed:`, JSON.stringify(failed[0]));
+    })());
   }
 
   // ---------------------------------------------------------------- messages
@@ -426,6 +534,7 @@ export class MirkwoodRoom {
         });
         await this.save();
         this.broadcast();
+        await this.maybePush(); // the first soul to awaken may already be away
         return;
       }
       case 'config': {
@@ -492,6 +601,35 @@ export class MirkwoodRoom {
         this.broadcast();
         return;
       }
+      case 'push-sub': {
+        // this browser's subscription for closed-app notifications. Held per
+        // token rather than per seat (one player may keep several souls, and
+        // may play from a phone and a laptop), and forgotten when the room is
+        // purged — nothing here outlives the saga by more than a day.
+        const sub = msg.sub;
+        if (!sub || typeof sub.endpoint !== 'string'
+          || typeof sub.p256dh !== 'string' || typeof sub.auth !== 'string') return;
+        if (!sub.endpoint.startsWith('https://') || sub.endpoint.length > 600) return;
+        r.subs = r.subs || {};
+        const list = (r.subs[token] || []).filter(s => s.endpoint !== sub.endpoint);
+        list.push({
+          endpoint: sub.endpoint,
+          p256dh: sub.p256dh.slice(0, 200),
+          auth: sub.auth.slice(0, 60),
+        });
+        r.subs[token] = list.slice(-3); // a player's last few devices
+        await this.save();
+        return;
+      }
+      case 'push-unsub': {
+        // the bell was switched off: forget this device immediately rather
+        // than waiting for the room to purge
+        if (!r.subs || !r.subs[token]) return;
+        r.subs[token] = r.subs[token].filter(s => s.endpoint !== msg.endpoint);
+        if (!r.subs[token].length) delete r.subs[token];
+        await this.save();
+        return;
+      }
       case 'act': {
         if (!r.state) return;
         const aw = r.state.awaiting;
@@ -504,6 +642,7 @@ export class MirkwoodRoom {
         await this.save();
         this.broadcast();
         await this.maybeLogEnd();
+        await this.maybePush(); // the next soul may not be here to see it
         return;
       }
       case 'concede': {
@@ -535,6 +674,9 @@ export class MirkwoodRoom {
         // client gets no error.
         return;
       case 'leave': {
+        // walking away is deliberate, so stop ringing this player at once
+        // rather than holding their subscription until the room purges
+        if (r.subs) delete r.subs[token];
         // before the saga starts, walking away frees the claimed souls;
         // mid-game the seats stay bound to the token so they can rejoin
         if (!r.state) {
