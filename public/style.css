@@ -281,6 +281,9 @@ input:focus { outline: 1px solid var(--gold); }
 .perk-line { color: var(--gold); opacity: 0.9; }
 #stack-meter .peek { color: var(--gold); margin-left: 8px; font-size: 12px; }
 
+/* the turn-notification bell glows once armed */
+#notify-btn.notify-on { color: var(--gold); border-color: var(--gold); }
+
 /* privacy notice: above the rules overlay (it can be opened from there) */
 #privacy { z-index: 58; }
 .name-hint { display: block; margin-top: 3px; font-weight: normal; }

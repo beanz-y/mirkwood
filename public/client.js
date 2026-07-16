@@ -130,6 +130,93 @@ function idleEndTick() {
 }
 setInterval(idleEndTick, 500);
 
+// ---- turn notifications (opt-in via the topbar bell) ------------------------
+// Never auto-prompts: the browser's permission dialog appears only when the
+// player clicks the bell. Fires while the tab is HIDDEN and a decision belongs
+// to any soul this browser controls (turns, Draugr braces, perk prompts).
+// Local notifications only: they reach a backgrounded tab or installed app; a
+// fully CLOSED app would need Web Push infrastructure (out of scope for now).
+let notifyPref = localStorage.getItem('mk-notify') === 'on';
+let lastNotifySig = '';
+function bellIcon() {
+  const b = $('notify-btn');
+  if (!b) return;
+  const denied = ('Notification' in window) && Notification.permission === 'denied';
+  b.textContent = notifyPref && !denied ? '🔔' : '🔕';
+  b.classList.toggle('notify-on', notifyPref && !denied);
+  b.title = !('Notification' in window) ? 'Notifications are not supported in this browser'
+    : denied ? 'Notifications are blocked in your browser settings'
+      : notifyPref ? 'Turn notifications are ON. Click to disable'
+        : 'Notify me when it is my turn while I am away';
+}
+$('notify-btn').onclick = async () => {
+  if (!('Notification' in window)) { toast('This browser cannot show notifications.', false); return; }
+  if (Notification.permission === 'denied') {
+    toast('Notifications are blocked. Allow them in your browser settings first.', false);
+    bellIcon(); return;
+  }
+  if (notifyPref) {
+    notifyPref = false; localStorage.setItem('mk-notify', 'off');
+    toast('Turn notifications off.', true); bellIcon(); return;
+  }
+  const perm = Notification.permission === 'granted'
+    ? 'granted' : await Notification.requestPermission();
+  if (perm !== 'granted') {
+    toast('No permission given, so notifications stay off.', false);
+    bellIcon(); return;
+  }
+  notifyPref = true; localStorage.setItem('mk-notify', 'on');
+  toast('You will be notified when the saga needs you.', true);
+  bellIcon();
+};
+bellIcon();
+
+function notifyText(aw) {
+  const who = seatName(aw.seat);
+  const map = {
+    'place-start': `${who}: choose where to awaken`,
+    'place-tile': `${who}: place the revealed path`,
+    'action': `${who}: your move`,
+    'post-move': `${who}: press on, or end your turn`,
+    'block': `A Draugr strikes ${who}. Brace?`,
+    'attune': `${who} stands among the runes`,
+    'swap-draugr': `A Draugr stalks toward ${who}`,
+    'fall-landing': `${who}: choose where to land`,
+    'place-landing': `${who}: find your footing`,
+    'place-blind': `${who}: feel through the mist`,
+    'place-scramble': `${who}: scramble to safety`,
+    'scramble': `${who}: scramble to safety`,
+    'niflheim': `The cold demands a tile. ${who} must choose`,
+    'winter-stores': `Freyja's stores: ransom the taken tile?`,
+    'shared-joy': `Shared joy: choose who takes heart`,
+  };
+  return map[aw.type] || `${who}: the saga awaits your decision`;
+}
+async function maybeNotify() {
+  if (!notifyPref || !('Notification' in window) || Notification.permission !== 'granted') return;
+  if (!document.hidden || !state || !room) return;
+  if (state.phase !== 'play' && state.phase !== 'setup') return;
+  const aw = state.awaiting;
+  if (!aw || !isMine(aw.seat)) return;
+  const sig = `${aw.type}:${aw.seat}:${state.seq || 0}`;
+  if (sig === lastNotifySig) return; // one ping per decision
+  lastNotifySig = sig;
+  const opts = { body: notifyText(aw), tag: 'mk-turn', icon: '/icon-192.png', badge: '/icon-192.png' };
+  try {
+    const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+    if (reg && reg.showNotification) reg.showNotification('Mirkwood', opts);
+    else new Notification('Mirkwood', opts);
+  } catch { /* best-effort: never let a notification break the game */ }
+}
+// returning to the game clears any lingering turn notification
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden) return;
+  try {
+    const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+    if (reg && reg.getNotifications) (await reg.getNotifications({ tag: 'mk-turn' })).forEach(n => n.close());
+  } catch { /* best-effort */ }
+});
+
 let anims = localStorage.getItem('mk-anims') !== 'off';
 const sm = s => (anims ? s : ''); // gate SMIL snippets on the animations setting
 
@@ -332,6 +419,7 @@ function handle(msg) {
       } else if (seq !== lastAnimatedSeq) {
         transientFx = buildTimeline(state.events); // a fresh action: animate it live
         showBurnReveal(state.events, transientFx); // name what the mist took (works anims-off too)
+        maybeNotify(); // ping a hidden tab when the new decision is ours
       } else {
         transientFx = null; // a room-change rebroadcast: nothing new to show
       }

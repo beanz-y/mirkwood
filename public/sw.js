@@ -12,3 +12,14 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(fetch(event.request));
   }
 });
+
+// tapping a turn notification brings the saga back into focus (or reopens it)
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) if ('focus' in c) return c.focus();
+      return self.clients.openWindow('/');
+    }),
+  );
+});
