@@ -360,8 +360,15 @@ export class MirkwoodRoom {
           await this.save();
         }
       }
+      // Trace either way. Logging only failures makes silence ambiguous
+      // between "never tried" and "worked", which are the two cases worth
+      // telling apart when a push does not arrive on a device.
+      const accepted = results.filter(x => x.ok).length;
       const failed = results.filter(x => !x.ok && !x.gone);
-      if (failed.length) console.log(`push to seat ${aw.seat} failed:`, JSON.stringify(failed[0]));
+      console.log(`push to seat ${aw.seat} (${st.players[aw.seat].name}): `
+        + `${accepted}/${results.length} accepted by the push service`
+        + `${failed.length ? `, first failure ${JSON.stringify(failed[0])}` : ''}`
+        + `${results.length !== keep.length ? `, dropped ${results.length - keep.length} expired` : ''}`);
     })());
   }
 
