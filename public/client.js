@@ -252,7 +252,9 @@ async function maybeNotify() {
   // never alerts. The tag collapses; renotify makes it still speak up.
   const opts = {
     body: notifyText(aw), tag: 'mk-turn', renotify: true,
-    icon: '/icon-192.png', badge: '/icon-192.png',
+    // badge is alpha-only on Android (see sw.js): an opaque app icon there
+    // renders as a solid white square
+    icon: '/icon-192.png', badge: '/badge-96.png',
   };
   try {
     const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;

@@ -128,7 +128,32 @@ Notes:
 - Rotating the key is safe: subscriptions made against the old key are traded
   in automatically the next time that player joins.
 - **iOS**: push reaches an *installed* PWA only (Add to Home Screen, 16.4+).
-  A real device is the only way to confirm delivery.
+  A real device is the only way to confirm delivery. iOS also **ignores**
+  `icon`, `badge` and `tag`: it always draws the app's own Home Screen icon,
+  which it captures at install time and never refetches. So an iOS notification
+  showing a blank/white icon means the *installed* icon is the placeholder iOS
+  captured before `apple-touch-icon.png` existed — no deploy can fix that, the
+  app has to be removed and re-added.
+
+### Icons (`tools/mk-icons.py`)
+
+Two kinds of asset, and the difference is not cosmetic:
+
+- **App icons** (`icon-192`, `icon-512`, `apple-touch-icon`) are **opaque**.
+  Apple requires it; alpha in a Home Screen icon gets composited against a
+  solid fill, which is how logos end up white-on-white.
+- **`badge-96.png` is the opposite: nothing but alpha.** Android draws the
+  notification's status-bar small icon from the **alpha channel alone**,
+  discards RGB, and fills the mask with flat white. Hand it an app icon and
+  every pixel is opaque, so the mask is the whole square and you get a **solid
+  white blob** — the documented result of the wrong kind of image, not a
+  degraded one. It carries no ember glow either: a soft alpha gradient masks
+  into a grey smear.
+
+One file cannot serve both. If a silhouette is ever unavailable, **omit
+`badge:` entirely** rather than pass an app icon — Chrome then falls back to
+its own properly-masked logo, which is strictly better than a white square.
+`badge` is Chrome-on-Android only; it is inert (but harmless) on iOS.
 
 Notes:
 - The `migrations` block in [wrangler.jsonc](wrangler.jsonc) declares the

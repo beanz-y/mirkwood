@@ -213,6 +213,42 @@ run/deploy. Everything below has been built, tested, and browser-verified.*
 >   **Real-device confirmation is still Dan's** (the pane cannot background a
 >   PWA or grant push).
 >
+> **Addendum (2026-07-16, all-white notification icon).** Dan reported the
+> small notification icon rendering all white on his phone. TWO different bugs
+> wear that symptom; which one depends on the handset.
+> - **Android (real, fixed):** `badge:` is the status-bar SMALL icon, and
+>   Android builds it from the **alpha channel alone** — RGB is discarded. We
+>   passed `/icon-192.png`, which is PNG colour type 2 (RGB, no alpha sample,
+>   no tRNS): all 36,864 pixels alpha=255, so the mask is the entire square and
+>   Android fills it flat white. The gold rune differs from the ground only in
+>   RGB, i.e. exactly the data it throws away. Deterministic, not flaky. It
+>   shipped because `badge` is Chrome-on-Android only and is invisible on
+>   desktop. FIX: new `public/badge-96.png` (96px = 24dp at 4x per MDN), white
+>   rune on transparency, no glow (a soft alpha gradient masks to a grey
+>   smear); `badge:` repointed in sw.js + client.js. `icon:` was always correct
+>   (full colour, large icon) and is unchanged.
+> - **iOS (cannot be fixed by code):** iOS ignores `icon`, `badge` AND `tag`,
+>   and always draws the installed app's own Home Screen icon — captured at
+>   Add-to-Home-Screen time and **never refetched**. If a device installed
+>   Mirkwood before `apple-touch-icon.png` existed, iOS froze a placeholder
+>   (older iOS: a screenshot of the page, i.e. white; 16.4+: a letter monogram)
+>   and reuses it for notifications forever. Remove App + re-add is the only
+>   cure. Our icon files are provably innocent: 180x180, opaque, corners
+>   rgb(10,16,13), 0% near-white pixels.
+> - **THE DIAGNOSTIC, if it recurs: look at the Home Screen icon.** Also
+>   white ⇒ iOS frozen placeholder (reinstall). Correct, but the notification
+>   is white ⇒ Android badge.
+> - **`tools/mk-icons.py` now lives in the repo.** The generator previously
+>   existed only in a session scratchpad while being the sole source for
+>   shipped, committed binaries. Defaults to building only the badge; `--all`
+>   rebuilds the app icons. Run with `py -3` (Pillow; the msys `python` has
+>   neither Pillow nor the Windows font path). Runic glyphs need Segoe UI
+>   **Historic** (seguihis.ttf) — Segoe UI Symbol renders U+16D7 as tofu.
+> - CHECKED AND FALSE (an agent flagged it, measurement refuted it): the
+>   manifest's `maskable` entry reusing the unpadded `icon-512.png` does NOT
+>   risk clipping. Furthest gold pixel is 118.7px from centre; the 40%-radius
+>   safe circle is 204.8px. Left alone.
+>
 > **Notes for later:**
 > - `.dev.vars` (gitignored) holds a throwaway VAPID key for local testing, so
 >   `npm run dev` reports push as configured. It is not the production key.

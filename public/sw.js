@@ -28,8 +28,13 @@ self.addEventListener('push', (event) => {
     // shares the tag with the local tier, so a returning player never finds
     // two notifications for the same decision
     tag: data.tag || 'mk-turn',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
+    icon: '/icon-192.png',   // full colour: the large icon in the notification
+    // The badge is the small status-bar icon, and Android builds it from the
+    // ALPHA CHANNEL ALONE — colour is thrown away. Handing it an app icon (an
+    // opaque square) makes the mask the whole square: a solid white blob.
+    // badge-96.png is a white rune on transparency, which is the only thing
+    // this option ever wanted. See tools/mk-icons.py.
+    badge: '/badge-96.png',
     renotify: true,
     data: { url: data.url || '/' },
   }));
