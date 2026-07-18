@@ -346,9 +346,16 @@ convergence timing, or 2-ply lookahead in `tools/policy.js`.
 - **Turn timer** (host option): a soft countdown per decision (60s–3min) in
   the top bar — a nudge, not an enforcer.
 - **Idle auto-rest**: a player who has already moved but forgets **End turn**
-  won't stall the party — after 30s with no mouse/key/touch input on their
-  page, their turn ends itself (any activity resets the clock; a countdown
-  shows on the button for the final 10s). Client-side only, always on.
+  won't stall the party. Two paths, because one alone has a hole:
+  - *Foreground and idle*: after 30s with no mouse/key/touch input the page
+    ends the turn itself (any activity resets the clock; a countdown shows on
+    the button for the final 10s).
+  - *Backgrounded*: that 30s timer runs on a `setInterval`, which a frozen
+    (backgrounded) page suspends — so on a phone it never fired, and a pocketed
+    player stranded everyone. Now the server ends the post-move turn the moment
+    the `away` message arrives (the same signal the notification tier uses). It
+    is post-move only: prompts where a real decision is still owed are pushed,
+    never auto-acted.
 - **No chat, by design**: there is no in-app messaging and no user-to-user
   message content is relayed or stored anywhere; coordination happens by
   **pressing and holding a spot on the board** to ping it for everyone

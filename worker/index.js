@@ -849,13 +849,34 @@ export class MirkwoodRoom {
          * evening costs no storage writes.
          */
         this.attach(ws, { away: !!msg.away });
-        // Going away re-opens the question. Nothing else would ever ask it
-        // again: only the awaiting player can act, so a decision that landed
-        // while they were watching would hang forever, silently, if they then
-        // pocketed the phone. And visibilitychange also fires on a screen
-        // lock or an incoming call, where they never registered whose turn it
-        // was. The push is the durable trace that the saga wants them.
-        if (msg.away) await this.maybePush();
+        if (msg.away) {
+          const st = r.state;
+          const aw = st && st.awaiting;
+          const mine = aw && r.seats[aw.seat] && r.seats[aw.seat].token === token;
+          // If they are backgrounding mid-"End turn / Press on", end it now.
+          // The client's 30s idle-end runs on a setInterval that a frozen page
+          // suspends, so it can't fire once the app is backgrounded — and a
+          // soul that has already moved but never ends stalls the whole party.
+          // Post-move ONLY: prompts where a real decision is still owed (place
+          // a tile, brace, attune) are never auto-acted; those get a push
+          // instead. Press-on is optional and the default button was End turn,
+          // so ending is the honest reading of "I have stepped away".
+          if (mine && aw.type === 'post-move' && st.phase === 'play') {
+            applyAction(st, aw.seat, { kind: 'end' });
+            await this.save();
+            this.broadcast();
+            await this.maybeLogEnd();
+            await this.maybePush(); // the NEXT soul may not be here either
+            return;
+          }
+          // Otherwise, going away re-opens the question. Nothing else would ever
+          // ask it again: only the awaiting player can act, so a decision that
+          // landed while they were watching would hang forever if they then
+          // pocketed the phone. visibilitychange also fires on a screen lock or
+          // an incoming call, where they never registered whose turn it was.
+          // The push is the durable trace that the saga wants them.
+          await this.maybePush();
+        }
         return;
       }
       case 'push-sub': {

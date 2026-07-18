@@ -142,9 +142,13 @@ setInterval(updateTimer, 500);
 // A player who has already MOVED but forgot "End turn" stalls the whole party.
 // When the post-move prompt is ours and the page sees no input for IDLE_END_MS,
 // end the turn automatically. Any pointer/key/touch activity restarts the
-// clock, so someone weighing "Press on" is never cut off. Client-side only —
-// a closed tab never auto-ends (the adopt flow covers vanished players).
-// ?idleend=N (seconds) overrides the delay for testing, like ?touch=1.
+// clock, so someone weighing "Press on" is never cut off.
+//
+// This timer only covers the FOREGROUND-but-idle case: it runs on a
+// setInterval, which a backgrounded (frozen) page suspends. Backgrounding is
+// handled server-side instead — the 'away' message we already send ends our
+// own post-move turn there (see worker/index.js), so a pocketed phone no
+// longer strands the party. ?idleend=N (seconds) overrides the delay, like ?touch=1.
 const IDLE_END_MS = (() => {
   const m = location.search.match(/[?&]idleend=(\d+)/);
   return (m ? Math.max(2, +m[1]) : 30) * 1000;

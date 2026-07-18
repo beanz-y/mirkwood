@@ -249,6 +249,34 @@ run/deploy. Everything below has been built, tested, and browser-verified.*
 >   risk clipping. Furthest gold pixel is 118.7px from centre; the 40%-radius
 >   safe circle is 204.8px. Left alone.
 >
+> **Addendum (2026-07-16, idle auto-end broken when backgrounded): fixed.**
+> Same root cause as the notification and badge work: a backgrounded PWA
+> FREEZES the page. The 30s idle auto-end runs on `setInterval(idleEndTick,
+> 500)` (client.js), which a frozen page suspends, so a player who moved but
+> did not hit End turn stranded the party the moment they backgrounded — and on
+> a phone, backgrounding IS how you leave an app. FIX (Dan chose end-on-
+> background over a server grace timer): the `case 'away'` handler
+> (worker/index.js) now, when `away:true` arrives during that token's OWN
+> post-move prompt in the play phase, `applyAction(...,{kind:'end'})` +
+> save + broadcast + maybeLogEnd + maybePush (mirrors the `act` path). POST-MOVE
+> ONLY — prompts still owed a real decision (place/brace/attune) are pushed, not
+> auto-acted; the ownership check (`r.seats[aw.seat].token === token`) stops one
+> player's backgrounding from ending another's turn. No Durable Object alarm
+> change (the grace-preserving alternative would have needed the alarm reworked
+> into min(purge, turn-deadline) — rejected as higher risk for a tested layer).
+> Works for ALL players, not just those with the bell on: `sayAway` fires on
+> visibilitychange regardless of notification prefs. The foreground 30s client
+> timer is unchanged (it covers foreground-idle; the server covers
+> backgrounded). Trade-off Dan accepted: no window to return and press-on after
+> backgrounding (press-on is optional; End turn was the default button anyway).
+> Verified: 7-assert Node harness (`away_end_test.mjs`) — away during my
+> post-move ends it; another player's away does not; away during an action
+> prompt auto-acts nothing. Push regression (away during place-start) still
+> 16/16, so the new branch doesn't disturb the notification path. NOTE the
+> gotcha the harness caught: a MOVE does not go straight to post-move — it
+> kindles illumination `place-tile` prompts first, which must be drained to
+> reach post-move.
+>
 > **Notes for later:**
 > - `.dev.vars` (gitignored) holds a throwaway VAPID key for local testing, so
 >   `npm run dev` reports push as configured. It is not the production key.
